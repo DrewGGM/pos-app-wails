@@ -296,13 +296,17 @@ export namespace models {
 	    sale_id: number;
 	    invoice_number: string;
 	    prefix: string;
-	    uuid: string;
+	    uuid?: string;
 	    cufe: string;
 	    qr_code: string;
+	    zip_key: string;
 	    status: string;
+	    is_valid?: boolean;
+	    validation_message: string;
 	    dian_response: string;
 	    sent_at?: time.Time;
 	    accepted_at?: time.Time;
+	    validation_checked_at?: time.Time;
 	    xml_document: string;
 	    pdf_document: string;
 	    retry_count: number;
@@ -325,10 +329,14 @@ export namespace models {
 	        this.uuid = source["uuid"];
 	        this.cufe = source["cufe"];
 	        this.qr_code = source["qr_code"];
+	        this.zip_key = source["zip_key"];
 	        this.status = source["status"];
+	        this.is_valid = source["is_valid"];
+	        this.validation_message = source["validation_message"];
 	        this.dian_response = source["dian_response"];
 	        this.sent_at = this.convertValues(source["sent_at"], time.Time);
 	        this.accepted_at = this.convertValues(source["accepted_at"], time.Time);
+	        this.validation_checked_at = this.convertValues(source["validation_checked_at"], time.Time);
 	        this.xml_document = source["xml_document"];
 	        this.pdf_document = source["pdf_document"];
 	        this.retry_count = source["retry_count"];
@@ -675,9 +683,10 @@ export namespace models {
 	    category_id: number;
 	    category?: Category;
 	    image: string;
-	    sku: string;
 	    stock: number;
 	    is_active: boolean;
+	    tax_type_id: number;
+	    unit_measure_id: number;
 	    modifiers?: Modifier[];
 	    created_at: time.Time;
 	    updated_at: time.Time;
@@ -696,9 +705,10 @@ export namespace models {
 	        this.category_id = source["category_id"];
 	        this.category = this.convertValues(source["category"], Category);
 	        this.image = source["image"];
-	        this.sku = source["sku"];
 	        this.stock = source["stock"];
 	        this.is_active = source["is_active"];
+	        this.tax_type_id = source["tax_type_id"];
+	        this.unit_measure_id = source["unit_measure_id"];
 	        this.modifiers = this.convertValues(source["modifiers"], Modifier);
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
@@ -791,9 +801,11 @@ export namespace models {
 	    phone: string;
 	    address: string;
 	    municipality_id?: number;
+	    type_document_identification_id?: number;
 	    type_organization_id?: number;
 	    type_liability_id?: number;
 	    type_regime_id?: number;
+	    merchant_registration?: string;
 	    is_active: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
@@ -814,9 +826,11 @@ export namespace models {
 	        this.phone = source["phone"];
 	        this.address = source["address"];
 	        this.municipality_id = source["municipality_id"];
+	        this.type_document_identification_id = source["type_document_identification_id"];
 	        this.type_organization_id = source["type_organization_id"];
 	        this.type_liability_id = source["type_liability_id"];
 	        this.type_regime_id = source["type_regime_id"];
+	        this.merchant_registration = source["merchant_registration"];
 	        this.is_active = source["is_active"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
@@ -1254,9 +1268,22 @@ export namespace models {
 	    resolution_date_from: time.Time;
 	    resolution_date_to: time.Time;
 	    technical_key: string;
+	    credit_note_resolution_number: string;
+	    credit_note_resolution_prefix: string;
+	    credit_note_resolution_from: number;
+	    credit_note_resolution_to: number;
+	    credit_note_resolution_date_from: time.Time;
+	    credit_note_resolution_date_to: time.Time;
+	    debit_note_resolution_number: string;
+	    debit_note_resolution_prefix: string;
+	    debit_note_resolution_from: number;
+	    debit_note_resolution_to: number;
+	    debit_note_resolution_date_from: time.Time;
+	    debit_note_resolution_date_to: time.Time;
 	    api_url: string;
 	    api_token: string;
 	    test_set_id: string;
+	    use_test_set_id: boolean;
 	    last_invoice_number: number;
 	    last_credit_note_number: number;
 	    last_debit_note_number: number;
@@ -1266,6 +1293,12 @@ export namespace models {
 	    email_username: string;
 	    email_password: string;
 	    email_encryption: string;
+	    step1_completed: boolean;
+	    step2_completed: boolean;
+	    step3_completed: boolean;
+	    step4_completed: boolean;
+	    step5_completed: boolean;
+	    step6_completed: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -1298,9 +1331,22 @@ export namespace models {
 	        this.resolution_date_from = this.convertValues(source["resolution_date_from"], time.Time);
 	        this.resolution_date_to = this.convertValues(source["resolution_date_to"], time.Time);
 	        this.technical_key = source["technical_key"];
+	        this.credit_note_resolution_number = source["credit_note_resolution_number"];
+	        this.credit_note_resolution_prefix = source["credit_note_resolution_prefix"];
+	        this.credit_note_resolution_from = source["credit_note_resolution_from"];
+	        this.credit_note_resolution_to = source["credit_note_resolution_to"];
+	        this.credit_note_resolution_date_from = this.convertValues(source["credit_note_resolution_date_from"], time.Time);
+	        this.credit_note_resolution_date_to = this.convertValues(source["credit_note_resolution_date_to"], time.Time);
+	        this.debit_note_resolution_number = source["debit_note_resolution_number"];
+	        this.debit_note_resolution_prefix = source["debit_note_resolution_prefix"];
+	        this.debit_note_resolution_from = source["debit_note_resolution_from"];
+	        this.debit_note_resolution_to = source["debit_note_resolution_to"];
+	        this.debit_note_resolution_date_from = this.convertValues(source["debit_note_resolution_date_from"], time.Time);
+	        this.debit_note_resolution_date_to = this.convertValues(source["debit_note_resolution_date_to"], time.Time);
 	        this.api_url = source["api_url"];
 	        this.api_token = source["api_token"];
 	        this.test_set_id = source["test_set_id"];
+	        this.use_test_set_id = source["use_test_set_id"];
 	        this.last_invoice_number = source["last_invoice_number"];
 	        this.last_credit_note_number = source["last_credit_note_number"];
 	        this.last_debit_note_number = source["last_debit_note_number"];
@@ -1310,6 +1356,12 @@ export namespace models {
 	        this.email_username = source["email_username"];
 	        this.email_password = source["email_password"];
 	        this.email_encryption = source["email_encryption"];
+	        this.step1_completed = source["step1_completed"];
+	        this.step2_completed = source["step2_completed"];
+	        this.step3_completed = source["step3_completed"];
+	        this.step4_completed = source["step4_completed"];
+	        this.step5_completed = source["step5_completed"];
+	        this.step6_completed = source["step6_completed"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
@@ -1691,6 +1743,7 @@ export namespace models {
 	    print_logo: boolean;
 	    auto_cut: boolean;
 	    cash_drawer: boolean;
+	    print_kitchen_copy: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -1713,6 +1766,7 @@ export namespace models {
 	        this.print_logo = source["print_logo"];
 	        this.auto_cut = source["auto_cut"];
 	        this.cash_drawer = source["cash_drawer"];
+	        this.print_kitchen_copy = source["print_kitchen_copy"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
@@ -2098,46 +2152,257 @@ export namespace services {
 	        this.total_value = source["total_value"];
 	    }
 	}
-	export class DIANCompanyConfig {
-	    type_document_identification_id: number;
-	    type_organization_id: number;
-	    type_regime_id: number;
-	    type_liability_id: number;
-	    business_name: string;
-	    merchant_registration: string;
-	    municipality_id: number;
-	    address: string;
-	    phone: string;
-	    email: string;
-	    mail_host: string;
-	    mail_port: string;
-	    mail_username: string;
-	    mail_password: string;
-	    mail_encryption: string;
+	export class DIANInvoiceAllowanceCharge {
+	    discount_id?: number;
+	    charge_indicator: boolean;
+	    allowance_charge_reason: string;
+	    amount: string;
+	    base_amount: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new DIANCompanyConfig(source);
+	        return new DIANInvoiceAllowanceCharge(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type_document_identification_id = source["type_document_identification_id"];
-	        this.type_organization_id = source["type_organization_id"];
-	        this.type_regime_id = source["type_regime_id"];
-	        this.type_liability_id = source["type_liability_id"];
-	        this.business_name = source["business_name"];
-	        this.merchant_registration = source["merchant_registration"];
-	        this.municipality_id = source["municipality_id"];
-	        this.address = source["address"];
-	        this.phone = source["phone"];
-	        this.email = source["email"];
-	        this.mail_host = source["mail_host"];
-	        this.mail_port = source["mail_port"];
-	        this.mail_username = source["mail_username"];
-	        this.mail_password = source["mail_password"];
-	        this.mail_encryption = source["mail_encryption"];
+	        this.discount_id = source["discount_id"];
+	        this.charge_indicator = source["charge_indicator"];
+	        this.allowance_charge_reason = source["allowance_charge_reason"];
+	        this.amount = source["amount"];
+	        this.base_amount = source["base_amount"];
 	    }
 	}
+	export class DIANInvoiceLine {
+	    unit_measure_id: number;
+	    invoiced_quantity: string;
+	    line_extension_amount: string;
+	    free_of_charge_indicator: boolean;
+	    tax_totals: DIANInvoiceTaxTotal[];
+	    description: string;
+	    notes?: string;
+	    code: string;
+	    type_item_identification_id: number;
+	    price_amount: string;
+	    base_quantity: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoiceLine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.unit_measure_id = source["unit_measure_id"];
+	        this.invoiced_quantity = source["invoiced_quantity"];
+	        this.line_extension_amount = source["line_extension_amount"];
+	        this.free_of_charge_indicator = source["free_of_charge_indicator"];
+	        this.tax_totals = this.convertValues(source["tax_totals"], DIANInvoiceTaxTotal);
+	        this.description = source["description"];
+	        this.notes = source["notes"];
+	        this.code = source["code"];
+	        this.type_item_identification_id = source["type_item_identification_id"];
+	        this.price_amount = source["price_amount"];
+	        this.base_quantity = source["base_quantity"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DIANInvoiceTaxTotal {
+	    tax_id: number;
+	    tax_amount: string;
+	    percent: string;
+	    taxable_amount: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoiceTaxTotal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tax_id = source["tax_id"];
+	        this.tax_amount = source["tax_amount"];
+	        this.percent = source["percent"];
+	        this.taxable_amount = source["taxable_amount"];
+	    }
+	}
+	export class DIANInvoiceLegalMonetaryTotals {
+	    line_extension_amount: string;
+	    tax_exclusive_amount: string;
+	    tax_inclusive_amount: string;
+	    allowance_total_amount?: string;
+	    payable_amount: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoiceLegalMonetaryTotals(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.line_extension_amount = source["line_extension_amount"];
+	        this.tax_exclusive_amount = source["tax_exclusive_amount"];
+	        this.tax_inclusive_amount = source["tax_inclusive_amount"];
+	        this.allowance_total_amount = source["allowance_total_amount"];
+	        this.payable_amount = source["payable_amount"];
+	    }
+	}
+	export class DIANInvoiceCustomer {
+	    identification_number: number;
+	    dv: string;
+	    name: string;
+	    phone: string;
+	    address: string;
+	    email: string;
+	    merchant_registration: string;
+	    type_document_identification_id: number;
+	    type_organization_id: number;
+	    type_liability_id: number;
+	    municipality_id: number;
+	    type_regime_id: number;
+	    tax_id?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoiceCustomer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.identification_number = source["identification_number"];
+	        this.dv = source["dv"];
+	        this.name = source["name"];
+	        this.phone = source["phone"];
+	        this.address = source["address"];
+	        this.email = source["email"];
+	        this.merchant_registration = source["merchant_registration"];
+	        this.type_document_identification_id = source["type_document_identification_id"];
+	        this.type_organization_id = source["type_organization_id"];
+	        this.type_liability_id = source["type_liability_id"];
+	        this.municipality_id = source["municipality_id"];
+	        this.type_regime_id = source["type_regime_id"];
+	        this.tax_id = source["tax_id"];
+	    }
+	}
+	export class DIANInvoice {
+	    number: number;
+	    type_document_id: number;
+	    date: string;
+	    time: string;
+	    resolution_number: string;
+	    prefix: string;
+	    notes?: string;
+	    disable_confirmation_text?: boolean;
+	    establishment_name: string;
+	    establishment_address: string;
+	    establishment_phone: string;
+	    establishment_municipality: number;
+	    establishment_email?: string;
+	    sendmail?: boolean;
+	    sendmailtome?: boolean;
+	    head_note?: string;
+	    foot_note?: string;
+	    customer: DIANInvoiceCustomer;
+	    payment_form: any;
+	    legal_monetary_totals: DIANInvoiceLegalMonetaryTotals;
+	    tax_totals: DIANInvoiceTaxTotal[];
+	    invoice_lines: DIANInvoiceLine[];
+	    allowance_charges?: DIANInvoiceAllowanceCharge[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.type_document_id = source["type_document_id"];
+	        this.date = source["date"];
+	        this.time = source["time"];
+	        this.resolution_number = source["resolution_number"];
+	        this.prefix = source["prefix"];
+	        this.notes = source["notes"];
+	        this.disable_confirmation_text = source["disable_confirmation_text"];
+	        this.establishment_name = source["establishment_name"];
+	        this.establishment_address = source["establishment_address"];
+	        this.establishment_phone = source["establishment_phone"];
+	        this.establishment_municipality = source["establishment_municipality"];
+	        this.establishment_email = source["establishment_email"];
+	        this.sendmail = source["sendmail"];
+	        this.sendmailtome = source["sendmailtome"];
+	        this.head_note = source["head_note"];
+	        this.foot_note = source["foot_note"];
+	        this.customer = this.convertValues(source["customer"], DIANInvoiceCustomer);
+	        this.payment_form = source["payment_form"];
+	        this.legal_monetary_totals = this.convertValues(source["legal_monetary_totals"], DIANInvoiceLegalMonetaryTotals);
+	        this.tax_totals = this.convertValues(source["tax_totals"], DIANInvoiceTaxTotal);
+	        this.invoice_lines = this.convertValues(source["invoice_lines"], DIANInvoiceLine);
+	        this.allowance_charges = this.convertValues(source["allowance_charges"], DIANInvoiceAllowanceCharge);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	export class DIANInvoiceResponse {
+	    success: boolean;
+	    message: string;
+	    ResponseDian?: any;
+	    zip_key?: string;
+	    uuid?: string;
+	    cufe?: string;
+	    issue_date?: string;
+	    number?: string;
+	    errors?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANInvoiceResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.message = source["message"];
+	        this.ResponseDian = source["ResponseDian"];
+	        this.zip_key = source["zip_key"];
+	        this.uuid = source["uuid"];
+	        this.cufe = source["cufe"];
+	        this.issue_date = source["issue_date"];
+	        this.number = source["number"];
+	        this.errors = source["errors"];
+	    }
+	}
+	
 	export class DailySalesData {
 	    date: string;
 	    sales: number;

@@ -74,7 +74,7 @@ interface CashMovement {
 }
 
 const CashRegister: React.FC = () => {
-  const { user, cashRegisterId } = useAuth();
+  const { user, cashRegisterId, openCashRegister: openCashRegisterContext, closeCashRegister: closeCashRegisterContext } = useAuth();
   const [registerStatus, setRegisterStatus] = useState<CashRegisterStatus | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [closeDialog, setCloseDialog] = useState(false);
@@ -103,18 +103,31 @@ const CashRegister: React.FC = () => {
           try {
             const sales = await wailsSalesService.getSales();
             const registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
-            
+
             registerSales.forEach((sale: any) => {
               salesSummary.total += sale.total;
               salesSummary.count++;
-              
-              // Calculate by payment method (simplified - assumes single payment method per sale)
-              if (sale.payment_method === 'cash' || sale.payment_method === 'Efectivo') {
-                salesSummary.cash += sale.total;
-              } else if (sale.payment_method?.includes('Tarjeta') || sale.payment_method?.includes('card')) {
-                salesSummary.card += sale.total;
-              } else {
-                salesSummary.transfer += sale.total;
+
+              // Calculate by payment method using payment_details
+              if (sale.payment_details && Array.isArray(sale.payment_details)) {
+                sale.payment_details.forEach((payment: any) => {
+                  const paymentMethod = payment.payment_method;
+                  if (paymentMethod) {
+                    switch (paymentMethod.type) {
+                      case 'cash':
+                        salesSummary.cash += payment.amount;
+                        break;
+                      case 'card':
+                        salesSummary.card += payment.amount;
+                        break;
+                      case 'digital':
+                        salesSummary.transfer += payment.amount;
+                        break;
+                      default:
+                        salesSummary.transfer += payment.amount;
+                    }
+                  }
+                });
               }
             });
           } catch (e) {
@@ -159,13 +172,14 @@ const CashRegister: React.FC = () => {
     }
 
     try {
-      if (user) {
-        await wailsAuthService.openCashRegister(user.id!, Number(openingAmount), '');
-        toast.success('Caja abierta exitosamente');
-        setOpenDialog(false);
-        setOpeningAmount('');
+      // Usa la función del contexto que actualiza el estado global
+      await openCashRegisterContext(Number(openingAmount), '');
+      setOpenDialog(false);
+      setOpeningAmount('');
+      // Espera un momento para que se actualice el contexto
+      setTimeout(() => {
         loadRegisterStatus();
-      }
+      }, 100);
     } catch (error: any) {
       toast.error(error.message || 'Error al abrir la caja');
     }
@@ -178,14 +192,15 @@ const CashRegister: React.FC = () => {
     }
 
     try {
-      if (cashRegisterId) {
-        await wailsAuthService.closeCashRegister(cashRegisterId, Number(closingAmount), closingNotes);
-        toast.success('Caja cerrada exitosamente');
-        setCloseDialog(false);
-        setClosingAmount('');
-        setClosingNotes('');
+      // Usa la función del contexto que actualiza el estado global
+      await closeCashRegisterContext(Number(closingAmount), closingNotes);
+      setCloseDialog(false);
+      setClosingAmount('');
+      setClosingNotes('');
+      // Espera un momento para que se actualice el contexto
+      setTimeout(() => {
         loadRegisterStatus();
-      }
+      }, 100);
     } catch (error: any) {
       toast.error(error.message || 'Error al cerrar la caja');
     }
@@ -218,11 +233,14 @@ const CashRegister: React.FC = () => {
 
   const handlePrintReport = async () => {
     try {
-      // This should use a Wails service for printing
-      // await wailsSalesService.printCashRegisterReport(cashRegisterId!);
-      toast.info('Impresión de reporte no implementada con Wails aún.');
-    } catch (error) {
-      toast.error('Error al imprimir reporte');
+      if (!user?.id) {
+        toast.error('Usuario no identificado');
+        return;
+      }
+      await wailsAuthService.printLastCashRegisterReport(user.id);
+      toast.success('Reporte de cierre enviado a imprimir');
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al imprimir reporte');
     }
   };
 

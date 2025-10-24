@@ -97,7 +97,7 @@ type DIANConfig struct {
 	Certificate         string `json:"certificate"` // Base64
 	CertificatePassword string `json:"certificate_password"`
 
-	// Resolution
+	// Resolution (Invoice)
 	ResolutionNumber   string    `json:"resolution_number"`
 	ResolutionPrefix   string    `json:"resolution_prefix"`
 	ResolutionFrom     int       `json:"resolution_from"`
@@ -106,10 +106,27 @@ type DIANConfig struct {
 	ResolutionDateTo   time.Time `json:"resolution_date_to"`
 	TechnicalKey       string    `json:"technical_key"`
 
+	// Resolution Credit Note (NC)
+	CreditNoteResolutionNumber   string    `json:"credit_note_resolution_number"`
+	CreditNoteResolutionPrefix   string    `json:"credit_note_resolution_prefix"`
+	CreditNoteResolutionFrom     int       `json:"credit_note_resolution_from"`
+	CreditNoteResolutionTo       int       `json:"credit_note_resolution_to"`
+	CreditNoteResolutionDateFrom time.Time `json:"credit_note_resolution_date_from"`
+	CreditNoteResolutionDateTo   time.Time `json:"credit_note_resolution_date_to"`
+
+	// Resolution Debit Note (ND)
+	DebitNoteResolutionNumber   string    `json:"debit_note_resolution_number"`
+	DebitNoteResolutionPrefix   string    `json:"debit_note_resolution_prefix"`
+	DebitNoteResolutionFrom     int       `json:"debit_note_resolution_from"`
+	DebitNoteResolutionTo       int       `json:"debit_note_resolution_to"`
+	DebitNoteResolutionDateFrom time.Time `json:"debit_note_resolution_date_from"`
+	DebitNoteResolutionDateTo   time.Time `json:"debit_note_resolution_date_to"`
+
 	// API Settings
-	APIURL    string `json:"api_url"`
-	APIToken  string `json:"api_token"`
-	TestSetID string `json:"test_set_id"`
+	APIURL       string `json:"api_url"`
+	APIToken     string `json:"api_token"`
+	TestSetID    string `json:"test_set_id"`
+	UseTestSetID bool   `json:"use_test_set_id"` // If true, includes test_set_id in URL (some tests don't need it)
 
 	// Counters
 	LastInvoiceNumber    int `json:"last_invoice_number"`
@@ -124,27 +141,36 @@ type DIANConfig struct {
 	EmailPassword   string `json:"email_password"`
 	EmailEncryption string `json:"email_encryption"`
 
+	// Configuration Steps Completion Tracking
+	Step1Completed bool `json:"step1_completed"` // Company configuration
+	Step2Completed bool `json:"step2_completed"` // Software configuration
+	Step3Completed bool `json:"step3_completed"` // Certificate configuration
+	Step4Completed bool `json:"step4_completed"` // Resolution configuration (Invoice)
+	Step5Completed bool `json:"step5_completed"` // Resolution configuration (Credit Note - NC)
+	Step6Completed bool `json:"step6_completed"` // Resolution configuration (Debit Note - ND)
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // PrinterConfig represents printer configuration
 type PrinterConfig struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	Name           string    `gorm:"not null" json:"name"`
-	Type           string    `json:"type"`            // "usb", "network"
-	ConnectionType string    `json:"connection_type"` // "usb", "ethernet", "bluetooth"
-	Address        string    `json:"address"`         // USB port or IP address
-	Port           int       `json:"port"`            // For network printers
-	Model          string    `json:"model"`
-	PaperWidth     int       `json:"paper_width"` // 58mm, 80mm
-	IsDefault      bool      `json:"is_default"`
-	IsActive       bool      `json:"is_active"`
-	PrintLogo      bool      `json:"print_logo"`
-	AutoCut        bool      `json:"auto_cut"`
-	CashDrawer     bool      `json:"cash_drawer"` // Has cash drawer attached
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	Name             string    `gorm:"not null" json:"name"`
+	Type             string    `json:"type"`            // "usb", "network"
+	ConnectionType   string    `json:"connection_type"` // "usb", "ethernet", "bluetooth"
+	Address          string    `json:"address"`         // USB port or IP address
+	Port             int       `json:"port"`            // For network printers
+	Model            string    `json:"model"`
+	PaperWidth       int       `json:"paper_width"` // 58mm, 80mm
+	IsDefault        bool      `json:"is_default"`
+	IsActive         bool      `json:"is_active"`
+	PrintLogo        bool      `json:"print_logo"`
+	AutoCut          bool      `json:"auto_cut"`
+	CashDrawer       bool      `json:"cash_drawer"`       // Has cash drawer attached
+	PrintKitchenCopy bool      `json:"print_kitchen_copy"` // Print kitchen copy when order is created
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // SyncConfig represents sync configuration

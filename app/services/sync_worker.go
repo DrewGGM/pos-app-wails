@@ -456,8 +456,8 @@ func (worker *SyncWorker) processElectronicInvoice(sale *models.Sale) {
 		Preload("PaymentDetails.PaymentMethod").
 		First(sale, sale.ID)
 
-	// Send to DIAN
-	invoice, err := worker.invoiceSvc.SendInvoice(sale)
+	// Send to DIAN (default to true for sync - send email)
+	invoice, err := worker.invoiceSvc.SendInvoice(sale, true)
 	if err != nil {
 		log.Printf("Failed to send electronic invoice for sale %s: %v", sale.SaleNumber, err)
 		// Queue for retry

@@ -301,6 +301,7 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 		Difference:      0, // No difference since we're using expected
 		Notes:           fmt.Sprintf("Reporte parcial - %s", time.Now().Format("2006-01-02 15:04:05")),
 		GeneratedBy:     register.EmployeeID,
+		Employee:        register.Employee, // Assign employee from register
 	}
 
 	// Calculate sales totals (same logic as generateCashRegisterReport)
@@ -348,6 +349,30 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 	}
 
 	// Print report (don't save to database - it's just a preview)
+	return s.printerSvc.PrintCashRegisterReport(report)
+}
+
+// PrintLastCashRegisterReport prints the last cash register closing report
+func (s *EmployeeService) PrintLastCashRegisterReport(employeeID uint) error {
+	// Find the last closed cash register for this employee
+	var register models.CashRegister
+	err := s.db.Preload("Movements").
+		Preload("Employee").
+		Where("employee_id = ? AND status = ?", employeeID, "closed").
+		Order("closed_at DESC").
+		First(&register).Error
+
+	if err != nil {
+		return fmt.Errorf("no closed cash register found for this employee")
+	}
+
+	// Generate report from the closed register
+	report, err := s.generateCashRegisterReport(&register)
+	if err != nil {
+		return fmt.Errorf("failed to generate report: %w", err)
+	}
+
+	// Print the report
 	return s.printerSvc.PrintCashRegisterReport(report)
 }
 
@@ -406,8 +431,13 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) float64 {
 	expected := register.OpeningAmount
 
-	// Add all cash movements
+	// Add all cash movements (excluding opening movement to avoid double counting)
 	for _, movement := range register.Movements {
+		// Skip opening movement since it's already included in OpeningAmount
+		if movement.Reference == "OPENING" {
+			continue
+		}
+
 		if movement.Type == "sale" || movement.Type == "deposit" {
 			expected += movement.Amount
 		} else if movement.Type == "withdrawal" || movement.Type == "refund" {
@@ -439,6 +469,7 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 		Difference:      *register.Difference,
 		Notes:           register.Notes,
 		GeneratedBy:     register.EmployeeID,
+		Employee:        register.Employee, // Assign employee from register
 	}
 
 	// Calculate sales totals

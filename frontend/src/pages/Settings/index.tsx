@@ -137,13 +137,51 @@ const Settings: React.FC = () => {
     enabled: true,
     testMode: true,
     apiUrl: 'http://localhost:3000',
+    merchantRegistration: '',
+    softwareId: '',
+    softwarePin: '',
+    emailHost: '',
+    emailPort: 587,
+    emailUsername: '',
+    emailPassword: '',
+    emailEncryption: 'tls',
     resolution: '18760000001',
-    prefix: 'SETT',
-    startNumber: 1,
-    endNumber: 100000,
-    technicalKey: '',
-    certificatePath: '',
+    prefix: 'SETP',
+    startNumber: 990000000,
+    endNumber: 995000000,
+    technicalKey: 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c',
+    resolutionDate: '2019-01-19',
+    dateFrom: '2019-01-19',
+    dateTo: '2030-01-19',
+    testSetId: '',
+    useTestSetId: true, // By default, use test_set_id in URL for test mode
+    consecutiveNumber: 0,
+    // Credit Note (NC) Resolution
+    ncPrefix: 'NC',
+    ncStartNumber: 1,
+    ncEndNumber: 99999999,
+    ncResolution: '',
+    ncConsecutiveNumber: 0,
+    // Debit Note (ND) Resolution
+    ndPrefix: 'ND',
+    ndStartNumber: 1,
+    ndEndNumber: 99999999,
+    ndResolution: '',
+    ndConsecutiveNumber: 0,
+    certificate: '',
     certificatePassword: '',
+    certificateFileName: '',
+    apiToken: '',
+  });
+
+  // Track which configuration steps are completed
+  const [completedSteps, setCompletedSteps] = useState({
+    company: false,
+    software: false,
+    certificate: false,
+    resolution: false,
+    creditNote: false,
+    debitNote: false,
   });
 
   // Print Settings
@@ -303,13 +341,63 @@ const Settings: React.FC = () => {
           enabled: config.is_enabled || false,
           testMode: config.environment === 'test',
           apiUrl: config.api_url || 'http://localhost:3000',
+          merchantRegistration: config.merchant_registration || '',
+          softwareId: config.software_id || '',
+          softwarePin: config.software_pin || '',
+          emailHost: config.email_host || '',
+          emailPort: config.email_port || 587,
+          emailUsername: config.email_username || '',
+          emailPassword: config.email_password || '',
+          emailEncryption: config.email_encryption || 'tls',
           resolution: config.resolution_number || '18760000001',
           prefix: config.resolution_prefix || 'SETP',
           startNumber: config.resolution_from || 990000000,
           endNumber: config.resolution_to || 995000000,
-          technicalKey: config.technical_key || '',
-          certificatePath: '',
-          certificatePassword: '',
+          technicalKey: config.technical_key || 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c',
+          resolutionDate: (config.resolution_date_from &&
+                          config.resolution_date_from !== '0001-01-01T00:00:00Z' &&
+                          config.resolution_date_from !== '')
+            ? config.resolution_date_from.split('T')[0]
+            : '2019-01-19',
+          dateFrom: (config.resolution_date_from &&
+                    config.resolution_date_from !== '0001-01-01T00:00:00Z' &&
+                    config.resolution_date_from !== '')
+            ? config.resolution_date_from.split('T')[0]
+            : '2019-01-19',
+          dateTo: (config.resolution_date_to &&
+                  config.resolution_date_to !== '0001-01-01T00:00:00Z' &&
+                  config.resolution_date_to !== '')
+            ? config.resolution_date_to.split('T')[0]
+            : '2030-01-19',
+          testSetId: config.test_set_id || '',
+          useTestSetId: config.use_test_set_id !== undefined ? config.use_test_set_id : true, // Default true
+          consecutiveNumber: config.last_invoice_number || 0,
+          // Credit Note (NC) Resolution
+          ncPrefix: config.credit_note_resolution_prefix || 'NC',
+          ncStartNumber: config.credit_note_resolution_from || 1,
+          ncEndNumber: config.credit_note_resolution_to || 99999999,
+          ncResolution: config.credit_note_resolution_number || '',
+          ncConsecutiveNumber: config.last_credit_note_number || 0,
+          // Debit Note (ND) Resolution
+          ndPrefix: config.debit_note_resolution_prefix || 'ND',
+          ndStartNumber: config.debit_note_resolution_from || 1,
+          ndEndNumber: config.debit_note_resolution_to || 99999999,
+          ndResolution: config.debit_note_resolution_number || '',
+          ndConsecutiveNumber: config.last_debit_note_number || 0,
+          certificate: config.certificate || '',
+          certificatePassword: '', // Don't load password for security
+          certificateFileName: config.certificate ? 'Certificado existente' : '',
+          apiToken: config.api_token || '',
+        });
+
+        // Load step completion status from database
+        setCompletedSteps({
+          company: config.step1_completed || false,
+          software: config.step2_completed || false,
+          certificate: config.step3_completed || false,
+          resolution: config.step4_completed || false,
+          creditNote: config.step5_completed || false,
+          debitNote: config.step6_completed || false,
         });
       }
     } catch (e) {
@@ -390,6 +478,22 @@ const Settings: React.FC = () => {
       };
 
       await wailsConfigService.updateRestaurantConfig(updatedConfig);
+
+      // Sync with DIANConfig
+      const dianConfig = await wailsDianService.getConfig();
+      const updatedDianConfig = {
+        ...dianConfig,
+        identification_number: nit,
+        dv: dv,
+        business_name: businessSettings.legalName,
+        type_document_id: businessSettings.typeDocumentId,
+        type_organization_id: businessSettings.typeOrganizationId,
+        type_regime_id: businessSettings.typeRegimeId,
+        type_liability_id: businessSettings.typeLiabilityId,
+        municipality_id: businessSettings.municipalityId,
+      };
+      await wailsDianService.updateConfig(updatedDianConfig as any);
+
       toast.success('Configuración guardada correctamente');
       setEditMode(false);
     } catch (e: any) {
@@ -400,6 +504,11 @@ const Settings: React.FC = () => {
 
   const handleSaveDianSettings = async () => {
     try {
+      // Sync company data from RestaurantConfig to DIANConfig
+      const nitParts = (businessSettings.nit || '').split('-');
+      const nit = nitParts[0]?.trim() || '';
+      const dv = nitParts[1]?.trim() || '';
+
       // Map local state to backend DIANConfig fields
       const current = await wailsDianService.getConfig();
       const updated = {
@@ -407,14 +516,46 @@ const Settings: React.FC = () => {
         is_enabled: dianSettings.enabled,
         environment: dianSettings.testMode ? 'test' : 'production',
         api_url: dianSettings.apiUrl,
+        // Sync company data from Empresa tab
+        identification_number: nit,
+        dv: dv,
+        business_name: businessSettings.legalName,
+        type_document_id: businessSettings.typeDocumentId,
+        type_organization_id: businessSettings.typeOrganizationId,
+        type_regime_id: businessSettings.typeRegimeId,
+        type_liability_id: businessSettings.typeLiabilityId,
+        municipality_id: businessSettings.municipalityId,
+        // DIAN specific fields
+        merchant_registration: dianSettings.merchantRegistration,
+        software_id: dianSettings.softwareId,
+        software_pin: dianSettings.softwarePin,
+        email_host: dianSettings.emailHost,
+        email_port: dianSettings.emailPort,
+        email_username: dianSettings.emailUsername,
+        email_password: dianSettings.emailPassword,
+        email_encryption: dianSettings.emailEncryption,
         resolution_number: dianSettings.resolution,
         resolution_prefix: dianSettings.prefix,
         resolution_from: dianSettings.startNumber,
         resolution_to: dianSettings.endNumber,
         technical_key: dianSettings.technicalKey,
+        resolution_date_from: new Date(dianSettings.dateFrom),
+        resolution_date_to: new Date(dianSettings.dateTo),
+        test_set_id: dianSettings.testSetId,
+        use_test_set_id: dianSettings.useTestSetId,
+        last_invoice_number: dianSettings.consecutiveNumber,
       };
+
+      // Only save certificate if it has been changed
+      if (dianSettings.certificate) {
+        updated.certificate = dianSettings.certificate;
+      }
+      if (dianSettings.certificatePassword) {
+        updated.certificate_password = dianSettings.certificatePassword;
+      }
+
       await wailsDianService.updateConfig(updated as any);
-      toast.success('Configuración DIAN guardada');
+      toast.success('Configuración DIAN guardada y sincronizada con datos de empresa');
     } catch (e:any) {
       toast.error(e?.message || 'Error guardando configuración DIAN');
     }
@@ -571,59 +712,287 @@ const Settings: React.FC = () => {
 
   const handleConfigureCompany = async () => {
     try {
-      // Este payload debe venir desde UI de empresa (NIT/DV/dir/email/etc.). Aquí tomamos mínimos de businessSettings
+      toast.info('Sincronizando datos de empresa...');
+
+      // Sync company data from RestaurantConfig to DIANConfig first
       const nitParts = (businessSettings.nit || '').split('-');
-      const nit = nitParts[0]?.replace(/\D/g,'') || '';
-      const dv = nitParts[1] || '';
-      await wailsDianService.configureCompany({
-        type_document_identification_id: 3,
-        type_organization_id: 2,
-        type_regime_id: 2,
-        type_liability_id: 14,
-        business_name: businessSettings.legalName || businessSettings.name,
-        merchant_registration: '0000000-00',
-        municipality_id: 820,
-        address: businessSettings.address,
-        phone: businessSettings.phone,
-        email: businessSettings.email,
-        mail_host: '',
-        mail_port: '',
-        mail_username: '',
-        mail_password: '',
-        mail_encryption: '',
+      const nit = nitParts[0]?.trim() || '';
+      const dv = nitParts[1]?.trim() || '';
+
+      if (!nit || !dv) {
+        toast.error('Por favor completa el NIT y DV en la pestaña Empresa primero.');
+        return;
+      }
+
+      const currentDianConfig = await wailsDianService.getConfig();
+      const syncedDianConfig = {
+        ...currentDianConfig,
         identification_number: nit,
         dv: dv,
-      } as any);
-      toast.success('Empresa configurada. Token guardado.');
-    } catch (e:any) {
-      toast.error(e?.message || 'Error configurando empresa');
+        business_name: businessSettings.legalName,
+        type_document_id: businessSettings.typeDocumentId,
+        type_organization_id: businessSettings.typeOrganizationId,
+        type_regime_id: businessSettings.typeRegimeId,
+        type_liability_id: businessSettings.typeLiabilityId,
+        municipality_id: businessSettings.municipalityId,
+      };
+      await wailsDianService.updateConfig(syncedDianConfig as any);
+
+      toast.info('Configurando empresa con DIAN...');
+
+      // Now call backend to configure company
+      const result = await wailsDianService.configureCompany();
+
+      // El token ya fue guardado automáticamente por el backend
+      if (result?.token || result?.api_token) {
+        toast.success(`Empresa configurada exitosamente. Token recibido y guardado.`);
+        // Mark step as completed
+        setCompletedSteps(prev => ({ ...prev, company: true }));
+      } else {
+        toast.success('Empresa configurada exitosamente.');
+      }
+
+      // Reload DIAN config to show updated token
+      await loadDianConfig();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error configurando empresa. Verifica que hayas completado la configuración de empresa y DIAN.');
+      console.error('Error configuring company:', e);
     }
   };
 
   const handleConfigureSoftware = async () => {
     try {
+      if (!dianSettings.softwareId || !dianSettings.softwarePin) {
+        toast.error('Por favor ingresa el ID de Software y PIN primero y guarda la configuración.');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar el Paso 1: Configurar Empresa para obtener el token.');
+        return;
+      }
+
+      toast.info('Configurando software con DIAN...');
+
+      // Ensure software config is saved
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        software_id: dianSettings.softwareId,
+        software_pin: dianSettings.softwarePin,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure software with DIAN API
       await wailsDianService.configureSoftware();
-      toast.success('Software configurado');
-    } catch (e:any) {
+
+      toast.success('Software configurado exitosamente con DIAN');
+      // Mark step as completed
+      setCompletedSteps(prev => ({ ...prev, software: true }));
+
+      // Reload config
+      await loadDianConfig();
+    } catch (e: any) {
       toast.error(e?.message || 'Error configurando software');
+      console.error('Error configuring software:', e);
+    }
+  };
+
+  const handleCertificateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file extension (should be .p12 or .pfx)
+    const validExtensions = ['.p12', '.pfx'];
+    const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validExtensions.includes(fileExtension)) {
+      toast.error('El archivo debe ser un certificado .p12 o .pfx');
+      return;
+    }
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        // Remove the data:application/xxx;base64, prefix
+        const base64Content = base64.split(',')[1];
+        setDianSettings({
+          ...dianSettings,
+          certificate: base64Content,
+          certificateFileName: file.name,
+        });
+        toast.success(`Certificado ${file.name} cargado correctamente`);
+      };
+      reader.onerror = () => {
+        toast.error('Error al leer el archivo del certificado');
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast.error('Error al cargar el certificado');
+      console.error('Error loading certificate:', error);
     }
   };
 
   const handleConfigureCertificate = async () => {
     try {
+      if (!dianSettings.certificate || !dianSettings.certificatePassword) {
+        toast.error('Por favor carga el certificado y su contraseña primero.');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar los pasos anteriores para obtener el token.');
+        return;
+      }
+
+      toast.info('Configurando certificado con DIAN...');
+
+      // Ensure certificate config is saved
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        certificate: dianSettings.certificate,
+        certificate_password: dianSettings.certificatePassword,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure certificate with DIAN API
       await wailsDianService.configureCertificate();
-      toast.success('Certificado configurado');
-    } catch (e:any) {
+
+      toast.success('Certificado configurado exitosamente con DIAN');
+      // Mark step as completed
+      setCompletedSteps(prev => ({ ...prev, certificate: true }));
+
+      // Reload config
+      await loadDianConfig();
+    } catch (e: any) {
       toast.error(e?.message || 'Error configurando certificado');
+      console.error('Error configuring certificate:', e);
     }
   };
 
   const handleConfigureResolution = async () => {
     try {
+      // Validate required fields
+      if (!dianSettings.resolution || !dianSettings.prefix || !dianSettings.technicalKey) {
+        toast.error('Por favor completa todos los campos requeridos de la resolución (Número, Prefijo y Clave Técnica)');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar los pasos anteriores para obtener el token.');
+        return;
+      }
+
+      toast.info('Configurando resolución con DIAN...');
+
+      // Ensure resolution config is saved
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        resolution_number: dianSettings.resolution,
+        resolution_prefix: dianSettings.prefix,
+        resolution_from: dianSettings.startNumber,
+        resolution_to: dianSettings.endNumber,
+        technical_key: dianSettings.technicalKey,
+        resolution_date_from: new Date(dianSettings.dateFrom),
+        resolution_date_to: new Date(dianSettings.dateTo),
+        test_set_id: dianSettings.testSetId,
+        use_test_set_id: dianSettings.useTestSetId,
+        last_invoice_number: dianSettings.consecutiveNumber,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure resolution with DIAN API
       await wailsDianService.configureResolution();
-      toast.success('Resolución configurada');
+
+      toast.success('Resolución configurada exitosamente con DIAN');
+      setCompletedSteps(prev => ({ ...prev, resolution: true }));
+
+      await loadDianConfig();
     } catch (e:any) {
       toast.error(e?.message || 'Error configurando resolución');
+      console.error('Error configuring resolution:', e);
+    }
+  };
+
+  const handleConfigureCreditNoteResolution = async () => {
+    try {
+      // Validate required fields
+      if (!dianSettings.ncPrefix) {
+        toast.error('Por favor completa el prefijo de la resolución de Notas Crédito (NC)');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar los pasos anteriores para obtener el token.');
+        return;
+      }
+
+      toast.info('Configurando resolución de Notas Crédito (NC) con DIAN...');
+
+      // Ensure NC resolution config is saved
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        credit_note_resolution_prefix: dianSettings.ncPrefix,
+        credit_note_resolution_from: dianSettings.ncStartNumber || 1,
+        credit_note_resolution_to: dianSettings.ncEndNumber || 99999999,
+        credit_note_resolution_number: dianSettings.ncResolution || '',
+        last_credit_note_number: dianSettings.ncConsecutiveNumber || 0,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure NC resolution with DIAN API
+      await wailsDianService.configureCreditNoteResolution();
+
+      toast.success('Resolución de Notas Crédito (NC) configurada exitosamente con DIAN');
+      setCompletedSteps(prev => ({ ...prev, creditNote: true }));
+
+      await loadDianConfig();
+    } catch (e:any) {
+      toast.error(e?.message || 'Error configurando resolución de NC');
+      console.error('Error configuring credit note resolution:', e);
+    }
+  };
+
+  const handleConfigureDebitNoteResolution = async () => {
+    try {
+      // Validate required fields
+      if (!dianSettings.ndPrefix) {
+        toast.error('Por favor completa el prefijo de la resolución de Notas Débito (ND)');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar los pasos anteriores para obtener el token.');
+        return;
+      }
+
+      toast.info('Configurando resolución de Notas Débito (ND) con DIAN...');
+
+      // Ensure ND resolution config is saved
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        debit_note_resolution_prefix: dianSettings.ndPrefix,
+        debit_note_resolution_from: dianSettings.ndStartNumber || 1,
+        debit_note_resolution_to: dianSettings.ndEndNumber || 99999999,
+        debit_note_resolution_number: dianSettings.ndResolution || '',
+        last_debit_note_number: dianSettings.ndConsecutiveNumber || 0,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure ND resolution with DIAN API
+      await wailsDianService.configureDebitNoteResolution();
+
+      toast.success('Resolución de Notas Débito (ND) configurada exitosamente con DIAN');
+      setCompletedSteps(prev => ({ ...prev, debitNote: true }));
+
+      await loadDianConfig();
+    } catch (e:any) {
+      toast.error(e?.message || 'Error configurando resolución de ND');
+      console.error('Error configuring debit note resolution:', e);
     }
   };
 
@@ -1009,6 +1378,33 @@ const Settings: React.FC = () => {
               />
             </Grid>
 
+            {/* Configuration Status */}
+            <Grid item xs={12}>
+              {dianSettings.apiToken ? (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                    Estado de Configuración: Empresa configurada
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                    Token API: {dianSettings.apiToken.substring(0, 20)}...
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    La empresa ha sido configurada exitosamente con DIAN. Ahora puedes proceder con los pasos de configuración de Software, Certificado y Resolución.
+                  </Typography>
+                </Alert>
+              ) : (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                    Estado de Configuración: Pendiente
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Debes completar "Paso 1: Configurar Empresa" para obtener el token API de DIAN.
+                    Asegúrate de haber configurado correctamente los datos de la empresa y DIAN antes de continuar.
+                  </Typography>
+                </Alert>
+              )}
+            </Grid>
+
             <Grid item xs={12}>
               <Accordion defaultExpanded>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -1087,64 +1483,661 @@ const Settings: React.FC = () => {
                         })}
                       />
                     </Grid>
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Accordion>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Configuración Técnica</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={dianSettings.testMode}
-                            onChange={(e) => setDianSettings({
-                              ...dianSettings,
-                              testMode: e.target.checked,
-                            })}
-                          />
-                        }
-                        label="Modo de Pruebas"
-                      />
-                    </Grid>
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
-                        label="Clave Técnica"
-                        type="password"
+                        label="Clave Técnica (Technical Key)"
                         value={dianSettings.technicalKey}
                         onChange={(e) => setDianSettings({
                           ...dianSettings,
                           technicalKey: e.target.value,
                         })}
+                        helperText="Clave técnica proporcionada por la DIAN para la resolución"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Fecha de Resolución"
+                        type="date"
+                        value={dianSettings.resolutionDate}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          resolutionDate: e.target.value,
+                        })}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Vigencia Desde"
+                        type="date"
+                        value={dianSettings.dateFrom}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          dateFrom: e.target.value,
+                        })}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Vigencia Hasta"
+                        type="date"
+                        value={dianSettings.dateTo}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          dateTo: e.target.value,
+                        })}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Resolución de Notas Crédito (NC) */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Resolución de Notas Crédito (NC)</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <Typography variant="body2">
+                          Configura la resolución para Notas Crédito (NC). El prefijo y rango de numeración son requeridos.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Prefijo NC"
+                        value={dianSettings.ncPrefix}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ncPrefix: e.target.value,
+                        })}
+                        helperText="Prefijo para Notas Crédito (ej: NC)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número de Resolución NC"
+                        value={dianSettings.ncResolution}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ncResolution: e.target.value,
+                        })}
+                        helperText="Número de resolución (opcional)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número Inicial NC"
+                        type="number"
+                        value={dianSettings.ncStartNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ncStartNumber: Number(e.target.value),
+                        })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número Final NC"
+                        type="number"
+                        value={dianSettings.ncEndNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ncEndNumber: Number(e.target.value),
+                        })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Último Consecutivo NC"
+                        type="number"
+                        value={dianSettings.ncConsecutiveNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ncConsecutiveNumber: Number(e.target.value),
+                        })}
+                        helperText="Último número de NC generado"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Resolución de Notas Débito (ND) */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Resolución de Notas Débito (ND)</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <Typography variant="body2">
+                          Configura la resolución para Notas Débito (ND). El prefijo y rango de numeración son requeridos.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Prefijo ND"
+                        value={dianSettings.ndPrefix}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ndPrefix: e.target.value,
+                        })}
+                        helperText="Prefijo para Notas Débito (ej: ND)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número de Resolución ND"
+                        value={dianSettings.ndResolution}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ndResolution: e.target.value,
+                        })}
+                        helperText="Número de resolución (opcional)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número Inicial ND"
+                        type="number"
+                        value={dianSettings.ndStartNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ndStartNumber: Number(e.target.value),
+                        })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Número Final ND"
+                        type="number"
+                        value={dianSettings.ndEndNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ndEndNumber: Number(e.target.value),
+                        })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Último Consecutivo ND"
+                        type="number"
+                        value={dianSettings.ndConsecutiveNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          ndConsecutiveNumber: Number(e.target.value),
+                        })}
+                        helperText="Último número de ND generado"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Datos Adicionales de Facturación */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Datos Adicionales de Facturación</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <Typography variant="body2">
+                          Estos campos se utilizan para el seguimiento interno de la facturación electrónica.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Test Set ID"
+                        value={dianSettings.testSetId}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          testSetId: e.target.value,
+                        })}
+                        helperText="ID del conjunto de pruebas DIAN (se asigna automáticamente)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={dianSettings.useTestSetId}
+                            onChange={(e) => setDianSettings({
+                              ...dianSettings,
+                              useTestSetId: e.target.checked,
+                            })}
+                            color="primary"
+                          />
+                        }
+                        label="Usar Test Set ID en URL"
+                      />
+                      <Typography variant="caption" color="textSecondary" display="block">
+                        Activa esto para incluir el test_set_id en la URL de las pruebas.
+                        Algunos conjuntos de pruebas no lo requieren.
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Último Consecutivo"
+                        type="number"
+                        value={dianSettings.consecutiveNumber}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          consecutiveNumber: Number(e.target.value),
+                        })}
+                        helperText="Último número de factura generado"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Datos de Empresa (Referencia) */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Datos de Empresa para DIAN</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                          Datos cargados desde configuración de Empresa
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Los siguientes datos se toman de la pestaña "Empresa".
+                          Si necesitas modificarlos, ve a la pestaña Empresa y guarda los cambios.
+                          Se sincronizarán automáticamente con DIAN.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="NIT"
+                        value={businessSettings.nit}
+                        disabled
+                        helperText="Configurado en pestaña Empresa"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Razón Social"
+                        value={businessSettings.legalName}
+                        disabled
+                        helperText="Configurado en pestaña Empresa"
                       />
                     </Grid>
                     <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth onClick={handleConfigureCompany}>
-                        Paso 1: Configurar Empresa
-                      </Button>
+                      <TextField
+                        fullWidth
+                        label="Matrícula Mercantil"
+                        value={dianSettings.merchantRegistration}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          merchantRegistration: e.target.value,
+                        })}
+                        placeholder="0000000-00"
+                        helperText="Número de matrícula mercantil de la empresa (por defecto: 0000000-00)"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Dirección"
+                        value={businessSettings.address}
+                        disabled
+                        helperText="Configurado en pestaña Empresa"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Teléfono"
+                        value={businessSettings.phone}
+                        disabled
+                        helperText="Configurado en pestaña Empresa"
+                      />
                     </Grid>
                     <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth onClick={handleConfigureSoftware}>
-                        Paso 2: Configurar Software
-                      </Button>
+                      <TextField
+                        fullWidth
+                        label="Email"
+                        value={businessSettings.email}
+                        disabled
+                        helperText="Configurado en pestaña Empresa"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Configuración de Email */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Configuración de Email (Envío de Facturas)</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={8}>
+                      <TextField
+                        fullWidth
+                        label="Host SMTP"
+                        value={dianSettings.emailHost}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          emailHost: e.target.value,
+                        })}
+                        helperText="Ej: smtp.gmail.com"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        label="Puerto"
+                        type="number"
+                        value={dianSettings.emailPort}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          emailPort: Number(e.target.value),
+                        })}
+                        helperText="Ej: 587"
+                      />
                     </Grid>
                     <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth onClick={handleConfigureCertificate}>
-                        Paso 3: Configurar Certificado
-                      </Button>
+                      <TextField
+                        fullWidth
+                        label="Usuario Email"
+                        type="email"
+                        value={dianSettings.emailUsername}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          emailUsername: e.target.value,
+                        })}
+                      />
                     </Grid>
                     <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth onClick={handleConfigureResolution}>
-                        Paso 4: Configurar Resolución
+                      <TextField
+                        fullWidth
+                        label="Contraseña Email"
+                        type="password"
+                        value={dianSettings.emailPassword}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          emailPassword: e.target.value,
+                        })}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControl fullWidth>
+                        <InputLabel>Tipo de Encriptación</InputLabel>
+                        <Select
+                          value={dianSettings.emailEncryption}
+                          onChange={(e) => setDianSettings({
+                            ...dianSettings,
+                            emailEncryption: e.target.value,
+                          })}
+                          label="Tipo de Encriptación"
+                        >
+                          <MenuItem value="tls">TLS</MenuItem>
+                          <MenuItem value="ssl">SSL</MenuItem>
+                          <MenuItem value="none">Ninguna</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Software Configuration */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Configuración de Software DIAN</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="ID de Software"
+                        value={dianSettings.softwareId}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          softwareId: e.target.value,
+                        })}
+                        helperText="UUID del software proporcionado por DIAN"
+                        placeholder="82bf0c5e-0117-434d-9471-8a5ee58ae682"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="PIN de Software"
+                        type="password"
+                        value={dianSettings.softwarePin}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          softwarePin: e.target.value,
+                        })}
+                        helperText="PIN numérico del software"
+                        placeholder="12345"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Certificate Configuration */}
+            <Grid item xs={12}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Configuración de Certificado DIAN</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <input
+                        accept=".p12,.pfx"
+                        style={{ display: 'none' }}
+                        id="certificate-upload"
+                        type="file"
+                        onChange={handleCertificateUpload}
+                      />
+                      <label htmlFor="certificate-upload">
+                        <Button variant="outlined" component="span" fullWidth>
+                          {dianSettings.certificateFileName || 'Cargar Certificado (.p12 o .pfx)'}
+                        </Button>
+                      </label>
+                      {dianSettings.certificateFileName && (
+                        <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 1 }}>
+                          ✓ Certificado cargado: {dianSettings.certificateFileName}
+                        </Typography>
+                      )}
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Contraseña del Certificado"
+                        type="password"
+                        value={dianSettings.certificatePassword}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          certificatePassword: e.target.value,
+                        })}
+                        helperText="Contraseña del archivo .p12 o .pfx"
+                      />
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+
+            {/* Configuration Steps */}
+            <Grid item xs={12}>
+              <Accordion defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>Pasos de Configuración DIAN</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        <Typography variant="body2">
+                          Completa los siguientes pasos en orden para configurar la facturación electrónica con DIAN.
+                          El sistema inicia en modo de pruebas por defecto.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+
+                    {/* Step 1: Configure Company */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.company ? "contained" : "outlined"}
+                        color={completedSteps.company ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureCompany}
+                        disabled={completedSteps.company}
+                        startIcon={completedSteps.company ? <span>✓</span> : null}
+                      >
+                        {completedSteps.company ? "✓ Paso 1 Completado: Empresa Configurada" : "Paso 1: Configurar Empresa"}
                       </Button>
                     </Grid>
+
+                    {/* Step 2: Configure Software */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.software ? "contained" : "outlined"}
+                        color={completedSteps.software ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureSoftware}
+                        disabled={!completedSteps.company || completedSteps.software}
+                        startIcon={completedSteps.software ? <span>✓</span> : null}
+                      >
+                        {completedSteps.software ? "✓ Paso 2 Completado: Software Configurado" : "Paso 2: Configurar Software"}
+                      </Button>
+                      {!completedSteps.company && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa el Paso 1 primero
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    {/* Step 3: Configure Certificate */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.certificate ? "contained" : "outlined"}
+                        color={completedSteps.certificate ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureCertificate}
+                        disabled={!completedSteps.software || completedSteps.certificate}
+                        startIcon={completedSteps.certificate ? <span>✓</span> : null}
+                      >
+                        {completedSteps.certificate ? "✓ Paso 3 Completado: Certificado Configurado" : "Paso 3: Configurar Certificado"}
+                      </Button>
+                      {!completedSteps.software && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa el Paso 2 primero
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    {/* Step 4: Configure Resolution */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.resolution ? "contained" : "outlined"}
+                        color={completedSteps.resolution ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureResolution}
+                        disabled={!completedSteps.certificate || completedSteps.resolution}
+                        startIcon={completedSteps.resolution ? <span>✓</span> : null}
+                      >
+                        {completedSteps.resolution ? "✓ Paso 4 Completado: Resolución de Factura Configurada" : "Paso 4: Configurar Resolución de Factura"}
+                      </Button>
+                      {!completedSteps.certificate && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa el Paso 3 primero
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    {/* Step 5: Configure Credit Note Resolution */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.creditNote ? "contained" : "outlined"}
+                        color={completedSteps.creditNote ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureCreditNoteResolution}
+                        disabled={!completedSteps.resolution || completedSteps.creditNote}
+                        startIcon={completedSteps.creditNote ? <span>✓</span> : null}
+                      >
+                        {completedSteps.creditNote ? "✓ Paso 5 Completado: Resolución NC Configurada" : "Paso 5: Configurar Resolución de Notas Crédito (NC)"}
+                      </Button>
+                      {!completedSteps.resolution && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa el Paso 4 primero
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    {/* Step 6: Configure Debit Note Resolution */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant={completedSteps.debitNote ? "contained" : "outlined"}
+                        color={completedSteps.debitNote ? "success" : "primary"}
+                        fullWidth
+                        onClick={handleConfigureDebitNoteResolution}
+                        disabled={!completedSteps.resolution || completedSteps.debitNote}
+                        startIcon={completedSteps.debitNote ? <span>✓</span> : null}
+                      >
+                        {completedSteps.debitNote ? "✓ Paso 6 Completado: Resolución ND Configurada" : "Paso 6: Configurar Resolución de Notas Débito (ND)"}
+                      </Button>
+                      {!completedSteps.resolution && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa el Paso 4 primero
+                        </Typography>
+                      )}
+                    </Grid>
+
                     <Grid item xs={12}>
                       <Button
                         variant="contained"
@@ -1152,11 +2145,6 @@ const Settings: React.FC = () => {
                         onClick={handleTestDianConnection}
                       >
                         Probar Conexión DIAN
-                      </Button>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button variant="contained" color="secondary" fullWidth onClick={handleChangeEnvironment}>
-                        Aplicar Ambiente ({dianSettings.testMode ? 'Pruebas' : 'Producción'})
                       </Button>
                     </Grid>
                   </Grid>

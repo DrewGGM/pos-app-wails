@@ -8,20 +8,21 @@ import (
 
 // Product represents a product in the menu
 type Product struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	Name        string         `gorm:"not null" json:"name"`
-	Description string         `json:"description"`
-	Price       float64        `gorm:"not null" json:"price"`
-	CategoryID  uint           `json:"category_id"`
-	Category    *Category      `json:"category,omitempty"`
-	Image       string         `gorm:"type:text" json:"image"` // Base64 encoded image
-	SKU         string         `gorm:"unique" json:"sku"`
-	Stock       int            `json:"stock"` // Can go negative
-	IsActive    bool           `gorm:"default:true" json:"is_active"`
-	Modifiers   []Modifier     `gorm:"many2many:product_modifiers;" json:"modifiers,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ID              uint           `gorm:"primaryKey" json:"id"`
+	Name            string         `gorm:"not null" json:"name"`
+	Description     string         `json:"description"`
+	Price           float64        `gorm:"not null" json:"price"`
+	CategoryID      uint           `json:"category_id"`
+	Category        *Category      `json:"category,omitempty"`
+	Image           string         `gorm:"type:text" json:"image"`                         // Base64 encoded image
+	Stock           int            `json:"stock"`                                          // Can go negative
+	IsActive        bool           `gorm:"default:true" json:"is_active"`
+	TaxTypeID       int            `gorm:"default:1" json:"tax_type_id"`                   // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
+	UnitMeasureID   int            `gorm:"default:796" json:"unit_measure_id"`             // DIAN Unit Measure (70=Unidad, 796=Porción, 797=Ración)
+	Modifiers       []Modifier     `gorm:"many2many:product_modifiers;" json:"modifiers,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 // Category represents a product category

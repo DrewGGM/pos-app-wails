@@ -44,7 +44,6 @@ function mapSale(w: models.Sale): Sale {
           id: item.product.id as unknown as number,
           name: item.product.name || '',
           price: item.product.price || 0,
-          sku: item.product.sku || '',
         } : undefined,
         quantity: item.quantity || 0,
         unit_price: item.unit_price || 0,
@@ -91,6 +90,22 @@ function mapSale(w: models.Sale): Sale {
     payment_method: w.payment_method || '',
     status: w.status as 'completed' | 'refunded' | 'partial_refund',
     invoice_type: w.invoice_type || 'none',
+    needs_electronic_invoice: w.needs_electronic_invoice || false,
+    electronic_invoice: w.electronic_invoice ? {
+      id: w.electronic_invoice.id as unknown as number,
+      sale_id: w.electronic_invoice.sale_id as unknown as number,
+      prefix: w.electronic_invoice.prefix || '',
+      invoice_number: w.electronic_invoice.invoice_number || '',
+      uuid: w.electronic_invoice.uuid || '',
+      cufe: w.electronic_invoice.cufe || '',
+      qr_code: w.electronic_invoice.qr_code || '',
+      status: w.electronic_invoice.status as 'pending' | 'sent' | 'accepted' | 'rejected' | 'error',
+      dian_response: w.electronic_invoice.dian_response || '',
+      sent_at: w.electronic_invoice.sent_at ? new Date(w.electronic_invoice.sent_at as any).toISOString() : undefined,
+      accepted_at: w.electronic_invoice.accepted_at ? new Date(w.electronic_invoice.accepted_at as any).toISOString() : undefined,
+      retry_count: w.electronic_invoice.retry_count || 0,
+      last_error: w.electronic_invoice.last_error || '',
+    } : undefined,
     cash_register_id: w.cash_register_id as unknown as number,
     notes: w.notes || '',
     is_synced: w.is_synced || false,
@@ -142,11 +157,26 @@ class WailsSalesService {
   // Sales
   async processSale(saleData: ProcessSaleData): Promise<Sale> {
     try {
+      // Get customer data if customer_id is provided
+      let customerData = null;
+      if (saleData.customer_id) {
+        try {
+          const customer = await GetCustomer(saleData.customer_id);
+          customerData = customer as any;
+        } catch (err) {
+          console.warn('Could not fetch customer data:', err);
+        }
+      }
+
+      console.log('🧾 Processing sale with electronic invoice:', saleData.needs_electronic_invoice);
+      console.log('📧 Send email to customer:', saleData.send_email_to_customer);
+
       const sale = await ProcessSale(
         saleData.order_id,
         saleData.payment_methods as any,
-        {} as any, // customer
-        false, // needs_electronic_invoice
+        customerData, // Pass actual customer data or null
+        saleData.needs_electronic_invoice || false, // Use the actual flag from saleData
+        saleData.send_email_to_customer || false, // Send invoice PDF to customer email
         saleData.employee_id,
         saleData.cash_register_id
       );
@@ -381,7 +411,7 @@ class WailsSalesService {
       const customers = await GetCustomers();
       return customers
         .map(mapCustomer)
-        .filter(customer => 
+        .filter(customer =>
           customer.name.toLowerCase().includes(query.toLowerCase()) ||
           customer.identification_number.includes(query) ||
           customer.email?.toLowerCase().includes(query.toLowerCase())
@@ -389,6 +419,15 @@ class WailsSalesService {
     } catch (error) {
       console.error('Error searching customers:', error);
       throw new Error('Error al buscar clientes');
+    }
+  }
+
+  async sendElectronicInvoice(saleId: number): Promise<void> {
+    try {
+      await ResendElectronicInvoice(saleId);
+    } catch (error: any) {
+      console.error('Error sending electronic invoice:', error);
+      throw new Error(error?.message || 'Error al enviar factura electrónica a DIAN');
     }
   }
 }

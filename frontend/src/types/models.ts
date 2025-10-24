@@ -39,7 +39,6 @@ export interface Product extends BaseModel {
   cost?: number;
   category_id: number;
   category?: Category;
-  sku?: string;
   barcode?: string;
   image?: string;
   image_url?: string; // Alias for image
@@ -49,6 +48,8 @@ export interface Product extends BaseModel {
   has_modifiers?: boolean; // Made optional
   modifiers?: Modifier[];
   min_stock?: number;
+  tax_type_id?: number; // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
+  unit_measure_id?: number; // DIAN Unit Measure (70=Unidad, 796=Porción, 797=Ración)
 }
 
 // Modifier group model
@@ -111,6 +112,13 @@ export interface Customer extends BaseModel {
   total_spent?: number;
   total_purchases?: number;
   loyalty_points?: number;
+  // DIAN Electronic Invoicing fields (optional - for corporate customers)
+  municipality_id?: number;
+  type_document_identification_id?: number; // DIAN type (inferred from identification_type if not provided)
+  type_organization_id?: number; // 1=Jurídica, 2=Natural
+  type_liability_id?: number; // DIAN fiscal responsibilities
+  type_regime_id?: number; // 1=Responsable IVA, 2=No responsable
+  merchant_registration?: string; // Matrícula mercantil (corporates only)
 }
 
 // Order model
@@ -221,13 +229,21 @@ export interface ElectronicInvoice extends BaseModel {
   sale_id: number;
   prefix: string;
   invoice_number: string;
+  uuid?: string;
   cufe: string;
   qr_code: string;
-  xml_content?: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'error';
+  zip_key: string;
+  xml_document?: string;
+  pdf_document?: string;
+  status: 'pending' | 'sent' | 'validating' | 'accepted' | 'rejected' | 'error';
+  is_valid?: boolean;
+  validation_message?: string;
+  validation_checked_at?: string;
   dian_response?: string;
   sent_at?: string;
   accepted_at?: string;
+  retry_count?: number;
+  last_error?: string;
 }
 
 // Cash register model
@@ -348,10 +364,14 @@ export interface DIANConfig extends BaseModel {
   api_url: string;
   identification_number: string;
   dv?: string;
+  business_name?: string;
+  merchant_registration?: string;
   software_id?: string;
   software_pin?: string;
   certificate?: string;
   certificate_password?: string;
+
+  // Invoice Resolution
   resolution_number?: string;
   resolution_date?: string;
   resolution_prefix?: string;
@@ -360,11 +380,55 @@ export interface DIANConfig extends BaseModel {
   resolution_date_from?: string;
   resolution_date_to?: string;
   technical_key?: string;
+
+  // Credit Note (NC) Resolution
+  credit_note_resolution_number?: string;
+  credit_note_resolution_prefix?: string;
+  credit_note_resolution_from?: number;
+  credit_note_resolution_to?: number;
+  credit_note_resolution_date_from?: string;
+  credit_note_resolution_date_to?: string;
+
+  // Debit Note (ND) Resolution
+  debit_note_resolution_number?: string;
+  debit_note_resolution_prefix?: string;
+  debit_note_resolution_from?: number;
+  debit_note_resolution_to?: number;
+  debit_note_resolution_date_from?: string;
+  debit_note_resolution_date_to?: string;
+
+  // Parametric IDs
   type_document_id?: number;
   type_organization_id?: number;
   type_regime_id?: number;
   type_liability_id?: number;
   municipality_id?: number;
+
+  // API Settings
+  api_token?: string;
+  test_set_id?: string;
+  use_test_set_id?: boolean;
+
+  // Counters
+  last_invoice_number?: number;
+  last_credit_note_number?: number;
+  last_debit_note_number?: number;
+
+  // Email Settings
+  send_email?: boolean;
+  email_host?: string;
+  email_port?: number;
+  email_username?: string;
+  email_password?: string;
+  email_encryption?: string;
+
+  // Configuration Steps
+  step1_completed?: boolean;
+  step2_completed?: boolean;
+  step3_completed?: boolean;
+  step4_completed?: boolean;
+  step5_completed?: boolean;
+  step6_completed?: boolean;
 }
 
 // Printer config model
@@ -438,6 +502,7 @@ export interface ProcessSaleData {
   employee_id: number;
   cash_register_id: number;
   needs_electronic_invoice?: boolean;
+  send_email_to_customer?: boolean; // Send electronic invoice PDF to customer email
 }
 
 // PaymentData interface

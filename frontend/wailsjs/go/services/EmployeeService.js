@@ -82,6 +82,10 @@ export function PrintCurrentCashRegisterReport(arg1) {
   return window['go']['services']['EmployeeService']['PrintCurrentCashRegisterReport'](arg1);
 }
 
+export function PrintLastCashRegisterReport(arg1) {
+  return window['go']['services']['EmployeeService']['PrintLastCashRegisterReport'](arg1);
+}
+
 export function RevokeSession(arg1) {
   return window['go']['services']['EmployeeService']['RevokeSession'](arg1);
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -55,70 +56,149 @@ type DIANCompanyConfig struct {
 }
 
 // ConfigureCompany configures the company in DIAN API
-func (s *DIANService) ConfigureCompany(config DIANCompanyConfig) error {
-	if s.config == nil {
-		return fmt.Errorf("DIAN configuration not loaded")
+// Automatically loads data from DIANConfig and RestaurantConfig tables
+func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
+	// Load DIAN config
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("DIAN configuration not found. Please configure DIAN settings first")
 	}
 
+	// Load restaurant config for address, phone, email
+	var restaurantConfig models.RestaurantConfig
+	if err := s.db.First(&restaurantConfig).Error; err != nil {
+		return nil, fmt.Errorf("restaurant configuration not found. Please configure restaurant settings first")
+	}
+
+	// Validate required fields
+	if dianConfig.IdentificationNumber == "" || dianConfig.DV == "" {
+		return nil, fmt.Errorf("NIT and DV are required in DIAN configuration")
+	}
+
+	if dianConfig.APIURL == "" {
+		return nil, fmt.Errorf("API URL is required in DIAN configuration")
+	}
+
+	// Set default merchant registration if empty
+	merchantRegistration := dianConfig.MerchantRegistration
+	if merchantRegistration == "" {
+		merchantRegistration = "0000000-00"
+	}
+
+	// Prepare configuration request
+	config := DIANCompanyConfig{
+		TypeDocumentIdentificationID: dianConfig.TypeDocumentID,
+		TypeOrganizationID:           dianConfig.TypeOrganizationID,
+		TypeRegimeID:                 dianConfig.TypeRegimeID,
+		TypeLiabilityID:              dianConfig.TypeLiabilityID,
+		BusinessName:                 dianConfig.BusinessName,
+		MerchantRegistration:         merchantRegistration,
+		MunicipalityID:               dianConfig.MunicipalityID,
+		Address:                      restaurantConfig.Address,
+		Phone:                        restaurantConfig.Phone,
+		Email:                        restaurantConfig.Email,
+		MailHost:                     dianConfig.EmailHost,
+		MailPort:                     fmt.Sprintf("%d", dianConfig.EmailPort),
+		MailUsername:                 dianConfig.EmailUsername,
+		MailPassword:                 dianConfig.EmailPassword,
+		MailEncryption:               dianConfig.EmailEncryption,
+	}
+
+	// Build URL: {api_url}/api/ubl2.1/config/{nit}/{dv}
 	url := fmt.Sprintf("%s/api/ubl2.1/config/%s/%s",
-		s.config.APIURL,
-		s.config.IdentificationNumber,
-		s.config.DV,
+		dianConfig.APIURL,
+		dianConfig.IdentificationNumber,
+		dianConfig.DV,
 	)
 
 	jsonData, err := json.Marshal(config)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
+	// Create HTTP request (no authorization required for initial config)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
+	// Send request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to connect to DIAN API: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("DIAN API error: %s", string(body))
+	// Check status code
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response and save API token
+	// Parse response
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return err
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if token, ok := result["api_token"].(string); ok {
-		s.config.APIToken = token
-		s.db.Save(s.config)
+	// Save API token if received (API returns "token" not "api_token")
+	token, tokenOk := result["token"].(string)
+	if !tokenOk || token == "" {
+		// Try alternative field name
+		token, tokenOk = result["api_token"].(string)
 	}
 
-	return nil
+	if tokenOk && token != "" {
+		dianConfig.APIToken = token
+		dianConfig.Step1Completed = true // Mark step 1 as completed
+		if err := s.db.Save(&dianConfig).Error; err != nil {
+			return nil, fmt.Errorf("failed to save API token: %w", err)
+		}
+		// Update service config
+		s.config = &dianConfig
+	} else {
+		return nil, fmt.Errorf("API token not received in response. Response: %s", string(body))
+	}
+
+	return result, nil
 }
 
 // ConfigureSoftware configures the software in DIAN API
 func (s *DIANService) ConfigureSoftware() error {
-	if s.config == nil || s.config.APIToken == "" {
-		return fmt.Errorf("DIAN configuration not complete")
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
 	}
 
-	url := fmt.Sprintf("%s/api/ubl2.1/config/software", s.config.APIURL)
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
 
+	if dianConfig.SoftwareID == "" || dianConfig.SoftwarePIN == "" {
+		return fmt.Errorf("Software ID and PIN are required")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/software", dianConfig.APIURL)
+
+	// Convert PIN to integer if it's numeric
+	var pinValue interface{} = dianConfig.SoftwarePIN
+	if pin, err := strconv.Atoi(dianConfig.SoftwarePIN); err == nil {
+		pinValue = pin
+	}
+
+	// Only send software ID and PIN
 	data := map[string]interface{}{
-		"id":  s.config.SoftwareID,
-		"pin": s.config.SoftwarePIN,
+		"id":  dianConfig.SoftwareID,
+		"pin": pinValue,
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -133,7 +213,7 @@ func (s *DIANService) ConfigureSoftware() error {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.APIToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -141,25 +221,44 @@ func (s *DIANService) ConfigureSoftware() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("DIAN API error: %s", string(body))
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
+
+	// Mark step 2 as completed
+	dianConfig.Step2Completed = true
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save step completion: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
 
 	return nil
 }
 
 // ConfigureCertificate configures the certificate in DIAN API
 func (s *DIANService) ConfigureCertificate() error {
-	if s.config == nil || s.config.APIToken == "" {
-		return fmt.Errorf("DIAN configuration not complete")
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
 	}
 
-	url := fmt.Sprintf("%s/api/ubl2.1/config/certificate", s.config.APIURL)
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
+
+	if dianConfig.Certificate == "" || dianConfig.CertificatePassword == "" {
+		return fmt.Errorf("Certificate and password are required")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/certificate", dianConfig.APIURL)
 
 	data := map[string]interface{}{
-		"certificate": s.config.Certificate,
-		"password":    s.config.CertificatePassword,
+		"certificate": dianConfig.Certificate,
+		"password":    dianConfig.CertificatePassword,
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -174,7 +273,7 @@ func (s *DIANService) ConfigureCertificate() error {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.APIToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -182,33 +281,70 @@ func (s *DIANService) ConfigureCertificate() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("DIAN API error: %s", string(body))
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
+
+	// Mark step 3 as completed
+	dianConfig.Step3Completed = true
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save step completion: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
 
 	return nil
 }
 
 // ConfigureResolution configures the resolution in DIAN API
 func (s *DIANService) ConfigureResolution() error {
-	if s.config == nil || s.config.APIToken == "" {
-		return fmt.Errorf("DIAN configuration not complete")
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
 	}
 
-	url := fmt.Sprintf("%s/api/ubl2.1/config/resolution", s.config.APIURL)
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
+
+	// Validate required fields
+	if dianConfig.ResolutionNumber == "" {
+		return fmt.Errorf("Resolution number is required")
+	}
+	if dianConfig.ResolutionPrefix == "" {
+		return fmt.Errorf("Resolution prefix is required")
+	}
+	if dianConfig.TechnicalKey == "" {
+		return fmt.Errorf("Technical key is required")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/resolution", dianConfig.APIURL)
+
+	// Handle zero-value dates by using default test environment dates
+	dateFrom := dianConfig.ResolutionDateFrom
+	if dateFrom.IsZero() {
+		dateFrom = time.Date(2019, 1, 19, 0, 0, 0, 0, time.UTC)
+	}
+
+	dateTo := dianConfig.ResolutionDateTo
+	if dateTo.IsZero() {
+		dateTo = time.Date(2030, 1, 19, 0, 0, 0, 0, time.UTC)
+	}
 
 	data := map[string]interface{}{
 		"type_document_id":  1, // Invoice
-		"prefix":            s.config.ResolutionPrefix,
-		"resolution":        s.config.ResolutionNumber,
-		"resolution_date":   s.config.ResolutionDateFrom.Format("2006-01-02"),
-		"technical_key":     s.config.TechnicalKey,
-		"from":              s.config.ResolutionFrom,
-		"to":                s.config.ResolutionTo,
-		"generated_to_date": s.config.LastInvoiceNumber,
-		"date_from":         s.config.ResolutionDateFrom.Format("2006-01-02"),
-		"date_to":           s.config.ResolutionDateTo.Format("2006-01-02"),
+		"prefix":            dianConfig.ResolutionPrefix,
+		"resolution":        dianConfig.ResolutionNumber,
+		"resolution_date":   dateFrom.Format("2006-01-02"),
+		"technical_key":     dianConfig.TechnicalKey,
+		"from":              dianConfig.ResolutionFrom,
+		"to":                dianConfig.ResolutionTo,
+		"generated_to_date": 0, // Always 0 for initial configuration
+		"date_from":         dateFrom.Format("2006-01-02"),
+		"date_to":           dateTo.Format("2006-01-02"),
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -223,7 +359,7 @@ func (s *DIANService) ConfigureResolution() error {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.APIToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -231,10 +367,167 @@ func (s *DIANService) ConfigureResolution() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("DIAN API error: %s", string(body))
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
+
+	// Mark step 4 as completed
+	dianConfig.Step4Completed = true
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save step completion: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
+
+	return nil
+}
+
+// ConfigureCreditNoteResolution configures the Credit Note (NC) resolution in DIAN API
+func (s *DIANService) ConfigureCreditNoteResolution() error {
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
+
+	// Validate required fields
+	if dianConfig.CreditNoteResolutionPrefix == "" {
+		return fmt.Errorf("Credit Note resolution prefix is required")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/resolution", dianConfig.APIURL)
+
+	data := map[string]interface{}{
+		"type_document_id": 4, // Credit Note
+		"prefix":           dianConfig.CreditNoteResolutionPrefix,
+		"from":             dianConfig.CreditNoteResolutionFrom,
+		"to":               dianConfig.CreditNoteResolutionTo,
+	}
+
+	// Optionally add resolution number and dates if provided
+	if dianConfig.CreditNoteResolutionNumber != "" {
+		data["resolution"] = dianConfig.CreditNoteResolutionNumber
+	}
+	if !dianConfig.CreditNoteResolutionDateFrom.IsZero() {
+		data["date_from"] = dianConfig.CreditNoteResolutionDateFrom.Format("2006-01-02")
+	}
+	if !dianConfig.CreditNoteResolutionDateTo.IsZero() {
+		data["date_to"] = dianConfig.CreditNoteResolutionDateTo.Format("2006-01-02")
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Mark step 5 as completed
+	dianConfig.Step5Completed = true
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save step completion: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
+
+	return nil
+}
+
+// ConfigureDebitNoteResolution configures the Debit Note (ND) resolution in DIAN API
+func (s *DIANService) ConfigureDebitNoteResolution() error {
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
+
+	// Validate required fields
+	if dianConfig.DebitNoteResolutionPrefix == "" {
+		return fmt.Errorf("Debit Note resolution prefix is required")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/resolution", dianConfig.APIURL)
+
+	data := map[string]interface{}{
+		"type_document_id": 5, // Debit Note
+		"prefix":           dianConfig.DebitNoteResolutionPrefix,
+		"from":             dianConfig.DebitNoteResolutionFrom,
+		"to":               dianConfig.DebitNoteResolutionTo,
+	}
+
+	// Optionally add resolution number and dates if provided
+	if dianConfig.DebitNoteResolutionNumber != "" {
+		data["resolution"] = dianConfig.DebitNoteResolutionNumber
+	}
+	if !dianConfig.DebitNoteResolutionDateFrom.IsZero() {
+		data["date_from"] = dianConfig.DebitNoteResolutionDateFrom.Format("2006-01-02")
+	}
+	if !dianConfig.DebitNoteResolutionDateTo.IsZero() {
+		data["date_to"] = dianConfig.DebitNoteResolutionDateTo.Format("2006-01-02")
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Mark step 6 as completed
+	dianConfig.Step6Completed = true
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save step completion: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
 
 	return nil
 }
@@ -386,4 +679,244 @@ func (s *DIANService) TestConnection() error {
 	}
 
 	return nil
+}
+
+// ==================== DIAN INVOICE STRUCTURES ====================
+
+// DIANInvoiceCustomer represents the customer in a DIAN invoice
+type DIANInvoiceCustomer struct {
+	IdentificationNumber       int    `json:"identification_number"`
+	DV                         string `json:"dv"`
+	Name                       string `json:"name"`
+	Phone                      string `json:"phone"`
+	Address                    string `json:"address"`
+	Email                      string `json:"email"`
+	MerchantRegistration       string `json:"merchant_registration"`
+	TypeDocumentIdentificationID int  `json:"type_document_identification_id"`
+	TypeOrganizationID         int    `json:"type_organization_id"`
+	TypeLiabilityID            int    `json:"type_liability_id"`
+	MunicipalityID             int    `json:"municipality_id"`
+	TypeRegimeID               int    `json:"type_regime_id"`
+	TaxID                      *int   `json:"tax_id,omitempty"`
+}
+
+// DIANInvoicePaymentForm represents the payment form in a DIAN invoice
+type DIANInvoicePaymentForm struct {
+	PaymentFormID    int    `json:"payment_form_id"`
+	PaymentMethodID  int    `json:"payment_method_id"`
+	PaymentDueDate   string `json:"payment_due_date"`
+	DurationMeasure  string `json:"duration_measure"`
+}
+
+// DIANInvoiceLegalMonetaryTotals represents the legal monetary totals
+type DIANInvoiceLegalMonetaryTotals struct {
+	LineExtensionAmount  string `json:"line_extension_amount"`
+	TaxExclusiveAmount   string `json:"tax_exclusive_amount"`
+	TaxInclusiveAmount   string `json:"tax_inclusive_amount"`
+	AllowanceTotalAmount string `json:"allowance_total_amount,omitempty"`
+	PayableAmount        string `json:"payable_amount"`
+}
+
+// DIANInvoiceTaxTotal represents a tax total
+type DIANInvoiceTaxTotal struct {
+	TaxID         int    `json:"tax_id"`
+	TaxAmount     string `json:"tax_amount"`
+	Percent       string `json:"percent"`
+	TaxableAmount string `json:"taxable_amount"`
+}
+
+// DIANInvoiceLine represents an invoice line
+type DIANInvoiceLine struct {
+	UnitMeasureID          int                   `json:"unit_measure_id"`
+	InvoicedQuantity       string                `json:"invoiced_quantity"`
+	LineExtensionAmount    string                `json:"line_extension_amount"`
+	FreeOfChargeIndicator  bool                  `json:"free_of_charge_indicator"`
+	TaxTotals              []DIANInvoiceTaxTotal `json:"tax_totals"`
+	Description            string                `json:"description"`
+	Notes                  string                `json:"notes,omitempty"`
+	Code                   string                `json:"code"`
+	TypeItemIdentificationID int                 `json:"type_item_identification_id"`
+	PriceAmount            string                `json:"price_amount"`
+	BaseQuantity           string                `json:"base_quantity"`
+}
+
+// DIANInvoiceAllowanceCharge represents a discount or charge
+type DIANInvoiceAllowanceCharge struct {
+	DiscountID            int    `json:"discount_id,omitempty"`
+	ChargeIndicator       bool   `json:"charge_indicator"`
+	AllowanceChargeReason string `json:"allowance_charge_reason"`
+	Amount                string `json:"amount"`
+	BaseAmount            string `json:"base_amount"`
+}
+
+// DIANInvoice represents a complete DIAN electronic invoice
+type DIANInvoice struct {
+	Number                    int                              `json:"number"`
+	TypeDocumentID            int                              `json:"type_document_id"`
+	Date                      string                           `json:"date"`
+	Time                      string                           `json:"time"`
+	ResolutionNumber          string                           `json:"resolution_number"`
+	Prefix                    string                           `json:"prefix"`
+	Notes                     string                           `json:"notes,omitempty"`
+	DisableConfirmationText   bool                             `json:"disable_confirmation_text,omitempty"`
+	EstablishmentName         string                           `json:"establishment_name"`
+	EstablishmentAddress      string                           `json:"establishment_address"`
+	EstablishmentPhone        string                           `json:"establishment_phone"`
+	EstablishmentMunicipality int                              `json:"establishment_municipality"`
+	EstablishmentEmail        string                           `json:"establishment_email,omitempty"`
+	SendMail                  bool                             `json:"sendmail,omitempty"`
+	SendMailToMe              bool                             `json:"sendmailtome,omitempty"`
+	HeadNote                  string                           `json:"head_note,omitempty"`
+	FootNote                  string                           `json:"foot_note,omitempty"`
+	Customer                  DIANInvoiceCustomer              `json:"customer"`
+	PaymentForm               interface{}                      `json:"payment_form"` // Can be single object or array
+	LegalMonetaryTotals       DIANInvoiceLegalMonetaryTotals   `json:"legal_monetary_totals"`
+	TaxTotals                 []DIANInvoiceTaxTotal            `json:"tax_totals"`
+	InvoiceLines              []DIANInvoiceLine                `json:"invoice_lines"`
+	AllowanceCharges          []DIANInvoiceAllowanceCharge     `json:"allowance_charges,omitempty"`
+}
+
+// DIANInvoiceResponse represents the response from DIAN API when sending an invoice
+type DIANInvoiceResponse struct {
+	Success          bool   `json:"success"`
+	Message          string `json:"message"`
+	ResponseDian     interface{} `json:"ResponseDian,omitempty"`
+	ZipKey           string `json:"zip_key,omitempty"`
+	UUID             string `json:"uuid,omitempty"`
+	CUFE             string `json:"cufe,omitempty"`
+	IssueDate        string `json:"issue_date,omitempty"`
+	Number           string `json:"number,omitempty"`
+	ErrorMessages    []string `json:"errors,omitempty"`
+}
+
+// SendInvoice sends an electronic invoice to DIAN
+func (s *DIANService) SendInvoice(invoice *DIANInvoice) (*DIANInvoiceResponse, error) {
+	// Load config
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("DIAN configuration not found")
+	}
+
+	// Validate configuration
+	if dianConfig.APIToken == "" {
+		return nil, fmt.Errorf("API token not found. Please complete DIAN configuration steps first")
+	}
+
+	if !dianConfig.IsEnabled {
+		return nil, fmt.Errorf("DIAN electronic invoicing is not enabled")
+	}
+
+	// Build URL based on environment and UseTestSetID flag
+	var url string
+	if dianConfig.Environment == "test" && dianConfig.UseTestSetID {
+		// In test mode with UseTestSetID enabled, include test_set_id
+		if dianConfig.TestSetID == "" {
+			return nil, fmt.Errorf("test set ID not configured for test environment")
+		}
+		url = fmt.Sprintf("%s/api/ubl2.1/invoice/%s", dianConfig.APIURL, dianConfig.TestSetID)
+	} else {
+		// In production mode or test without test_set_id, no test_set_id in URL
+		url = fmt.Sprintf("%s/api/ubl2.1/invoice", dianConfig.APIURL)
+	}
+
+	// Marshal invoice to JSON
+	jsonData, err := json.Marshal(invoice)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal invoice: %w", err)
+	}
+
+	// LOG: Request details
+	fmt.Println("\n========== DIAN SERVICE - INVOICE REQUEST ==========")
+	fmt.Printf("URL: %s\n", url)
+	fmt.Printf("Environment: %s\n", dianConfig.Environment)
+	if dianConfig.Environment == "test" {
+		fmt.Printf("Test Set ID: %s\n", dianConfig.TestSetID)
+	}
+	tokenPreview := dianConfig.APIToken
+	if len(tokenPreview) > 20 {
+		tokenPreview = tokenPreview[:20]
+	}
+	fmt.Printf("Token: %s...\n", tokenPreview)
+	fmt.Println("Invoice Payload:")
+	fmt.Println(string(jsonData))
+	fmt.Println("====================================================")
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	// Send request
+	resp, err := s.client.Do(req)
+	if err != nil {
+		fmt.Printf("❌ ERROR: Failed to send invoice to DIAN: %v\n", err)
+		return nil, fmt.Errorf("failed to send invoice: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("❌ ERROR: Failed to read response body: %v\n", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// LOG: Response details
+	fmt.Println("\n========== DIAN SERVICE - INVOICE RESPONSE ==========")
+	fmt.Printf("HTTP Status: %d %s\n", resp.StatusCode, resp.Status)
+	fmt.Println("Response Body:")
+	fmt.Println(string(body))
+	fmt.Println("=====================================================")
+
+	// Parse response
+	var invoiceResp DIANInvoiceResponse
+	if err := json.Unmarshal(body, &invoiceResp); err != nil {
+		fmt.Printf("❌ ERROR: Failed to parse JSON response: %v\n", err)
+		return nil, fmt.Errorf("failed to parse response (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// LOG: Parsed response details
+	fmt.Println("\n========== DIAN SERVICE - PARSED RESPONSE ==========")
+	fmt.Printf("✅ Success: %v\n", invoiceResp.Success)
+	fmt.Printf("📝 Message: %s\n", invoiceResp.Message)
+	if invoiceResp.UUID != "" {
+		fmt.Printf("🆔 UUID: %s\n", invoiceResp.UUID)
+	}
+	if invoiceResp.CUFE != "" {
+		fmt.Printf("🔑 CUFE: %s\n", invoiceResp.CUFE)
+	}
+	if invoiceResp.ZipKey != "" {
+		fmt.Printf("📦 ZIP Key: %s\n", invoiceResp.ZipKey)
+	}
+	if invoiceResp.Number != "" {
+		fmt.Printf("🧾 Invoice Number: %s\n", invoiceResp.Number)
+	}
+	if len(invoiceResp.ErrorMessages) > 0 {
+		fmt.Printf("❌ Errors: %v\n", invoiceResp.ErrorMessages)
+	}
+	fmt.Println("====================================================\n")
+
+	// Check for errors
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		if len(invoiceResp.ErrorMessages) > 0 {
+			return &invoiceResp, fmt.Errorf("DIAN API error (status %d): %v", resp.StatusCode, invoiceResp.ErrorMessages)
+		}
+		return &invoiceResp, fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, invoiceResp.Message)
+	}
+
+	// Update consecutive number if invoice was sent successfully
+	if invoiceResp.Success {
+		dianConfig.LastInvoiceNumber = invoice.Number
+		if err := s.db.Save(&dianConfig).Error; err != nil {
+			// Log error but don't fail the invoice send
+			fmt.Printf("Warning: failed to update consecutive number: %v\n", err)
+		}
+	}
+
+	return &invoiceResp, nil
 }

@@ -86,6 +86,8 @@ const Products: React.FC = () => {
     min_stock: 5,
     barcode: '',
     active: true,
+    tax_type_id: 1, // IVA 19% by default
+    unit_measure_id: 796, // Porción by default (appropriate for restaurants)
   });
   const [stockAdjustment, setStockAdjustment] = useState({
     quantity: 0,
@@ -122,6 +124,8 @@ const Products: React.FC = () => {
         min_stock: 5,
         barcode: '',
         active: true,
+        tax_type_id: 1, // IVA 19% by default
+        unit_measure_id: 796, // Porción by default
       });
       setImagePreview(null);
     }
@@ -594,6 +598,34 @@ const Products: React.FC = () => {
                 value={productForm.min_stock}
                 onChange={(e) => setProductForm({ ...productForm, min_stock: Number(e.target.value) })}
               />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Tipo de IVA</InputLabel>
+                <Select
+                  value={productForm.tax_type_id || 1}
+                  onChange={(e) => setProductForm({ ...productForm, tax_type_id: Number(e.target.value) })}
+                  label="Tipo de IVA"
+                >
+                  <MenuItem value={1}>IVA 19%</MenuItem>
+                  <MenuItem value={5}>IVA 0% (Exento)</MenuItem>
+                  <MenuItem value={6}>IVA 5%</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Unidad de Medida</InputLabel>
+                <Select
+                  value={productForm.unit_measure_id || 796}
+                  onChange={(e) => setProductForm({ ...productForm, unit_measure_id: Number(e.target.value) })}
+                  label="Unidad de Medida"
+                >
+                  <MenuItem value={796}>Porción</MenuItem>
+                  <MenuItem value={797}>Ración</MenuItem>
+                  <MenuItem value={70}>Unidad</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

@@ -13,6 +13,7 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   CircularProgress,
+  Avatar,
 } from '@mui/material';
 import {
   Visibility,
@@ -25,8 +26,15 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { toast } from 'react-toastify';
+import { wailsConfigService } from '../../services/wailsConfigService';
 
 type LoginMode = 'credentials' | 'pin';
+
+interface RestaurantConfig {
+  name?: string;
+  logo?: string;
+  business_name?: string;
+}
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -34,6 +42,7 @@ const Login: React.FC = () => {
   const [mode, setMode] = useState<LoginMode>('credentials');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [restaurantConfig, setRestaurantConfig] = useState<RestaurantConfig | null>(null);
 
   // Credentials mode
   const [username, setUsername] = useState('');
@@ -45,6 +54,21 @@ const Login: React.FC = () => {
 
   // PIN pad layout (constant)
   const pinPad = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'];
+
+  // Load restaurant configuration
+  useEffect(() => {
+    const loadRestaurantConfig = async () => {
+      try {
+        const config = await wailsConfigService.getRestaurantConfig();
+        if (config) {
+          setRestaurantConfig(config);
+        }
+      } catch (error) {
+        console.error('Error loading restaurant config:', error);
+      }
+    };
+    loadRestaurantConfig();
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -124,6 +148,7 @@ const Login: React.FC = () => {
     <Box
       sx={{
         minHeight: '100vh',
+        width: '100%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -135,9 +160,24 @@ const Login: React.FC = () => {
         <CardContent sx={{ p: 4 }}>
           {/* Logo and Title */}
           <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <RestaurantIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
+            {restaurantConfig?.logo ? (
+              <Avatar
+                src={restaurantConfig.logo}
+                alt={restaurantConfig.name || 'Restaurant'}
+                sx={{
+                  width: 100,
+                  height: 100,
+                  mx: 'auto',
+                  mb: 2,
+                  border: '2px solid',
+                  borderColor: 'primary.main',
+                }}
+              />
+            ) : (
+              <RestaurantIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
+            )}
             <Typography variant="h4" component="h1" gutterBottom>
-              Restaurant POS
+              {restaurantConfig?.name || restaurantConfig?.business_name || 'Restaurant POS'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Sistema de Punto de Venta

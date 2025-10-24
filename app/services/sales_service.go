@@ -33,7 +33,18 @@ func NewSalesService() *SalesService {
 }
 
 // ProcessSale processes a sale from an order
-func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, employeeID uint, cashRegisterID uint) (*models.Sale, error) {
+func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, sendEmailToCustomer bool, employeeID uint, cashRegisterID uint) (*models.Sale, error) {
+	// LOG: Check if electronic invoice is requested
+	fmt.Printf("\n🧾 ========== PROCESSING SALE ==========\n")
+	fmt.Printf("Order ID: %d\n", orderID)
+	fmt.Printf("Needs Electronic Invoice: %v\n", needsElectronicInvoice)
+	if customerData != nil {
+		fmt.Printf("Customer: %s (%s)\n", customerData.Name, customerData.IdentificationNumber)
+	} else {
+		fmt.Printf("Customer: None\n")
+	}
+	fmt.Printf("======================================\n\n")
+
 	// Get order with all related data
 	order, err := s.orderSvc.GetOrder(orderID)
 	if err != nil {
@@ -79,7 +90,8 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.Customer = customer
 	}
 
-	// Set invoice type
+	// Set invoice type and flag
+	sale.NeedsElectronicInvoice = needsElectronicInvoice
 	if needsElectronicInvoice {
 		sale.InvoiceType = "electronic"
 	}
@@ -137,27 +149,37 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		return nil, err
 	}
 
-	// Process electronic invoice if needed
+	// Process electronic invoice and print if needed
 	if needsElectronicInvoice {
 		go func() {
-			invoice, err := s.invoiceSvc.SendInvoice(sale)
+			invoice, err := s.invoiceSvc.SendInvoice(sale, sendEmailToCustomer)
 			if err != nil {
 				// Log error, invoice will be queued for retry
 				fmt.Printf("Failed to send electronic invoice: %v\n", err)
+				// Print simple receipt if invoice fails
+				if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
+					fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
+				}
 			} else {
+				// Attach electronic invoice to sale
 				sale.ElectronicInvoice = invoice
 				s.db.Save(sale)
+
+				// Print electronic invoice after successful creation
+				if err := s.printerSvc.PrintReceipt(sale, true); err != nil {
+					fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
+				}
+			}
+		}()
+	} else {
+		// Print simple receipt asynchronously if no electronic invoice needed
+		go func() {
+			if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
+				// Log error but don't fail the sale
+				fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
 			}
 		}()
 	}
-
-	// Print receipt asynchronously
-	go func() {
-		if err := s.printerSvc.PrintReceipt(sale, needsElectronicInvoice); err != nil {
-			// Log error but don't fail the sale
-			fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
-		}
-	}()
 
 	return sale, nil
 }
@@ -375,8 +397,8 @@ func (s *SalesService) ResendElectronicInvoice(saleID uint) error {
 		return fmt.Errorf("sale already has a valid electronic invoice")
 	}
 
-	// Send invoice
-	invoice, err := s.invoiceSvc.SendInvoice(sale)
+	// Send invoice (default to true when resending - send email)
+	invoice, err := s.invoiceSvc.SendInvoice(sale, true)
 	if err != nil {
 		return fmt.Errorf("failed to send electronic invoice: %w", err)
 	}

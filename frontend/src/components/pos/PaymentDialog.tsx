@@ -43,6 +43,7 @@ interface PaymentDialogProps {
   onConfirm: (paymentData: any) => void;
   customer: Customer | null;
   orderItems?: any[]; // For split payment allocation
+  needsElectronicInvoice?: boolean; // Flag from POS
 }
 
 interface PaymentLine {
@@ -60,14 +61,14 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   paymentMethods,
   onConfirm,
   customer,
+  needsElectronicInvoice = false,
 }) => {
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
-  const [needsInvoice, setNeedsInvoice] = useState(false);
   const [printReceipt, setPrintReceipt] = useState(true);
-  const [sendByEmail, setSendByEmail] = useState(false);
+  const [sendByEmail, setSendByEmail] = useState(true); // Default to true - send invoice email by default
   const [customerEmail, setCustomerEmail] = useState(customer?.email || '');
   const [error, setError] = useState('');
   const [change, setChange] = useState(0);
@@ -83,13 +84,6 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
     }
     setChange(totalPaid > total ? totalPaid - total : 0);
   }, [paymentLines, total]);
-
-  useEffect(() => {
-    // If customer has identification, suggest electronic invoice
-    if (customer?.identification_number) {
-      setNeedsInvoice(true);
-    }
-  }, [customer]);
 
   const addPaymentLine = () => {
     if (!selectedMethod) {
@@ -143,7 +137,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
         amount: line.amount,
         reference: line.reference,
       })),
-      needsInvoice,
+      needsInvoice: needsElectronicInvoice,
       printReceipt,
       sendByEmail,
       customerEmail: sendByEmail ? customerEmail : undefined,
@@ -354,20 +348,11 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 Opciones de Factura
               </Typography>
 
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={needsInvoice}
-                    onChange={(e) => setNeedsInvoice(e.target.checked)}
-                    disabled={!customer}
-                  />
-                }
-                label="Factura Electrónica"
-              />
-
-              {!customer && needsInvoice && (
-                <Alert severity="warning" sx={{ mt: 1 }}>
-                  Debe seleccionar un cliente para generar factura electrónica
+              {needsElectronicInvoice && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <Typography variant="body2">
+                    Esta venta será facturada electrónicamente a través de DIAN
+                  </Typography>
                 </Alert>
               )}
 

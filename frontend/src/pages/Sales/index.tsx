@@ -38,6 +38,10 @@ import {
   ShoppingCart as ShoppingIcon,
   People as PeopleIcon,
   MoreVert as MoreIcon,
+  Send as SendIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Pending as PendingIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -110,6 +114,33 @@ const Sales: React.FC = () => {
       }
     } catch (error) {
       toast.error('Error al imprimir factura');
+    }
+  };
+
+  const handleSendElectronicInvoice = async (sale: Sale) => {
+    try {
+      if (!sale.id) {
+        toast.error('Venta inválida');
+        return;
+      }
+
+      if (!sale.needs_electronic_invoice) {
+        toast.warning('Esta venta no requiere factura electrónica');
+        return;
+      }
+
+      if (sale.electronic_invoice?.status === 'sent' || sale.electronic_invoice?.status === 'accepted') {
+        toast.info('La factura electrónica ya fue enviada');
+        return;
+      }
+
+      toast.info('Enviando factura electrónica a DIAN...');
+      await wailsSalesService.sendElectronicInvoice(sale.id);
+      toast.success('Factura electrónica enviada exitosamente');
+      loadSalesHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al enviar factura electrónica');
+      console.error('Error sending electronic invoice:', error);
     }
   };
 
@@ -354,6 +385,7 @@ const Sales: React.FC = () => {
                 <TableCell>Total</TableCell>
                 <TableCell>Método</TableCell>
                 <TableCell>Estado</TableCell>
+                <TableCell>FE DIAN</TableCell>
                 <TableCell align="center">Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -384,6 +416,95 @@ const Sales: React.FC = () => {
                         label={sale.status}
                         color={sale.status === 'completed' ? 'success' : 'error'}
                       />
+                    </TableCell>
+                    <TableCell>
+                      {sale.needs_electronic_invoice ? (
+                        sale.electronic_invoice ? (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            {/* Envío Status */}
+                            {sale.electronic_invoice.status === 'accepted' ? (
+                              <Chip
+                                size="small"
+                                icon={<CheckCircleIcon />}
+                                label="Aceptada"
+                                color="success"
+                              />
+                            ) : sale.electronic_invoice.status === 'sent' ? (
+                              <Chip
+                                size="small"
+                                icon={<CheckCircleIcon />}
+                                label="Enviada"
+                                color="success"
+                              />
+                            ) : sale.electronic_invoice.status === 'validating' ? (
+                              <Chip
+                                size="small"
+                                icon={<PendingIcon />}
+                                label="Validando DIAN..."
+                                color="warning"
+                              />
+                            ) : sale.electronic_invoice.status === 'error' || sale.electronic_invoice.status === 'rejected' ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Chip
+                                  size="small"
+                                  icon={<ErrorIcon />}
+                                  label="Error"
+                                  color="error"
+                                />
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleSendElectronicInvoice(sale)}
+                                  title="Reintentar envío"
+                                >
+                                  <SendIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Chip
+                                size="small"
+                                icon={<PendingIcon />}
+                                label="Pendiente"
+                                color="warning"
+                              />
+                            )}
+
+                            {/* Validación DIAN Status */}
+                            {sale.electronic_invoice.is_valid === true && (
+                              <Chip
+                                size="small"
+                                icon={<CheckCircleIcon />}
+                                label="✓ Validado DIAN"
+                                color="success"
+                                variant="outlined"
+                                title={sale.electronic_invoice.validation_message}
+                              />
+                            )}
+                            {sale.electronic_invoice.is_valid === false && (
+                              <Chip
+                                size="small"
+                                icon={<ErrorIcon />}
+                                label="✗ Rechazado DIAN"
+                                color="error"
+                                variant="outlined"
+                                title={sale.electronic_invoice.validation_message}
+                              />
+                            )}
+                          </Box>
+                        ) : (
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleSendElectronicInvoice(sale)}
+                            title="Enviar factura electrónica"
+                          >
+                            <SendIcon fontSize="small" />
+                          </IconButton>
+                        )
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          N/A
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell align="center">
                       <IconButton

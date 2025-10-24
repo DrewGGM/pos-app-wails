@@ -35,11 +35,12 @@ function mapProduct(w: models.Product): Product {
     price: w.price || 0,
     category_id: w.category_id as unknown as number,
     image: (w as any).image || '',
-    sku: w.sku || '',
     stock: w.stock || 0,
     min_stock: (w as any).min_stock || 0,
     is_active: (w as any).is_active ?? true,
     has_modifiers: false, // Default value
+    tax_type_id: w.tax_type_id || 1, // IVA 19% by default
+    unit_measure_id: w.unit_measure_id || 796, // Porción by default
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Product;

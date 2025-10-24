@@ -43,6 +43,8 @@ export function OpenCashRegister(arg1:number,arg2:number,arg3:string):Promise<mo
 
 export function PrintCurrentCashRegisterReport(arg1:number):Promise<void>;
 
+export function PrintLastCashRegisterReport(arg1:number):Promise<void>;
+
 export function RevokeSession(arg1:string):Promise<void>;
 
 export function UpdateEmployee(arg1:models.Employee):Promise<void>;

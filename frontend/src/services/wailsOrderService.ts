@@ -54,7 +54,6 @@ function mapOrder(w: models.Order): Order {
         id: item.product.id as unknown as number,
         name: item.product.name || '',
         price: item.product.price || 0,
-        sku: item.product.sku || '',
         category_id: item.product.category_id as unknown as number,
       } : undefined,
       quantity: item.quantity || 0,

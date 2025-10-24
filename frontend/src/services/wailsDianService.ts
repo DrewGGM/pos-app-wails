@@ -24,10 +24,10 @@ export const wailsDianService = {
     await svc.UpdateDIANConfig(config);
   },
 
-  async configureCompany(payload: AnyObject): Promise<void> {
+  async configureCompany(): Promise<any> {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
-    await svc.ConfigureCompany(payload);
+    return await svc.ConfigureCompany();
   },
 
   async configureSoftware(): Promise<void> {
@@ -46,6 +46,18 @@ export const wailsDianService = {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
     await svc.ConfigureResolution();
+  },
+
+  async configureCreditNoteResolution(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ConfigureCreditNoteResolution();
+  },
+
+  async configureDebitNoteResolution(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ConfigureDebitNoteResolution();
   },
 
   async changeEnvironment(environment: 'test' | 'production'): Promise<void> {

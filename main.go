@@ -59,6 +59,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start sync worker for offline queue
 	go services.StartSyncWorker()
+
+	// Start DIAN validation worker
+	go services.StartValidationWorker()
 }
 
 // domReady is called after front-end resources have been loaded

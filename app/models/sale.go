@@ -74,46 +74,52 @@ type PaymentMethod struct {
 
 // Customer represents a customer
 type Customer struct {
-	ID                   uint           `gorm:"primaryKey" json:"id"`
-	IdentificationType   string         `json:"identification_type"` // NIT, CC, CE, etc.
-	IdentificationNumber string         `gorm:"unique" json:"identification_number"`
-	DV                   *string        `json:"dv,omitempty"` // Digito verificación
-	Name                 string         `gorm:"not null" json:"name"`
-	Email                string         `json:"email"`
-	Phone                string         `json:"phone"`
-	Address              string         `json:"address"`
-	MunicipalityID       *int           `json:"municipality_id,omitempty"`
-	TypeOrganizationID   *int           `json:"type_organization_id,omitempty"`
-	TypeLiabilityID      *int           `json:"type_liability_id,omitempty"`
-	TypeRegimeID         *int           `json:"type_regime_id,omitempty"`
-	IsActive             bool           `gorm:"default:true" json:"is_active"`
-	CreatedAt            time.Time      `json:"created_at"`
-	UpdatedAt            time.Time      `json:"updated_at"`
-	DeletedAt            gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ID                           uint           `gorm:"primaryKey" json:"id"`
+	IdentificationType           string         `json:"identification_type"` // NIT, CC, CE, etc.
+	IdentificationNumber         string         `gorm:"unique" json:"identification_number"`
+	DV                           *string        `json:"dv,omitempty"`                              // Digito verificación (solo para NIT)
+	Name                         string         `gorm:"not null" json:"name"`                      // Razón social o nombre completo
+	Email                        string         `json:"email"`                                     // Email principal
+	Phone                        string         `json:"phone"`                                     // Teléfono de contacto
+	Address                      string         `json:"address"`                                   // Dirección física
+	MunicipalityID               *int           `json:"municipality_id,omitempty"`                 // Municipio (opcional - corporativos)
+	TypeDocumentIdentificationID *int           `json:"type_document_identification_id,omitempty"` // DIAN ID tipo documento (opcional - si no se envía usa default según IdentificationType)
+	TypeOrganizationID           *int           `json:"type_organization_id,omitempty"`            // DIAN: 1=Jurídica, 2=Natural (opcional - corporativos)
+	TypeLiabilityID              *int           `json:"type_liability_id,omitempty"`               // DIAN responsabilidades fiscales (opcional - corporativos)
+	TypeRegimeID                 *int           `json:"type_regime_id,omitempty"`                  // DIAN régimen tributario (opcional - corporativos)
+	MerchantRegistration         *string        `json:"merchant_registration,omitempty"`           // Matrícula mercantil (opcional - corporativos)
+	IsActive                     bool           `gorm:"default:true" json:"is_active"`
+	CreatedAt                    time.Time      `json:"created_at"`
+	UpdatedAt                    time.Time      `json:"updated_at"`
+	DeletedAt                    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 // ElectronicInvoice represents DIAN electronic invoice data
 type ElectronicInvoice struct {
-	ID            uint         `gorm:"primaryKey" json:"id"`
-	SaleID        uint         `gorm:"unique" json:"sale_id"`
-	Sale          *Sale        `json:"-"`
-	InvoiceNumber string       `json:"invoice_number"`
-	Prefix        string       `json:"prefix"`
-	UUID          string       `json:"uuid"`
-	CUFE          string       `json:"cufe"`
-	QRCode        string       `json:"qr_code"`
-	Status        string       `json:"status"`        // "pending", "sent", "accepted", "rejected"
-	DIANResponse  string       `json:"dian_response"` // JSON response from DIAN
-	SentAt        *time.Time   `json:"sent_at,omitempty"`
-	AcceptedAt    *time.Time   `json:"accepted_at,omitempty"`
-	XMLDocument   string       `json:"xml_document"` // Stored XML
-	PDFDocument   string       `json:"pdf_document"` // Base64 PDF
-	RetryCount    int          `json:"retry_count"`
-	LastError     string       `json:"last_error"`
-	CreditNotes   []CreditNote `json:"credit_notes,omitempty"`
-	DebitNotes    []DebitNote  `json:"debit_notes,omitempty"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
+	ID                   uint         `gorm:"primaryKey" json:"id"`
+	SaleID               uint         `gorm:"unique" json:"sale_id"`
+	Sale                 *Sale        `json:"-"`
+	InvoiceNumber        string       `json:"invoice_number"`
+	Prefix               string       `json:"prefix"`
+	UUID                 *string      `json:"uuid,omitempty"`           // Optional UUID from DIAN (not generated, only stored if DIAN sends it)
+	CUFE                 string       `json:"cufe"`                     // Código Único de Facturación Electrónica (always present, used as unique ID)
+	QRCode               string       `json:"qr_code"`                  // QR code URL or data
+	ZipKey               string       `json:"zip_key"`                  // ZIP key for status verification
+	Status               string       `json:"status"`                   // "pending", "sent", "accepted", "rejected", "validating"
+	IsValid              *bool        `json:"is_valid,omitempty"`       // DIAN validation result
+	ValidationMessage    string       `json:"validation_message"`       // DIAN validation message
+	DIANResponse         string       `json:"dian_response"`            // JSON response from DIAN
+	SentAt               *time.Time   `json:"sent_at,omitempty"`        // When sent to DIAN
+	AcceptedAt           *time.Time   `json:"accepted_at,omitempty"`    // When accepted by DIAN
+	ValidationCheckedAt  *time.Time   `json:"validation_checked_at,omitempty"` // Last validation check
+	XMLDocument          string       `json:"xml_document"`             // Stored XML
+	PDFDocument          string       `json:"pdf_document"`             // Base64 PDF
+	RetryCount           int          `json:"retry_count"`
+	LastError            string       `json:"last_error"`
+	CreditNotes          []CreditNote `json:"credit_notes,omitempty"`
+	DebitNotes           []DebitNote  `json:"debit_notes,omitempty"`
+	CreatedAt            time.Time    `json:"created_at"`
+	UpdatedAt            time.Time    `json:"updated_at"`
 }
 
 // CreditNote represents a DIAN credit note

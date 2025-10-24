@@ -467,8 +467,14 @@ func (s *OrderService) sendToKitchen(order *models.Order) {
 	// Send to kitchen display via WebSocket
 	// This will be implemented with WebSocket service
 
-	// Print kitchen ticket
-	s.printerSvc.PrintKitchenOrder(order)
+	// Check if kitchen printing is enabled in printer config
+	var printerConfig models.PrinterConfig
+	if err := s.db.Where("is_default = ?", true).First(&printerConfig).Error; err == nil {
+		// Only print kitchen ticket if configured to do so
+		if printerConfig.PrintKitchenCopy {
+			s.printerSvc.PrintKitchenOrder(order)
+		}
+	}
 }
 
 func (s *OrderService) sendItemToKitchen(order *models.Order, item *models.OrderItem) {

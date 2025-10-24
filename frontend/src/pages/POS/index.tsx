@@ -59,6 +59,7 @@ import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { wailsProductService } from '../../services/wailsProductService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
 import { wailsSalesService } from '../../services/wailsSalesService';
+import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
 import { Category, Product, Order, OrderItem, Table, Customer, PaymentMethod } from '../../types/models';
 import { posColors } from '../../theme';
 
@@ -98,6 +99,9 @@ const POS: React.FC = () => {
   // Electronic invoice flag per sale
   const [needsElectronicInvoice, setNeedsElectronicInvoice] = useState(false);
 
+  // Company fiscal liability (for IVA calculation)
+  const [companyLiabilityId, setCompanyLiabilityId] = useState<number | null>(null);
+
   // Loading states
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -109,6 +113,7 @@ const POS: React.FC = () => {
       loadCategories();
       loadProducts();
       loadPaymentMethods();
+      loadCompanyConfig();
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -219,13 +224,25 @@ const POS: React.FC = () => {
     }
   };
 
+  const loadCompanyConfig = async () => {
+    try {
+      const config = await GetRestaurantConfig();
+      if (config) {
+        setCompanyLiabilityId(config.type_liability_id || null);
+      }
+    } catch (error) {
+      console.error('Error loading company config:', error);
+      // Don't show error toast to user, just log it
+    }
+  };
+
   // Filter products by category and search
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesCategory = !selectedCategory || product.category_id === selectedCategory;
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchQuery.toLowerCase());
+        product.description?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
   }, [products, selectedCategory, searchQuery]);
@@ -306,7 +323,12 @@ const POS: React.FC = () => {
   // Calculate order totals
   const orderTotals = useMemo(() => {
     const subtotal = orderItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-    const tax = subtotal * 0.19; // 19% IVA
+
+    // Only apply IVA if company is responsible for IVA
+    // ID 117 = "No responsable" (R-99-PN) - Does NOT charge IVA
+    // Other IDs (7, 9, 14, 112) are responsible for IVA
+    const isIVAResponsible = companyLiabilityId !== null && companyLiabilityId !== 117;
+    const tax = isIVAResponsible ? subtotal * 0.19 : 0; // 19% IVA only if responsible
     const total = subtotal + tax;
 
     return {
@@ -314,8 +336,9 @@ const POS: React.FC = () => {
       tax,
       total,
       itemCount: orderItems.reduce((sum, item) => sum + item.quantity, 0),
+      isIVAResponsible, // Include for UI display
     };
-  }, [orderItems]);
+  }, [orderItems, companyLiabilityId]);
 
   // Clear order
   const clearOrder = useCallback(() => {
@@ -414,6 +437,7 @@ const POS: React.FC = () => {
         employee_id: user?.id!,
         cash_register_id: cashRegisterId!,
         needs_electronic_invoice: paymentData.needsInvoice || false,
+        send_email_to_customer: paymentData.sendByEmail || false,
       });
 
       // Send to kitchen if dine-in
@@ -442,10 +466,8 @@ const POS: React.FC = () => {
       clearOrder();
       setPaymentDialogOpen(false);
 
-      // Print receipt
-      if (paymentData.printReceipt) {
-        await wailsSalesService.printReceipt(sale.id!);
-      }
+      // Note: Receipt printing is handled automatically by the backend
+      // based on the needs_electronic_invoice flag and printer configuration
 
     } catch (error: any) {
       toast.error(error.message || 'Error al procesar la venta');
@@ -660,7 +682,9 @@ const POS: React.FC = () => {
             <Typography>${orderTotals.subtotal.toLocaleString('es-CO')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Typography>IVA (19%):</Typography>
+            <Typography>
+              {orderTotals.isIVAResponsible ? 'IVA (19%):' : 'IVA (N/A):'}
+            </Typography>
             <Typography>${orderTotals.tax.toLocaleString('es-CO')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -726,6 +750,7 @@ const POS: React.FC = () => {
         paymentMethods={paymentMethods}
         onConfirm={processPayment}
         customer={selectedCustomer}
+        needsElectronicInvoice={needsElectronicInvoice}
       />
 
       <CustomerDialog

@@ -10,8 +10,16 @@ export function ConfigureCertificate() {
   return window['go']['services']['DIANService']['ConfigureCertificate']();
 }
 
-export function ConfigureCompany(arg1) {
-  return window['go']['services']['DIANService']['ConfigureCompany'](arg1);
+export function ConfigureCompany() {
+  return window['go']['services']['DIANService']['ConfigureCompany']();
+}
+
+export function ConfigureCreditNoteResolution() {
+  return window['go']['services']['DIANService']['ConfigureCreditNoteResolution']();
+}
+
+export function ConfigureDebitNoteResolution() {
+  return window['go']['services']['DIANService']['ConfigureDebitNoteResolution']();
 }
 
 export function ConfigureResolution() {
@@ -28,6 +36,10 @@ export function GetDIANConfig() {
 
 export function GetNumberingRanges() {
   return window['go']['services']['DIANService']['GetNumberingRanges']();
+}
+
+export function SendInvoice(arg1) {
+  return window['go']['services']['DIANService']['SendInvoice'](arg1);
 }
 
 export function TestConnection() {

@@ -533,6 +533,16 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	var dianConfig models.DIANConfig
 	s.db.First(&dianConfig)
 
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
 	// Print header - FACTURA ELECTRÓNICA DE VENTA
 	s.setEmphasize(true)
 	s.setSize(2, 2)
@@ -718,6 +728,16 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
 	// Print header
 	s.setEmphasize(true)
 	s.setSize(2, 2)
@@ -901,6 +921,20 @@ func (s *PrinterService) PrintCashRegisterReport(report *models.CashRegisterRepo
 	s.init()
 	s.setAlign("center")
 
+	// Get restaurant config for logo
+	var restaurant models.RestaurantConfig
+	s.db.First(&restaurant)
+
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
 	// Header
 	s.setEmphasize(true)
 	s.setSize(2, 2)
@@ -910,10 +944,17 @@ func (s *PrinterService) PrintCashRegisterReport(report *models.CashRegisterRepo
 	s.write(fmt.Sprintf("Fecha: %s\n", report.Date.Format("2006-01-02")))
 	s.lineFeed()
 
-	// Employee
+	// Employee - Load if not already loaded
 	s.setAlign("left")
-	s.db.Preload("Employee").First(report, report.ID)
-	s.write(fmt.Sprintf("Cajero: %s\n", report.Employee.Name))
+	if report.Employee == nil && report.GeneratedBy > 0 {
+		var employee models.Employee
+		if err := s.db.First(&employee, report.GeneratedBy).Error; err == nil {
+			report.Employee = &employee
+		}
+	}
+	if report.Employee != nil {
+		s.write(fmt.Sprintf("Cajero: %s\n", report.Employee.Name))
+	}
 	s.write(s.printSeparator())
 
 	// Sales summary

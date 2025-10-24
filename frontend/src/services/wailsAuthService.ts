@@ -1,11 +1,12 @@
-import { 
-  AuthenticateEmployee, 
-  AuthenticateEmployeeByPIN, 
-  GetOpenCashRegister, 
-  OpenCashRegister, 
-  CloseCashRegister, 
-  GetCurrentCashRegister, 
+import {
+  AuthenticateEmployee,
+  AuthenticateEmployeeByPIN,
+  GetOpenCashRegister,
+  OpenCashRegister,
+  CloseCashRegister,
+  GetCurrentCashRegister,
   PrintCurrentCashRegisterReport,
+  PrintLastCashRegisterReport,
   GetEmployees,
   GetEmployee,
   CreateEmployee,
@@ -209,6 +210,14 @@ class WailsAuthService {
       await PrintCurrentCashRegisterReport(registerId);
     } catch (error) {
       throw new Error('Error al imprimir reporte de caja actual');
+    }
+  }
+
+  async printLastCashRegisterReport(employeeId: number): Promise<void> {
+    try {
+      await PrintLastCashRegisterReport(employeeId);
+    } catch (error) {
+      throw new Error('Error al reimprimir último reporte de cierre de caja');
     }
   }
 

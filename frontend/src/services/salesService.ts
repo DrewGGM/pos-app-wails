@@ -6,6 +6,7 @@ interface ProcessSaleData {
   payment_data: PaymentData[];
   customer?: Customer | null;
   needs_electronic_invoice: boolean;
+  send_email_to_customer?: boolean;
   employee_id: number;
   cash_register_id: number;
 }

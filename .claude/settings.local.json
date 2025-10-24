@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/andre/Downloads/AppPos-Wails/**)",
+      "Bash(wails generate:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
