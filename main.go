@@ -92,14 +92,22 @@ func (a *App) domReady(ctx context.Context) {
 // beforeClose is called when the application is about to quit,
 // either by clicking the window close button or calling runtime.Quit.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	a.LoggerService.LogInfo("Application closing")
+
 	// Stop WebSocket server
 	if a.WSServer != nil {
+		a.LoggerService.LogInfo("Stopping WebSocket server")
 		a.WSServer.Stop()
 	}
 
 	// Close database connection
-	database.Close()
+	if err := database.Close(); err != nil {
+		a.LoggerService.LogError("Error closing database", err)
+	} else {
+		a.LoggerService.LogInfo("Database connection closed successfully")
+	}
 
+	a.LoggerService.LogInfo("Application shutdown complete")
 	return false
 }
 

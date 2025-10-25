@@ -38,7 +38,7 @@ jobs:
       - name: Create release archive
         run: |
           cd build/bin
-          Compress-Archive -Path PosApp.exe -DestinationPath ../../PosApp.zip
+          Compress-Archive -Path RestaurantPOS.exe -DestinationPath ../../RestaurantPOS-Windows-x64.zip
           cd ../..
         shell: pwsh
 
@@ -46,19 +46,31 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: "PosApp ${{ github.ref_name }}"
+          name: "Restaurant POS System ${{ github.ref_name }}"
           body: |
-            ## PosApp Release ${{ github.ref_name }}
+            ## Restaurant POS System Release ${{ github.ref_name }}
 
-            ### Instalación
-            1. Descargar PosApp.zip
-            2. Extraer el archivo PosApp.exe
-            3. Ejecutar PosApp.exe
+            Sistema de Punto de Venta para Restaurantes con Facturación Electrónica DIAN (Colombia)
 
-            ### Requisitos
-            - Windows 10/11
-            - PostgreSQL 12+
+            ### 📦 Instalación
+            1. Descargar `RestaurantPOS-Windows-x64.zip`
+            2. Extraer el archivo `RestaurantPOS.exe`
+            3. Ejecutar `RestaurantPOS.exe`
+            4. Completar el Setup Wizard en el primer inicio
+
+            ### ✅ Requisitos
+            - Windows 10/11 (64-bit)
+            - PostgreSQL 14+ (local o cloud)
             - WebView2 Runtime (se instala automáticamente si no está presente)
+            - Cuenta en [FacturaLatam.com](https://facturalatam.com) para facturación electrónica DIAN
+
+            ### 📖 Documentación
+            Ver [README.md](https://github.com/DrewGGM/pos-app-wails/blob/main/README.md) para guía completa de instalación y configuración.
+
+            ### 🔑 Credenciales por Defecto
+            - Usuario: `admin`
+            - Contraseña: `admin`
+            - ⚠️ **Cambiar inmediatamente después del primer login**
           repository: DrewGGM/wails-posapp-releases
           token: ${{ secrets.RELEASE_TOKEN }}
-          files: PosApp.zip
+          files: RestaurantPOS-Windows-x64.zip

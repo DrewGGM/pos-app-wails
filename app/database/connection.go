@@ -324,6 +324,11 @@ func SeedInitialData() error {
 
 // Close closes the database connection
 func Close() error {
+	// Check if database is initialized
+	if db == nil {
+		return nil // Nothing to close
+	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		return err
@@ -333,5 +338,8 @@ func Close() error {
 
 // Transaction executes a function within a database transaction
 func Transaction(fn func(*gorm.DB) error) error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
 	return db.Transaction(fn)
 }
