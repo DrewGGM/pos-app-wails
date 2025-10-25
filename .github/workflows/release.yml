@@ -1,0 +1,38 @@
+name: Build and Release Wails App
+
+on:
+  push:
+    tags:
+      - 'v*'   # Solo se ejecuta cuando haces un tag tipo v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build app
+        run: wails build -clean
+
+      - name: Zip build output
+        run: zip -r PosApp.zip build/bin/
+
+      - name: Upload to public repo
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Release ${{ github.ref_name }}"
+          body: "Automated release from private repo"
+          repository: DrewGGM/wails-posapp-releases
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: PosApp.zip
