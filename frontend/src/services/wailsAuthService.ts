@@ -7,6 +7,7 @@ import {
   GetCurrentCashRegister,
   PrintCurrentCashRegisterReport,
   PrintLastCashRegisterReport,
+  GetCashRegisterReport,
   GetEmployees,
   GetEmployee,
   CreateEmployee,
@@ -201,8 +202,13 @@ class WailsAuthService {
     }
   }
 
-  async getCashRegisterReport(registerId: number): Promise<CashRegisterReport> {
-    throw new Error('Not implemented');
+  async getCashRegisterReport(reportId: number): Promise<CashRegisterReport> {
+    try {
+      const report = await GetCashRegisterReport(reportId);
+      return mapCashRegisterReport(report);
+    } catch (error) {
+      throw new Error('Error al obtener reporte de caja');
+    }
   }
 
   async printCurrentCashRegisterReport(registerId: number): Promise<void> {

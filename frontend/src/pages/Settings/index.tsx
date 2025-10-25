@@ -136,7 +136,7 @@ const Settings: React.FC = () => {
   const [dianSettings, setDianSettings] = useState({
     enabled: true,
     testMode: true,
-    apiUrl: 'http://localhost:3000',
+    apiUrl: '', // Must be configured in Settings
     merchantRegistration: '',
     softwareId: '',
     softwarePin: '',
@@ -186,7 +186,7 @@ const Settings: React.FC = () => {
 
   // Print Settings
   const [printSettings, setPrintSettings] = useState({
-    defaultPrinter: 'EPSON TM-T20III',
+    defaultPrinter: 'Impresora Térmica 80mm',
     printLogo: true,
     printFooter: true,
     footerText: 'Gracias por su compra',
@@ -340,7 +340,7 @@ const Settings: React.FC = () => {
         setDianSettings({
           enabled: config.is_enabled || false,
           testMode: config.environment === 'test',
-          apiUrl: config.api_url || 'http://localhost:3000',
+          apiUrl: config.api_url || '',
           merchantRegistration: config.merchant_registration || '',
           softwareId: config.software_id || '',
           softwarePin: config.software_pin || '',
@@ -1415,14 +1415,15 @@ const Settings: React.FC = () => {
                     <Grid item xs={12}>
                       <TextField
                         fullWidth
-                        label="URL de API DIAN (localhost)"
+                        label="URL de API DIAN *"
                         value={dianSettings.apiUrl}
                         onChange={(e) => setDianSettings({
                           ...dianSettings,
                           apiUrl: e.target.value,
                         })}
-                        helperText="Ejemplo: http://localhost:3000 (sin /api/ubl2.1 al final)"
+                        helperText="Ejemplo: http://localhost:3000 o http://api-dian.miempresa.com (sin /api/ubl2.1 al final)"
                         placeholder="http://localhost:3000"
+                        required
                       />
                     </Grid>
                   </Grid>

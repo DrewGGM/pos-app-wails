@@ -50,7 +50,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { format, startOfMonth, endOfMonth, subDays } from 'date-fns';
-import { wailsSalesService } from '../../services/wailsSalesService';
+import { wailsReportsService } from '../../services/wailsReportsService';
 import { toast } from 'react-toastify';
 
 const Reports: React.FC = () => {
@@ -61,16 +61,20 @@ const Reports: React.FC = () => {
   });
   const [reportType, setReportType] = useState('sales');
   const [loading, setLoading] = useState(false);
-  
-  // Sample data - Replace with actual API calls
+
+  // Real data from backend
   const [salesData, setSalesData] = useState<any[]>([]);
   const [productsData, setProductsData] = useState<any[]>([]);
   const [customersData, setCustomersData] = useState<any[]>([]);
+  const [customerStats, setCustomerStats] = useState<any>(null);
+  const [keyMetrics, setKeyMetrics] = useState<any[]>([]);
+  const [categoryComparison, setCategoryComparison] = useState<any[]>([]);
   const [stats, setStats] = useState({
     totalSales: 0,
     totalOrders: 0,
     averageTicket: 0,
     totalCustomers: 0,
+    totalProductsSold: 0,
     growth: 0,
   });
 
@@ -81,63 +85,87 @@ const Reports: React.FC = () => {
   const loadReportData = async () => {
     setLoading(true);
     try {
-      // Load sales data
-      try {
-        const salesReport = await wailsSalesService.getSalesReport(
-          format(dateRange.start, 'yyyy-MM-dd'),
-          format(dateRange.end, 'yyyy-MM-dd')
-        );
-        
-        if (salesReport) {
-          // Update stats with real data
-          setStats({
-            totalSales: salesReport.total_sales || 0,
-            totalOrders: salesReport.count || 0,
-            averageTicket: salesReport.count > 0 ? (salesReport.total_sales / salesReport.count) : 0,
-            totalCustomers: 0,
-            growth: 0,
-          });
+      const startDateStr = format(dateRange.start, 'yyyy-MM-dd');
+      const endDateStr = format(dateRange.end, 'yyyy-MM-dd');
+
+      // Load sales report with all data
+      const salesReport = await wailsReportsService.getSalesReport(startDateStr, endDateStr);
+
+      if (salesReport) {
+        // Load customer stats
+        const custStats = await wailsReportsService.getCustomerStats(startDateStr, endDateStr);
+        setCustomerStats(custStats);
+
+        // Load key metrics comparison
+        const metrics = await wailsReportsService.getKeyMetricsComparison(startDateStr, endDateStr);
+        setKeyMetrics(metrics || []);
+
+        // Load category comparison
+        const catComparison = await wailsReportsService.getSalesByCategory(startDateStr, endDateStr);
+        setCategoryComparison(catComparison || []);
+
+        // Calculate growth from key metrics
+        const salesMetric = metrics?.find(m => m.metric === 'Ventas Totales');
+
+        // Calculate total products sold
+        const totalProductsSold = (salesReport.top_products || []).reduce((sum, p) => sum + p.quantity, 0);
+
+        // Update stats with real data
+        setStats({
+          totalSales: salesReport.total_sales || 0,
+          totalOrders: salesReport.number_of_sales || 0,
+          averageTicket: salesReport.average_sale || 0,
+          totalCustomers: custStats?.total_customers || 0,
+          totalProductsSold: totalProductsSold,
+          growth: salesMetric?.growth_percent || 0,
+        });
+
+        // Set sales chart data from daily sales
+        setSalesData(salesReport.daily_sales || []);
+
+        // Set products data from top products
+        const productsChartData = (salesReport.top_products || []).map(p => ({
+          name: p.product_name,
+          sold: p.quantity,
+          revenue: p.total_sales,
+        }));
+        setProductsData(productsChartData);
+
+        // Generate customer segmentation data
+        if (custStats && custStats.total_customers > 0) {
+          const totalCustomers = custStats.total_customers;
+          const newCustomers = custStats.new_customers_month;
+          const returningCustomers = totalCustomers - newCustomers;
+
+          setCustomersData([
+            { segment: 'Nuevos', value: Math.round((newCustomers / totalCustomers) * 100) || 0, color: '#8884d8' },
+            { segment: 'Recurrentes', value: Math.round((returningCustomers / totalCustomers) * 100) || 0, color: '#82ca9d' },
+          ]);
+        } else {
+          setCustomersData([]);
         }
-      } catch (e) {
-        console.error('Error loading sales report:', e);
-        // Use default stats if report fails
       }
-      
-      // Transform data for charts (using sample data for now)
-      setSalesData(generateSalesChartData());
-      setProductsData(generateProductsChartData());
-      setCustomersData(generateCustomersChartData());
-      
     } catch (error) {
       console.error('Error loading reports:', error);
-      // Don't show error toast, just use default data
+      toast.error('Error al cargar reportes');
     } finally {
       setLoading(false);
     }
   };
 
-  // Generate chart data from real sales
-  const generateSalesChartData = () => {
-    // Return empty array - will be populated with real sales data
-    return [];
-  };
-
-  const generateProductsChartData = () => {
-    // Return empty array - will be populated with real data from sales
-    return [];
-  };
-
-  const generateCustomersChartData = () => {
-    // Return empty array - will be populated with real customer data
-    return [];
-  };
-
   const handleExportReport = async () => {
     try {
-      const report = await wailsSalesService.exportSalesReport(dateRange.start, dateRange.end);
-      // Handle download logic here
-      toast.success('Reporte exportado');
+      const startDateStr = format(dateRange.start, 'yyyy-MM-dd');
+      const endDateStr = format(dateRange.end, 'yyyy-MM-dd');
+      const salesReport = await wailsReportsService.getSalesReport(startDateStr, endDateStr);
+
+      if (salesReport) {
+        const csvData = await wailsReportsService.exportSalesReportCSV(salesReport);
+        // Handle download logic here (create blob and download)
+        toast.success('Reporte exportado');
+      }
     } catch (error) {
+      console.error('Error exporting report:', error);
       toast.error('Error al exportar reporte');
     }
   };
@@ -278,7 +306,7 @@ const Reports: React.FC = () => {
             title="Órdenes"
             value={stats.totalOrders}
             icon={<CartIcon sx={{ color: 'primary.main' }} />}
-            trend={8.2}
+            trend={keyMetrics.find(m => m.metric === 'Órdenes')?.growth_percent}
             color="primary"
           />
         </Grid>
@@ -287,7 +315,7 @@ const Reports: React.FC = () => {
             title="Ticket Promedio"
             value={`$${stats.averageTicket.toLocaleString('es-CO')}`}
             icon={<ReceiptIcon sx={{ color: 'info.main' }} />}
-            trend={3.5}
+            trend={keyMetrics.find(m => m.metric === 'Ticket Promedio')?.growth_percent}
             color="info"
           />
         </Grid>
@@ -296,16 +324,16 @@ const Reports: React.FC = () => {
             title="Clientes"
             value={stats.totalCustomers}
             icon={<PeopleIcon sx={{ color: 'warning.main' }} />}
-            trend={12.1}
+            trend={keyMetrics.find(m => m.metric === 'Clientes Únicos')?.growth_percent}
             color="warning"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={2.4}>
           <StatCard
             title="Productos Vendidos"
-            value="1,234"
+            value={stats.totalProductsSold.toLocaleString('es-CO')}
             icon={<RestaurantIcon sx={{ color: 'secondary.main' }} />}
-            trend={-2.3}
+            trend={undefined}
             color="secondary"
           />
         </Grid>
@@ -455,25 +483,25 @@ const Reports: React.FC = () => {
                     <Typography variant="body2" color="text.secondary">
                       Tasa de Retención
                     </Typography>
-                    <Typography variant="h5">68.5%</Typography>
+                    <Typography variant="h5">{customerStats?.retention_rate.toFixed(1) || 0}%</Typography>
                   </Box>
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Valor Promedio por Cliente
                     </Typography>
-                    <Typography variant="h5">$18,269</Typography>
+                    <Typography variant="h5">${(customerStats?.average_value_per_customer || 0).toLocaleString('es-CO')}</Typography>
                   </Box>
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary">
                       Frecuencia de Visita
                     </Typography>
-                    <Typography variant="h5">2.3 veces/mes</Typography>
+                    <Typography variant="h5">{(customerStats?.visit_frequency || 0).toFixed(1)} veces/mes</Typography>
                   </Box>
                   <Box>
                     <Typography variant="body2" color="text.secondary">
                       Nuevos Clientes (mes)
                     </Typography>
-                    <Typography variant="h5">42</Typography>
+                    <Typography variant="h5">{customerStats?.new_customers_month || 0}</Typography>
                   </Box>
                 </Box>
               </Paper>
@@ -496,20 +524,19 @@ const Reports: React.FC = () => {
                     </Typography>
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart
-                        data={[
-                          { category: 'Comidas', actual: 45000, anterior: 38000 },
-                          { category: 'Bebidas', actual: 28000, anterior: 25000 },
-                          { category: 'Postres', actual: 12000, anterior: 15000 },
-                          { category: 'Extras', actual: 8000, anterior: 7000 },
-                        ]}
+                        data={categoryComparison.map(c => ({
+                          category: c.category,
+                          actual: c.current_sales,
+                          anterior: c.previous_sales,
+                        }))}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="category" />
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="actual" fill="#8884d8" name="Mes Actual" />
-                        <Bar dataKey="anterior" fill="#82ca9d" name="Mes Anterior" />
+                        <Bar dataKey="actual" fill="#8884d8" name="Período Actual" />
+                        <Bar dataKey="anterior" fill="#82ca9d" name="Período Anterior" />
                       </BarChart>
                     </ResponsiveContainer>
                   </Grid>
@@ -518,12 +545,7 @@ const Reports: React.FC = () => {
                       Métricas Clave
                     </Typography>
                     <Box sx={{ mt: 2 }}>
-                      {[
-                        { metric: 'Ventas Totales', actual: 2850000, anterior: 2476000 },
-                        { metric: 'Órdenes', actual: 342, anterior: 316 },
-                        { metric: 'Ticket Promedio', actual: 8333, anterior: 7835 },
-                        { metric: 'Clientes Únicos', actual: 156, anterior: 139 },
-                      ].map((item) => (
+                      {keyMetrics.map((item) => (
                         <Box
                           key={item.metric}
                           sx={{
@@ -538,14 +560,14 @@ const Reports: React.FC = () => {
                           <Typography variant="body2">{item.metric}</Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Typography variant="body2">
-                              ${typeof item.actual === 'number' && item.actual > 1000 
-                                ? item.actual.toLocaleString('es-CO')
-                                : item.actual}
+                              {typeof item.current_value === 'number' && item.current_value > 1000
+                                ? `$${item.current_value.toLocaleString('es-CO')}`
+                                : item.current_value}
                             </Typography>
                             <Chip
                               size="small"
-                              label={`${((item.actual - item.anterior) / item.anterior * 100).toFixed(1)}%`}
-                              color={item.actual > item.anterior ? 'success' : 'error'}
+                              label={`${item.growth_percent.toFixed(1)}%`}
+                              color={item.growth_percent > 0 ? 'success' : 'error'}
                             />
                           </Box>
                         </Box>

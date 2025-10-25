@@ -376,6 +376,16 @@ func (s *EmployeeService) PrintLastCashRegisterReport(employeeID uint) error {
 	return s.printerSvc.PrintCashRegisterReport(report)
 }
 
+// GetCashRegisterReport gets a cash register report by ID
+func (s *EmployeeService) GetCashRegisterReport(reportID uint) (*models.CashRegisterReport, error) {
+	var report models.CashRegisterReport
+	err := s.db.Preload("Employee").First(&report, reportID).Error
+	if err != nil {
+		return nil, fmt.Errorf("cash register report not found: %w", err)
+	}
+	return &report, nil
+}
+
 // AddCashMovement adds a cash movement to the current register
 func (s *EmployeeService) AddCashMovement(registerID uint, amount float64, movementType, description, reference string, employeeID uint) error {
 	// Verify register exists and is open

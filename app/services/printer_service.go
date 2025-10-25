@@ -41,8 +41,9 @@ type PrinterService struct {
 	db                 *gorm.DB
 	connection         io.WriteCloser
 	buffer             *bytes.Buffer
-	windowsPrinterName string // For Windows shared printers
-	printerType        string // "usb", "network", "serial", "file", "windows"
+	windowsPrinterName string                 // For Windows shared printers
+	printerType        string                 // "usb", "network", "serial", "file", "windows"
+	currentConfig      *models.PrinterConfig  // Current printer configuration
 }
 
 // NewPrinterService creates a new printer service
@@ -232,8 +233,18 @@ func (s *PrinterService) printImage(img image.Image) error {
 	width = bounds.Dx()
 	height = bounds.Dy()
 
-	// Resize if too wide for thermal printer (max 384 pixels for 80mm @ 203dpi)
-	maxWidth := 384
+	// Calculate max width based on paper size (assumes 203 DPI)
+	// 58mm = 288px, 80mm = 384px at 203 DPI
+	maxWidth := 384 // Default to 80mm
+	if s.currentConfig != nil {
+		if s.currentConfig.PaperWidth == 58 {
+			maxWidth = 288
+		} else if s.currentConfig.PaperWidth == 80 {
+			maxWidth = 384
+		}
+	}
+
+	// Resize if too wide for thermal printer
 	if width > maxWidth {
 		// Simple resize by skipping pixels
 		ratio := float64(width) / float64(maxWidth)
@@ -1041,6 +1052,9 @@ func (s *PrinterService) PrintCashRegisterReport(report *models.CashRegisterRepo
 
 func (s *PrinterService) connectPrinter(config *models.PrinterConfig) error {
 	var err error
+
+	// Save current config for later use (e.g., calculating image width)
+	s.currentConfig = config
 
 	// Auto-detect type if empty based on address and connection_type
 	printerType := config.Type

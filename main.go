@@ -33,6 +33,7 @@ type App struct {
 	PrinterService     *services.PrinterService
 	ConfigService      *services.ConfigService
 	ParametricService  *services.ParametricService
+	DashboardService   *services.DashboardService
 	WSServer           *websocket.Server
 }
 
@@ -113,6 +114,7 @@ func main() {
 	app.PrinterService = services.NewPrinterService()
 	app.ConfigService = services.NewConfigService()
 	app.ParametricService = services.NewParametricService()
+	app.DashboardService = services.NewDashboardService()
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -138,6 +140,7 @@ func main() {
 			app.PrinterService,
 			app.ConfigService,
 			app.ParametricService,
+			app.DashboardService,
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,

@@ -2152,6 +2152,44 @@ export namespace services {
 	        this.total_value = source["total_value"];
 	    }
 	}
+	export class CategorySalesComparison {
+	    category: string;
+	    current_sales: number;
+	    previous_sales: number;
+	    growth_percent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CategorySalesComparison(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.category = source["category"];
+	        this.current_sales = source["current_sales"];
+	        this.previous_sales = source["previous_sales"];
+	        this.growth_percent = source["growth_percent"];
+	    }
+	}
+	export class CustomerStatsData {
+	    total_customers: number;
+	    new_customers_month: number;
+	    retention_rate: number;
+	    average_value_per_customer: number;
+	    visit_frequency: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomerStatsData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total_customers = source["total_customers"];
+	        this.new_customers_month = source["new_customers_month"];
+	        this.retention_rate = source["retention_rate"];
+	        this.average_value_per_customer = source["average_value_per_customer"];
+	        this.visit_frequency = source["visit_frequency"];
+	    }
+	}
 	export class DIANInvoiceAllowanceCharge {
 	    discount_id?: number;
 	    charge_indicator: boolean;
@@ -2419,6 +2457,72 @@ export namespace services {
 	        this.orders = source["orders"];
 	    }
 	}
+	export class TopSellingItem {
+	    product_id: number;
+	    product_name: string;
+	    quantity: number;
+	    total_sales: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TopSellingItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product_id = source["product_id"];
+	        this.product_name = source["product_name"];
+	        this.quantity = source["quantity"];
+	        this.total_sales = source["total_sales"];
+	    }
+	}
+	export class DashboardStats {
+	    today_sales: number;
+	    today_sales_count: number;
+	    today_orders: number;
+	    today_customers: number;
+	    pending_orders: number;
+	    low_stock_products: number;
+	    active_tables: number;
+	    sales_growth: number;
+	    average_ticket: number;
+	    top_selling_items: TopSellingItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DashboardStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.today_sales = source["today_sales"];
+	        this.today_sales_count = source["today_sales_count"];
+	        this.today_orders = source["today_orders"];
+	        this.today_customers = source["today_customers"];
+	        this.pending_orders = source["pending_orders"];
+	        this.low_stock_products = source["low_stock_products"];
+	        this.active_tables = source["active_tables"];
+	        this.sales_growth = source["sales_growth"];
+	        this.average_ticket = source["average_ticket"];
+	        this.top_selling_items = this.convertValues(source["top_selling_items"], TopSellingItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DetectedPrinter {
 	    name: string;
 	    type: string;
@@ -2583,6 +2687,24 @@ export namespace services {
 		    return a;
 		}
 	}
+	export class KeyMetricsComparison {
+	    metric: string;
+	    current_value: number;
+	    previous_value: number;
+	    growth_percent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KeyMetricsComparison(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.metric = source["metric"];
+	        this.current_value = source["current_value"];
+	        this.previous_value = source["previous_value"];
+	        this.growth_percent = source["growth_percent"];
+	    }
+	}
 	export class PaymentData {
 	    payment_method_id: number;
 	    amount: number;
@@ -2618,6 +2740,22 @@ export namespace services {
 	        this.quantity = source["quantity"];
 	        this.total_sales = source["total_sales"];
 	        this.percentage = source["percentage"];
+	    }
+	}
+	export class SalesChartData {
+	    date: string;
+	    sales: number;
+	    orders: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SalesChartData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.sales = source["sales"];
+	        this.orders = source["orders"];
 	    }
 	}
 	export class SalesReport {

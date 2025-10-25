@@ -50,6 +50,10 @@ export function GetCashRegisterHistory(arg1, arg2) {
   return window['go']['services']['EmployeeService']['GetCashRegisterHistory'](arg1, arg2);
 }
 
+export function GetCashRegisterReport(arg1) {
+  return window['go']['services']['EmployeeService']['GetCashRegisterReport'](arg1);
+}
+
 export function GetCurrentCashRegister() {
   return window['go']['services']['EmployeeService']['GetCurrentCashRegister']();
 }

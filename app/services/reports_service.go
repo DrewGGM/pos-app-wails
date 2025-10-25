@@ -14,13 +14,15 @@ import (
 
 // ReportsService handles report generation
 type ReportsService struct {
-	db *gorm.DB
+	db        *gorm.DB
+	configSvc *ConfigService
 }
 
 // NewReportsService creates a new reports service
 func NewReportsService() *ReportsService {
 	return &ReportsService{
-		db: database.GetDB(),
+		db:        database.GetDB(),
+		configSvc: NewConfigService(),
 	}
 }
 
@@ -239,10 +241,11 @@ func (s *ReportsService) GetInventoryReport() (*InventoryReport, error) {
 		productValue := float64(product.Stock) * product.Price
 		report.TotalValue += productValue
 
-		// Check stock levels
+		// Check stock levels - use configurable threshold
+		threshold := s.configSvc.GetSystemConfigInt("low_stock_threshold", 10)
 		if product.Stock == 0 {
 			report.OutOfStockItems = append(report.OutOfStockItems, product)
-		} else if product.Stock < 10 { // Configurable threshold
+		} else if product.Stock < threshold {
 			report.LowStockItems = append(report.LowStockItems, product)
 		}
 
@@ -558,10 +561,11 @@ func (s *ReportsService) GetDashboardStats() (map[string]interface{}, error) {
 		Count(&pendingOrders)
 	stats["pending_orders"] = pendingOrders
 
-	// Low stock products
+	// Low stock products - use configurable threshold
+	threshold := s.configSvc.GetSystemConfigInt("low_stock_threshold", 10)
 	var lowStockCount int64
 	s.db.Model(&models.Product{}).
-		Where("stock < ? AND is_active = ?", 10, true).
+		Where("stock < ? AND is_active = ?", threshold, true).
 		Count(&lowStockCount)
 	stats["low_stock_products"] = lowStockCount
 
@@ -599,4 +603,265 @@ func (s *ReportsService) GetDashboardStats() (map[string]interface{}, error) {
 	}
 
 	return stats, nil
+}
+
+// CustomerStatsData represents customer statistics
+type CustomerStatsData struct {
+	TotalCustomers      int     `json:"total_customers"`
+	NewCustomersMonth   int     `json:"new_customers_month"`
+	RetentionRate       float64 `json:"retention_rate"`
+	AverageValuePerCustomer float64 `json:"average_value_per_customer"`
+	VisitFrequency      float64 `json:"visit_frequency"`
+}
+
+// GetCustomerStats gets customer statistics for a period
+func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time) (*CustomerStatsData, error) {
+	stats := &CustomerStatsData{}
+
+	// Total customers
+	var totalCustomers int64
+	s.db.Model(&models.Customer{}).Count(&totalCustomers)
+	stats.TotalCustomers = int(totalCustomers)
+
+	// New customers this month
+	var newCustomers int64
+	s.db.Model(&models.Customer{}).
+		Where("created_at BETWEEN ? AND ?", startDate, endDate).
+		Count(&newCustomers)
+	stats.NewCustomersMonth = int(newCustomers)
+
+	// Calculate average value per customer
+	type CustomerValue struct {
+		CustomerID uint
+		TotalValue float64
+	}
+	var customerValues []CustomerValue
+	s.db.Table("sales").
+		Select("customer_id, SUM(total) as total_value").
+		Where("created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("customer_id IS NOT NULL").
+		Group("customer_id").
+		Scan(&customerValues)
+
+	if len(customerValues) > 0 {
+		var totalValue float64
+		for _, cv := range customerValues {
+			totalValue += cv.TotalValue
+		}
+		stats.AverageValuePerCustomer = totalValue / float64(len(customerValues))
+	}
+
+	// Calculate retention rate (customers who bought this month vs last month)
+	lastMonthStart := startDate.AddDate(0, -1, 0)
+	lastMonthEnd := startDate
+
+	var customersThisMonth []uint
+	var customersLastMonth []uint
+
+	s.db.Table("sales").
+		Select("DISTINCT customer_id").
+		Where("created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("customer_id IS NOT NULL").
+		Pluck("customer_id", &customersThisMonth)
+
+	s.db.Table("sales").
+		Select("DISTINCT customer_id").
+		Where("created_at BETWEEN ? AND ?", lastMonthStart, lastMonthEnd).
+		Where("customer_id IS NOT NULL").
+		Pluck("customer_id", &customersLastMonth)
+
+	// Find repeating customers
+	repeatingCount := 0
+	lastMonthMap := make(map[uint]bool)
+	for _, id := range customersLastMonth {
+		lastMonthMap[id] = true
+	}
+	for _, id := range customersThisMonth {
+		if lastMonthMap[id] {
+			repeatingCount++
+		}
+	}
+
+	if len(customersLastMonth) > 0 {
+		stats.RetentionRate = (float64(repeatingCount) / float64(len(customersLastMonth))) * 100
+	}
+
+	// Calculate average visit frequency (visits per month)
+	if len(customerValues) > 0 {
+		type CustomerVisits struct {
+			CustomerID uint
+			Visits     int
+		}
+		var customerVisits []CustomerVisits
+		s.db.Table("sales").
+			Select("customer_id, COUNT(*) as visits").
+			Where("created_at BETWEEN ? AND ?", startDate, endDate).
+			Where("customer_id IS NOT NULL").
+			Group("customer_id").
+			Scan(&customerVisits)
+
+		var totalVisits int
+		for _, cv := range customerVisits {
+			totalVisits += cv.Visits
+		}
+		if len(customerVisits) > 0 {
+			stats.VisitFrequency = float64(totalVisits) / float64(len(customerVisits))
+		}
+	}
+
+	return stats, nil
+}
+
+// CategorySalesComparison represents sales by category comparison
+type CategorySalesComparison struct {
+	Category        string  `json:"category"`
+	CurrentSales    float64 `json:"current_sales"`
+	PreviousSales   float64 `json:"previous_sales"`
+	GrowthPercent   float64 `json:"growth_percent"`
+}
+
+// GetSalesByCategory gets sales grouped by category with comparison
+func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time) ([]CategorySalesComparison, error) {
+	var results []CategorySalesComparison
+
+	// Calculate period length
+	periodDays := int(endDate.Sub(startDate).Hours() / 24)
+	previousStart := startDate.AddDate(0, 0, -periodDays)
+	previousEnd := startDate
+
+	// Current period sales by category
+	type CategorySales struct {
+		CategoryName string
+		TotalSales   float64
+	}
+
+	var currentSales []CategorySales
+	s.db.Table("order_items").
+		Select("categories.name as category_name, SUM(order_items.subtotal) as total_sales").
+		Joins("JOIN products ON order_items.product_id = products.id").
+		Joins("JOIN categories ON products.category_id = categories.id").
+		Joins("JOIN orders ON order_items.order_id = orders.id").
+		Joins("JOIN sales ON orders.id = sales.order_id").
+		Where("sales.created_at BETWEEN ? AND ?", startDate, endDate).
+		Group("categories.name").
+		Scan(&currentSales)
+
+	// Previous period sales by category
+	var previousSales []CategorySales
+	s.db.Table("order_items").
+		Select("categories.name as category_name, SUM(order_items.subtotal) as total_sales").
+		Joins("JOIN products ON order_items.product_id = products.id").
+		Joins("JOIN categories ON products.category_id = categories.id").
+		Joins("JOIN orders ON order_items.order_id = orders.id").
+		Joins("JOIN sales ON orders.id = sales.order_id").
+		Where("sales.created_at BETWEEN ? AND ?", previousStart, previousEnd).
+		Group("categories.name").
+		Scan(&previousSales)
+
+	// Create map for easy lookup
+	previousMap := make(map[string]float64)
+	for _, ps := range previousSales {
+		previousMap[ps.CategoryName] = ps.TotalSales
+	}
+
+	// Build comparison results
+	for _, cs := range currentSales {
+		comparison := CategorySalesComparison{
+			Category:      cs.CategoryName,
+			CurrentSales:  cs.TotalSales,
+			PreviousSales: previousMap[cs.CategoryName],
+		}
+
+		if comparison.PreviousSales > 0 {
+			comparison.GrowthPercent = ((comparison.CurrentSales - comparison.PreviousSales) / comparison.PreviousSales) * 100
+		} else if comparison.CurrentSales > 0 {
+			comparison.GrowthPercent = 100
+		}
+
+		results = append(results, comparison)
+	}
+
+	return results, nil
+}
+
+// KeyMetricsComparison represents key metrics comparison
+type KeyMetricsComparison struct {
+	Metric          string  `json:"metric"`
+	CurrentValue    float64 `json:"current_value"`
+	PreviousValue   float64 `json:"previous_value"`
+	GrowthPercent   float64 `json:"growth_percent"`
+}
+
+// GetKeyMetricsComparison gets key metrics with comparison to previous period
+func (s *ReportsService) GetKeyMetricsComparison(startDate, endDate time.Time) ([]KeyMetricsComparison, error) {
+	var results []KeyMetricsComparison
+
+	// Calculate period length
+	periodDays := int(endDate.Sub(startDate).Hours() / 24)
+	previousStart := startDate.AddDate(0, 0, -periodDays)
+	previousEnd := startDate
+
+	// Current period stats
+	currentReport, _ := s.GetSalesReport(startDate, endDate)
+	previousReport, _ := s.GetSalesReport(previousStart, previousEnd)
+
+	// Total Sales
+	results = append(results, KeyMetricsComparison{
+		Metric:        "Ventas Totales",
+		CurrentValue:  currentReport.TotalSales,
+		PreviousValue: previousReport.TotalSales,
+		GrowthPercent: calculateGrowth(currentReport.TotalSales, previousReport.TotalSales),
+	})
+
+	// Orders
+	results = append(results, KeyMetricsComparison{
+		Metric:        "Órdenes",
+		CurrentValue:  float64(currentReport.NumberOfSales),
+		PreviousValue: float64(previousReport.NumberOfSales),
+		GrowthPercent: calculateGrowth(float64(currentReport.NumberOfSales), float64(previousReport.NumberOfSales)),
+	})
+
+	// Average Ticket
+	results = append(results, KeyMetricsComparison{
+		Metric:        "Ticket Promedio",
+		CurrentValue:  currentReport.AverageSale,
+		PreviousValue: previousReport.AverageSale,
+		GrowthPercent: calculateGrowth(currentReport.AverageSale, previousReport.AverageSale),
+	})
+
+	// Unique Customers
+	var currentCustomers int64
+	var previousCustomers int64
+
+	s.db.Model(&models.Sale{}).
+		Where("created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("customer_id IS NOT NULL").
+		Distinct("customer_id").
+		Count(&currentCustomers)
+
+	s.db.Model(&models.Sale{}).
+		Where("created_at BETWEEN ? AND ?", previousStart, previousEnd).
+		Where("customer_id IS NOT NULL").
+		Distinct("customer_id").
+		Count(&previousCustomers)
+
+	results = append(results, KeyMetricsComparison{
+		Metric:        "Clientes Únicos",
+		CurrentValue:  float64(currentCustomers),
+		PreviousValue: float64(previousCustomers),
+		GrowthPercent: calculateGrowth(float64(currentCustomers), float64(previousCustomers)),
+	})
+
+	return results, nil
+}
+
+// Helper function to calculate growth percentage
+func calculateGrowth(current, previous float64) float64 {
+	if previous == 0 {
+		if current > 0 {
+			return 100
+		}
+		return 0
+	}
+	return ((current - previous) / previous) * 100
 }

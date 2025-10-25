@@ -38,9 +38,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
-import { salesService } from '../../services/salesService';
-import { orderService } from '../../services/orderService';
-import { productService } from '../../services/productService';
+import { wailsDashboardService } from '../../services/wailsDashboardService';
 import { format } from 'date-fns';
 import {
   LineChart,
@@ -60,14 +58,21 @@ import {
 } from 'recharts';
 
 interface DashboardStats {
-  todaySales: number;
-  todayOrders: number;
-  pendingOrders: number;
-  lowStockProducts: number;
-  activeTables: number;
-  monthSales: number;
-  yesterdaySales: number;
-  salesGrowth: number;
+  today_sales: number;
+  today_sales_count: number;
+  today_orders: number;
+  today_customers: number;
+  pending_orders: number;
+  low_stock_products: number;
+  active_tables: number;
+  sales_growth: number;
+  average_ticket: number;
+  top_selling_items?: Array<{
+    product_id: number;
+    product_name: string;
+    quantity: number;
+    total_sales: number;
+  }>;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
@@ -89,23 +94,23 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Use Wails services instead of HTTP
-      // For now, set default mock data
-      setStats({
-        todaySales: 0,
-        todayOrders: 0,
-        pendingOrders: 0,
-        lowStockProducts: 0,
-        activeTables: 0,
-        monthSales: 0,
-        yesterdaySales: 0,
-        salesGrowth: 0,
-      });
+      // Get dashboard stats
+      const dashboardStats = await wailsDashboardService.getDashboardStats();
+      if (dashboardStats) {
+        setStats(dashboardStats);
+      }
 
-      // Empty lists for now
-      setRecentOrders([]);
-      setLowStockProducts([]);
-      setHourlySales([]);
+      // Get pending orders
+      const pendingOrdersList = await wailsDashboardService.getPendingOrdersDetails();
+      setRecentOrders(pendingOrdersList || []);
+
+      // Get low stock products
+      const lowStockList = await wailsDashboardService.getLowStockProducts();
+      setLowStockProducts(lowStockList || []);
+
+      // Get sales chart data (last 7 days)
+      const salesData = await wailsDashboardService.getSalesChartData(7);
+      setHourlySales(salesData || []);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -214,10 +219,10 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Ventas de Hoy"
-            value={`$${(stats?.todaySales ?? 0).toLocaleString('es-CO')}`}
+            value={`$${(stats?.today_sales ?? 0).toLocaleString('es-CO')}`}
             icon={<MoneyIcon />}
             color="primary"
-            trend={stats?.salesGrowth}
+            trend={stats?.sales_growth}
             action={{
               label: 'Ver Ventas',
               onClick: () => navigate('/sales'),
@@ -227,7 +232,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Órdenes de Hoy"
-            value={stats?.todayOrders || 0}
+            value={stats?.today_orders || 0}
             icon={<CartIcon />}
             color="success"
             action={{
@@ -239,7 +244,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Órdenes Pendientes"
-            value={stats?.pendingOrders || 0}
+            value={stats?.pending_orders || 0}
             icon={<RestaurantIcon />}
             color="warning"
             action={{
@@ -251,7 +256,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Mesas Activas"
-            value={`${stats?.activeTables || 0}/15`}
+            value={`${stats?.active_tables || 0}`}
             icon={<TableIcon />}
             color="info"
             action={{
@@ -268,22 +273,22 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2, height: 400 }}>
             <Typography variant="h6" gutterBottom>
-              Ventas por Hora
+              Ventas Últimos 7 Días
             </Typography>
             <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={hourlySales}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" />
+                <XAxis dataKey="date" />
                 <YAxis />
-                <Tooltip 
+                <Tooltip
                   formatter={(value: any) => `$${value.toLocaleString('es-CO')}`}
-                  labelFormatter={(label) => `${label}:00`}
+                  labelFormatter={(label) => label}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="sales" 
-                  stroke="#3B82F6" 
-                  fill="#3B82F6" 
+                <Area
+                  type="monotone"
+                  dataKey="sales"
+                  stroke="#3B82F6"
+                  fill="#3B82F6"
                   fillOpacity={0.3}
                 />
               </AreaChart>
@@ -345,12 +350,21 @@ const Dashboard: React.FC = () => {
             </Grid>
             
             <Divider sx={{ my: 2 }} />
-            
+
             <Typography variant="subtitle2" gutterBottom>
-              Ventas del Mes
+              Ticket Promedio
             </Typography>
             <Typography variant="h4" color="primary">
-              ${(stats?.monthSales ?? 0).toLocaleString('es-CO')}
+              ${(stats?.average_ticket ?? 0).toLocaleString('es-CO')}
+            </Typography>
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="subtitle2" gutterBottom>
+              Productos con Bajo Stock
+            </Typography>
+            <Typography variant="h4" color="warning.main">
+              {stats?.low_stock_products ?? 0}
             </Typography>
           </Paper>
         </Grid>

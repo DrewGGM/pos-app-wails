@@ -65,6 +65,65 @@ func (s *ConfigService) GetAllSystemConfigs() ([]models.SystemConfig, error) {
 	return configs, err
 }
 
+// GetSystemConfigInt gets a system configuration as integer with default value
+func (s *ConfigService) GetSystemConfigInt(key string, defaultValue int) int {
+	value, err := s.GetSystemConfig(key)
+	if err != nil {
+		return defaultValue
+	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return intValue
+}
+
+// GetSystemConfigBool gets a system configuration as boolean with default value
+func (s *ConfigService) GetSystemConfigBool(key string, defaultValue bool) bool {
+	value, err := s.GetSystemConfig(key)
+	if err != nil {
+		return defaultValue
+	}
+	boolValue, err := strconv.ParseBool(value)
+	if err != nil {
+		return defaultValue
+	}
+	return boolValue
+}
+
+// InitializeDefaultSystemConfigs initializes default system configurations
+func (s *ConfigService) InitializeDefaultSystemConfigs() error {
+	defaults := []struct {
+		Key      string
+		Value    string
+		Type     string
+		Category string
+	}{
+		{"low_stock_threshold", "10", "number", "inventory"},
+		{"kitchen_refresh_interval", "30", "number", "ui"},
+		{"max_offline_days", "7", "number", "sync"},
+	}
+
+	for _, def := range defaults {
+		var existing models.SystemConfig
+		err := s.db.Where("key = ?", def.Key).First(&existing).Error
+		if err == gorm.ErrRecordNotFound {
+			// Create if not exists
+			config := models.SystemConfig{
+				Key:      def.Key,
+				Value:    def.Value,
+				Type:     def.Type,
+				Category: def.Category,
+				IsLocked: false,
+			}
+			if err := s.db.Create(&config).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // GetRestaurantConfig gets restaurant configuration
 func (s *ConfigService) GetRestaurantConfig() (*models.RestaurantConfig, error) {
 	var config models.RestaurantConfig
@@ -106,11 +165,11 @@ func (s *ConfigService) GetDIANConfig() (*models.DIANConfig, error) {
 	var config models.DIANConfig
 	err := s.db.First(&config).Error
 	if err == gorm.ErrRecordNotFound {
-		// Return default config
+		// Return default config - APIURL must be configured before use
 		config = models.DIANConfig{
 			Environment: "test",
 			IsEnabled:   false,
-			APIURL:      "http://apidian2024.oo",
+			APIURL:      "", // Must be configured in Settings
 		}
 		s.db.Create(&config)
 	}

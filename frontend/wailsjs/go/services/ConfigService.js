@@ -42,6 +42,14 @@ export function GetSystemConfig(arg1) {
   return window['go']['services']['ConfigService']['GetSystemConfig'](arg1);
 }
 
+export function GetSystemConfigBool(arg1, arg2) {
+  return window['go']['services']['ConfigService']['GetSystemConfigBool'](arg1, arg2);
+}
+
+export function GetSystemConfigInt(arg1, arg2) {
+  return window['go']['services']['ConfigService']['GetSystemConfigInt'](arg1, arg2);
+}
+
 export function GetTableLayout() {
   return window['go']['services']['ConfigService']['GetTableLayout']();
 }
@@ -56,6 +64,10 @@ export function GetWebSocketPort() {
 
 export function InitializeDefaultConfig() {
   return window['go']['services']['ConfigService']['InitializeDefaultConfig']();
+}
+
+export function InitializeDefaultSystemConfigs() {
+  return window['go']['services']['ConfigService']['InitializeDefaultSystemConfigs']();
 }
 
 export function SavePrinterConfig(arg1) {

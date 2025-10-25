@@ -81,11 +81,21 @@ const Kitchen: React.FC = () => {
 
   const loadOrders = async () => {
     try {
-      // Use Wails OrderService instead of HTTP
-      // For now, use empty list (will be populated via WebSocket)
-      setOrders([]);
+      // Load pending and preparing orders from database
+      const pendingOrders = await wailsOrderService.getPendingOrders();
+      const preparingOrders = await wailsOrderService.getOrdersByStatus('preparing');
+
+      // Combine all orders
+      const allOrders = [...pendingOrders, ...preparingOrders].map(order => ({
+        ...order,
+        preparationTime: calculatePreparationTime(order),
+        priority: calculatePriority(order),
+      })) as KitchenOrder[];
+
+      setOrders(allOrders);
     } catch (error) {
       console.error('Error loading orders:', error);
+      toast.error('Error al cargar órdenes');
     }
   };
 

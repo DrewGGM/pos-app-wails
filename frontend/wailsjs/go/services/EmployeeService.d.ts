@@ -27,6 +27,8 @@ export function GetCashMovements(arg1:number):Promise<Array<models.CashMovement>
 
 export function GetCashRegisterHistory(arg1:number,arg2:number):Promise<Array<models.CashRegister>>;
 
+export function GetCashRegisterReport(arg1:number):Promise<models.CashRegisterReport>;
+
 export function GetCurrentCashRegister():Promise<models.CashRegister>;
 
 export function GetDailyCashRegisterReport(arg1:time.Time):Promise<models.CashRegisterReport>;

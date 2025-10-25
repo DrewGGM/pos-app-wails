@@ -283,12 +283,22 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 		PayableAmount:        fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals
+	// Set tax totals - use appropriate tax ID based on whether tax is applied
+	var taxID int
+	var taxPercent string
+	if sale.Tax > 0 {
+		taxID = 1 // IVA 19%
+		taxPercent = "19"
+	} else {
+		taxID = 5 // IVA 0% (exempt/not subject to IVA)
+		taxPercent = "0"
+	}
+
 	invoice.TaxTotals = []TaxTotal{
 		{
-			TaxID:         1, // IVA
+			TaxID:         taxID,
 			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       "19",
+			Percent:       taxPercent,
 			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
 		},
 	}
@@ -855,12 +865,22 @@ func (s *InvoiceService) prepareCreditNoteData(electronicInvoice *models.Electro
 		PayableAmount:       fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals
+	// Set tax totals - use appropriate tax ID based on whether tax is applied
+	var taxID int
+	var taxPercent string
+	if sale.Tax > 0 {
+		taxID = 1 // IVA 19%
+		taxPercent = "19"
+	} else {
+		taxID = 5 // IVA 0% (exempt/not subject to IVA)
+		taxPercent = "0"
+	}
+
 	creditNote.TaxTotals = []TaxTotal{
 		{
-			TaxID:         1, // IVA
+			TaxID:         taxID,
 			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       "19",
+			Percent:       taxPercent,
 			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
 		},
 	}
@@ -912,12 +932,22 @@ func (s *InvoiceService) prepareDebitNoteData(electronicInvoice *models.Electron
 		PayableAmount:       fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals
+	// Set tax totals - use appropriate tax ID based on whether tax is applied
+	var taxID int
+	var taxPercent string
+	if sale.Tax > 0 {
+		taxID = 1 // IVA 19%
+		taxPercent = "19"
+	} else {
+		taxID = 5 // IVA 0% (exempt/not subject to IVA)
+		taxPercent = "0"
+	}
+
 	debitNote.TaxTotals = []TaxTotal{
 		{
-			TaxID:         1, // IVA
+			TaxID:         taxID,
 			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       "19",
+			Percent:       taxPercent,
 			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
 		},
 	}

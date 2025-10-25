@@ -22,6 +22,10 @@ export function GetSyncConfig():Promise<models.SyncConfig>;
 
 export function GetSystemConfig(arg1:string):Promise<string>;
 
+export function GetSystemConfigBool(arg1:string,arg2:boolean):Promise<boolean>;
+
+export function GetSystemConfigInt(arg1:string,arg2:number):Promise<number>;
+
 export function GetTableLayout():Promise<models.TableLayout>;
 
 export function GetUITheme():Promise<models.UITheme>;
@@ -29,6 +33,8 @@ export function GetUITheme():Promise<models.UITheme>;
 export function GetWebSocketPort():Promise<number>;
 
 export function InitializeDefaultConfig():Promise<void>;
+
+export function InitializeDefaultSystemConfigs():Promise<void>;
 
 export function SavePrinterConfig(arg1:models.PrinterConfig):Promise<void>;
 

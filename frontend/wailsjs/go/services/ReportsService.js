@@ -10,6 +10,10 @@ export function ExportSalesReportJSON(arg1) {
   return window['go']['services']['ReportsService']['ExportSalesReportJSON'](arg1);
 }
 
+export function GetCustomerStats(arg1, arg2) {
+  return window['go']['services']['ReportsService']['GetCustomerStats'](arg1, arg2);
+}
+
 export function GetDailySalesReport(arg1) {
   return window['go']['services']['ReportsService']['GetDailySalesReport'](arg1);
 }
@@ -30,12 +34,20 @@ export function GetInventoryReport() {
   return window['go']['services']['ReportsService']['GetInventoryReport']();
 }
 
+export function GetKeyMetricsComparison(arg1, arg2) {
+  return window['go']['services']['ReportsService']['GetKeyMetricsComparison'](arg1, arg2);
+}
+
 export function GetLowStockReport(arg1) {
   return window['go']['services']['ReportsService']['GetLowStockReport'](arg1);
 }
 
 export function GetMonthlySalesReport(arg1, arg2) {
   return window['go']['services']['ReportsService']['GetMonthlySalesReport'](arg1, arg2);
+}
+
+export function GetSalesByCategory(arg1, arg2) {
+  return window['go']['services']['ReportsService']['GetSalesByCategory'](arg1, arg2);
 }
 
 export function GetSalesByPaymentMethod(arg1, arg2) {
