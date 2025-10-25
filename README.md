@@ -103,11 +103,11 @@ cd frontend && npm install && cd ..
 
 ```bash
 # Opción 1: Desde línea de comandos
-psql "postgresql://user:password@host:5432/database" -f init_admin.sql
+psql "postgresql://user:password@host:5432/database" -f scripts/init_default_users_and_customers.sql
 
 # Opción 2: Desde psql interactivo
 psql "postgresql://user:password@host:5432/database"
-\i init_admin.sql
+\i scripts/init_default_users_and_customers.sql
 ```
 
 **Credenciales por defecto:**

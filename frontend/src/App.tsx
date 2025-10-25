@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box, Typography } from '@mui/material';
 
@@ -30,11 +30,30 @@ import ProtectedRoute from './components/ProtectedRoute';
 import CashRegisterGuard from './components/CashRegisterGuard';
 import LoadingScreen from './components/LoadingScreen';
 import OfflineIndicator from './components/OfflineIndicator';
+import SetupWizard from './components/SetupWizard';
+
+// Services
+import { wailsConfigManagerService } from './services/wailsConfigManagerService';
 
 const App: React.FC = () => {
   const { isAuthenticated, loading, cashRegisterId } = useAuth();
   const { connect, disconnect } = useWebSocket();
   const { isOnline, syncStatus } = useOfflineSync();
+  const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkFirstRun = async () => {
+      try {
+        const firstRun = await wailsConfigManagerService.isFirstRun();
+        setIsFirstRun(firstRun);
+      } catch (error) {
+        console.error('Error checking first run:', error);
+        setIsFirstRun(false);
+      }
+    };
+
+    checkFirstRun();
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -48,8 +67,13 @@ const App: React.FC = () => {
     };
   }, [isAuthenticated, connect, disconnect]);
 
-  if (loading) {
+  if (loading || isFirstRun === null) {
     return <LoadingScreen />;
+  }
+
+  // Show setup wizard on first run
+  if (isFirstRun) {
+    return <SetupWizard onSetupComplete={() => setIsFirstRun(false)} />;
   }
 
   return (

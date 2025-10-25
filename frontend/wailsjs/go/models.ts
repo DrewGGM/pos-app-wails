@@ -1,3 +1,129 @@
+export namespace config {
+	
+	export class SystemConfig {
+	    data_path: string;
+	    printer_name: string;
+	    language: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SystemConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.data_path = source["data_path"];
+	        this.printer_name = source["printer_name"];
+	        this.language = source["language"];
+	    }
+	}
+	export class BusinessConfig {
+	    name: string;
+	    legal_name: string;
+	    nit: string;
+	    address: string;
+	    phone: string;
+	    email: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BusinessConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.legal_name = source["legal_name"];
+	        this.nit = source["nit"];
+	        this.address = source["address"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	    }
+	}
+	export class DianConfig {
+	    api_url: string;
+	    test_mode: boolean;
+	    software_id: string;
+	    software_pin: string;
+	    test_set_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DianConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.api_url = source["api_url"];
+	        this.test_mode = source["test_mode"];
+	        this.software_id = source["software_id"];
+	        this.software_pin = source["software_pin"];
+	        this.test_set_id = source["test_set_id"];
+	    }
+	}
+	export class DatabaseConfig {
+	    host: string;
+	    port: number;
+	    database: string;
+	    username: string;
+	    password: string;
+	    ssl_mode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DatabaseConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.database = source["database"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.ssl_mode = source["ssl_mode"];
+	    }
+	}
+	export class AppConfig {
+	    database: DatabaseConfig;
+	    dian: DianConfig;
+	    business: BusinessConfig;
+	    system: SystemConfig;
+	    first_run: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.database = this.convertValues(source["database"], DatabaseConfig);
+	        this.dian = this.convertValues(source["dian"], DianConfig);
+	        this.business = this.convertValues(source["business"], BusinessConfig);
+	        this.system = this.convertValues(source["system"], SystemConfig);
+	        this.first_run = source["first_run"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+
+}
+
 export namespace gorm {
 	
 	export class DeletedAt {
@@ -2790,6 +2916,49 @@ export namespace services {
 	        this.top_products = this.convertValues(source["top_products"], ProductSalesData);
 	        this.hourly_sales = this.convertValues(source["hourly_sales"], HourlySalesData);
 	        this.daily_sales = this.convertValues(source["daily_sales"], DailySalesData);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class UpdateInfo {
+	    current_version: string;
+	    latest_version: string;
+	    update_available: boolean;
+	    download_url: string;
+	    release_notes: string;
+	    published_at: time.Time;
+	    file_size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.current_version = source["current_version"];
+	        this.latest_version = source["latest_version"];
+	        this.update_available = source["update_available"];
+	        this.download_url = source["download_url"];
+	        this.release_notes = source["release_notes"];
+	        this.published_at = this.convertValues(source["published_at"], time.Time);
+	        this.file_size = source["file_size"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

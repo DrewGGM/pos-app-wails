@@ -1,6 +1,7 @@
 package database
 
 import (
+	"PosApp/app/config"
 	"PosApp/app/models"
 	"fmt"
 	"log"
@@ -66,15 +67,43 @@ func buildDSN() string {
 	return dsn
 }
 
+// buildDSNFromConfig builds DSN from AppConfig
+func buildDSNFromConfig(cfg *config.AppConfig) string {
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.Username,
+		cfg.Database.Password,
+		cfg.Database.Database,
+		cfg.Database.SSLMode,
+	)
+
+	log.Printf("Built database connection from config.json: host=%s port=%d dbname=%s sslmode=%s",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.Database, cfg.Database.SSLMode)
+
+	return dsn
+}
+
 // Initialize sets up the database connection
+// If appConfig is provided, it uses config.json; otherwise uses environment variables
 func Initialize() error {
+	return InitializeWithConfig(nil)
+}
+
+// InitializeWithConfig sets up the database connection with optional AppConfig
+func InitializeWithConfig(appConfig *config.AppConfig) error {
 	var err error
+	var dsn string
 
 	// Build PostgreSQL connection string
-	dsn := buildDSN()
+	if appConfig != nil {
+		dsn = buildDSNFromConfig(appConfig)
+	} else {
+		dsn = buildDSN()
+	}
 
 	// Configure GORM
-	config := &gorm.Config{
+	gormConfig := &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent), // Cambiado a Silent para reducir logs
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
@@ -85,7 +114,7 @@ func Initialize() error {
 	}
 
 	// Open connection
-	db, err = gorm.Open(postgres.Open(dsn), config)
+	db, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}

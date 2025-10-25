@@ -128,24 +128,42 @@ func (s *Server) run() {
 			s.mu.Lock()
 			if _, ok := s.clients[client.ID]; ok {
 				delete(s.clients, client.ID)
-				close(client.Send)
 				s.mu.Unlock()
+
+				// Close channel safely
+				go func(c *Client) {
+					defer func() {
+						if r := recover(); r != nil {
+							// Channel already closed, ignore
+						}
+					}()
+					close(c.Send)
+				}(client)
+
 				log.Printf("Client unregistered: %s", client.ID)
 			} else {
 				s.mu.Unlock()
 			}
 
 		case message := <-s.broadcast:
-			s.mu.RLock()
-			for _, client := range s.clients {
+			s.mu.Lock()
+			for id, client := range s.clients {
 				select {
 				case client.Send <- message:
 				default:
-					close(client.Send)
-					delete(s.clients, client.ID)
+					// Client buffer is full, disconnect
+					delete(s.clients, id)
+					go func(c *Client) {
+						defer func() {
+							if r := recover(); r != nil {
+								// Channel already closed, ignore
+							}
+						}()
+						close(c.Send)
+					}(client)
 				}
 			}
-			s.mu.RUnlock()
+			s.mu.Unlock()
 
 		case <-ticker.C:
 			// Send heartbeat to all clients

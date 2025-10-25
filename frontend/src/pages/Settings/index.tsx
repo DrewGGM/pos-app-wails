@@ -52,11 +52,15 @@ import {
   Delete as DeleteIcon,
   Upload as UploadIcon,
   Image as ImageIcon,
+  SystemUpdate as SystemUpdateIcon,
+  Info as InfoIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
 import { wailsConfigService } from '../../services/wailsConfigService';
 import { wailsPrinterService, DetectedPrinter } from '../../services/wailsPrinterService';
+import { wailsUpdateService, UpdateInfo } from '../../services/wailsUpdateService';
 import { useEffect } from 'react';
 import {
   GetDepartments,
@@ -214,8 +218,6 @@ const Settings: React.FC = () => {
     dateFormat: 'DD/MM/YYYY',
     timeFormat: '24h',
     theme: 'light',
-    autoBackup: true,
-    backupTime: '02:00',
   });
 
   // Sync Settings
@@ -247,6 +249,13 @@ const Settings: React.FC = () => {
     auto_cut: true,
     cash_drawer: false,
   });
+
+  // Update Settings
+  const [currentVersion, setCurrentVersion] = useState<string>('');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<string>('');
 
   // Load configurations on mount
   useEffect(() => {
@@ -1004,6 +1013,67 @@ const Settings: React.FC = () => {
       toast.error(e?.message || 'Error cambiando ambiente');
     }
   };
+
+  // Update handlers
+  const loadCurrentVersion = async () => {
+    try {
+      const version = await wailsUpdateService.getCurrentVersion();
+      if (version) {
+        setCurrentVersion(version);
+      }
+    } catch (error) {
+      console.error('Error loading current version:', error);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateProgress('Verificando actualizaciones...');
+    try {
+      const info = await wailsUpdateService.checkForUpdates();
+      if (info) {
+        setUpdateInfo(info);
+        if (info.update_available) {
+          toast.success(`Nueva versión ${info.latest_version} disponible!`);
+        } else {
+          toast.info('Ya tienes la última versión instalada');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error checking for updates:', error);
+      toast.error(error?.message || 'Error al verificar actualizaciones');
+    } finally {
+      setCheckingUpdate(false);
+      setUpdateProgress('');
+    }
+  };
+
+  const handleDownloadAndInstallUpdate = async () => {
+    if (!updateInfo || !updateInfo.update_available) {
+      toast.error('No hay actualizaciones disponibles');
+      return;
+    }
+
+    setDownloadingUpdate(true);
+    try {
+      setUpdateProgress('Descargando actualización...');
+      await wailsUpdateService.performUpdate();
+
+      toast.success('Actualización instalada correctamente. Por favor, reinicia la aplicación.');
+      setUpdateProgress('Actualización completada. Reinicia la aplicación.');
+    } catch (error: any) {
+      console.error('Error downloading/installing update:', error);
+      toast.error(error?.message || 'Error al instalar la actualización');
+      setUpdateProgress('');
+    } finally {
+      setDownloadingUpdate(false);
+    }
+  };
+
+  // Load version on mount
+  useEffect(() => {
+    loadCurrentVersion();
+  }, []);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -2654,7 +2724,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={4}>
+        <TabPanel value={selectedTab} index={5}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2735,50 +2805,84 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            {/* Update Section */}
+            <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Backup y Seguridad
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <SystemUpdateIcon sx={{ mr: 1 }} />
+                    <Typography variant="h6">
+                      Actualizaciones del Sistema
+                    </Typography>
+                  </Box>
                   <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={systemSettings.autoBackup}
-                            onChange={(e) => setSystemSettings({
-                              ...systemSettings,
-                              autoBackup: e.target.checked,
-                            })}
-                          />
-                        }
-                        label="Backup automático diario"
-                      />
+                    <Grid item xs={12} md={6}>
+                      <Alert severity="info" icon={<InfoIcon />}>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          Versión Actual: {currentVersion || 'Cargando...'}
+                        </Typography>
+                        {updateInfo && (
+                          <Typography variant="body2" sx={{ mt: 1 }}>
+                            {updateInfo.update_available
+                              ? `Nueva versión disponible: ${updateInfo.latest_version}`
+                              : 'Estás utilizando la última versión'}
+                          </Typography>
+                        )}
+                      </Alert>
                     </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Hora de backup"
-                        type="time"
-                        value={systemSettings.backupTime}
-                        onChange={(e) => setSystemSettings({
-                          ...systemSettings,
-                          backupTime: e.target.value,
-                        })}
-                        disabled={!systemSettings.autoBackup}
-                      />
+
+                    <Grid item xs={12} md={6}>
+                      <Box sx={{ display: 'flex', gap: 2, height: '100%', alignItems: 'center' }}>
+                        <Button
+                          variant="outlined"
+                          fullWidth
+                          onClick={handleCheckForUpdates}
+                          disabled={checkingUpdate || downloadingUpdate}
+                          startIcon={<SystemUpdateIcon />}
+                        >
+                          {checkingUpdate ? 'Verificando...' : 'Verificar Actualizaciones'}
+                        </Button>
+                        {updateInfo?.update_available && (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            fullWidth
+                            onClick={handleDownloadAndInstallUpdate}
+                            disabled={downloadingUpdate || checkingUpdate}
+                            startIcon={<CheckCircleIcon />}
+                          >
+                            {downloadingUpdate ? 'Instalando...' : 'Instalar Actualización'}
+                          </Button>
+                        )}
+                      </Box>
                     </Grid>
-                    <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth>
-                        Crear Backup Manual
-                      </Button>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button variant="outlined" fullWidth color="warning">
-                        Restaurar Backup
-                      </Button>
-                    </Grid>
+
+                    {updateProgress && (
+                      <Grid item xs={12}>
+                        <Alert severity="info">
+                          <Typography variant="body2">{updateProgress}</Typography>
+                        </Alert>
+                      </Grid>
+                    )}
+
+                    {updateInfo?.update_available && updateInfo.release_notes && (
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="subtitle2" gutterBottom>
+                          Notas de la Versión {updateInfo.latest_version}
+                        </Typography>
+                        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50', maxHeight: 200, overflow: 'auto' }}>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {updateInfo.release_notes}
+                          </Typography>
+                        </Paper>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          Tamaño: {(updateInfo.file_size / 1024 / 1024).toFixed(2)} MB
+                          {' • '}
+                          Publicado: {new Date(updateInfo.published_at).toLocaleDateString('es-CO')}
+                        </Typography>
+                      </Grid>
+                    )}
                   </Grid>
                 </CardContent>
               </Card>
