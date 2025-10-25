@@ -234,6 +234,20 @@ func main() {
 			}
 		}
 
+		// CRITICAL: Reinitialize all services AFTER database is ready
+		// This ensures they get the actual database connection, not nil
+		loggerService.LogInfo("Reinitializing services with database connection")
+		app.ProductService = services.NewProductService()
+		app.OrderService = services.NewOrderService()
+		app.SalesService = services.NewSalesService()
+		app.DIANService = services.NewDIANService()
+		app.EmployeeService = services.NewEmployeeService()
+		app.ReportsService = services.NewReportsService()
+		app.PrinterService = services.NewPrinterService()
+		app.ConfigService = services.NewConfigService()
+		app.ParametricService = services.NewParametricService()
+		app.DashboardService = services.NewDashboardService()
+
 		// Initialize default system configurations (only after DB is ready)
 		loggerService.LogInfo("Initializing default system configurations")
 		app.ConfigService.InitializeDefaultSystemConfigs()
