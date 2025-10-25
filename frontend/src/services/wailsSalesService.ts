@@ -168,9 +168,6 @@ class WailsSalesService {
         }
       }
 
-      console.log('🧾 Processing sale with electronic invoice:', saleData.needs_electronic_invoice);
-      console.log('📧 Send email to customer:', saleData.send_email_to_customer);
-
       const sale = await ProcessSale(
         saleData.order_id,
         saleData.payment_methods as any,
@@ -359,8 +356,8 @@ class WailsSalesService {
 
   async printInvoice(saleId: number): Promise<void> {
     try {
-      // This would need to be implemented in the Go service
-      console.log('Print invoice for sale:', saleId);
+      // Printing is handled by the backend after sale completion
+      await PrintReceipt(saleId);
     } catch (error) {
       console.error('Error printing invoice:', error);
       throw new Error('Error al imprimir factura');

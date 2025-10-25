@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { syncService } from '../services/syncService';
 
 interface SyncStatus {
   status: 'idle' | 'syncing' | 'completed' | 'failed';
@@ -76,7 +75,6 @@ export const useOfflineSync = () => {
 
   const performSync = useCallback(async () => {
     if (!isOnline) {
-      console.log('Cannot sync while offline');
       return;
     }
 

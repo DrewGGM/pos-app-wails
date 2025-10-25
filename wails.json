@@ -1,13 +1,20 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "PosApp",
-  "outputfilename": "PosApp",
+  "name": "RestaurantPOS",
+  "outputfilename": "RestaurantPOS",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Andrew Garcia",
-    "email": "145233179+DrewGGM@users.noreply.github.com"
+    "name": "Andrew Garcia Mosquera",
+    "email": "andrewgarciamosquera@gmail.com"
+  },
+  "info": {
+    "companyName": "Andrew Garcia Mosquera",
+    "productName": "Sistema POS - Facturación Electrónica",
+    "productVersion": "1.2.1",
+    "copyright": "© 2025 Andrew Garcia Mosquera. Todos los derechos reservados.",
+    "comments": "Sistema de Punto de Venta para restaurantes con facturación electrónica DIAN"
   }
 }

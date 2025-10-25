@@ -8,6 +8,7 @@ import (
 
 	"PosApp/app/config"
 	"PosApp/app/database"
+	"PosApp/app/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -108,6 +109,16 @@ func (s *ConfigManagerService) InitializeDatabase(dbConfig config.DatabaseConfig
 		}
 	}
 
+	// Now actually initialize the database connection globally and run migrations
+	// This is CRITICAL so that SaveRestaurantConfig and CompleteSetup can use database.GetDB()
+	appCfg := &config.AppConfig{
+		Database: dbConfig,
+	}
+
+	if err := database.InitializeWithConfig(appCfg); err != nil {
+		return fmt.Errorf("failed to initialize database connection: %w", err)
+	}
+
 	return nil
 }
 
@@ -197,4 +208,137 @@ func (s *ConfigManagerService) CompleteSetup() error {
 // GetConfigPath returns the path to the config file
 func (s *ConfigManagerService) GetConfigPath() (string, error) {
 	return config.GetConfigPath()
+}
+
+// SaveRestaurantConfig saves business information to database (NOT config.json)
+func (s *ConfigManagerService) SaveRestaurantConfig(name, businessName, nit, address, phone, email string) error {
+	db := database.GetDB()
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Check if restaurant config already exists
+	var restaurantConfig models.RestaurantConfig
+	err := db.First(&restaurantConfig).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// Create new restaurant config
+		restaurantConfig = models.RestaurantConfig{
+			Name:                 name,
+			BusinessName:         businessName,
+			IdentificationNumber: nit,
+			Address:              address,
+			Phone:                phone,
+			Email:                email,
+			// Defaults
+			Currency:              "COP",
+			CurrencySymbol:        "$",
+			DecimalPlaces:         0,
+			DefaultTaxRate:        19.0,
+			TaxIncludedInPrice:    false,
+			RestaurantMode:        "traditional",
+			EnableTableManagement: false,
+			EnableKitchenDisplay:  true,
+			EnableWaiterApp:       false,
+			ShowLogoOnInvoice:     true,
+			OpeningTime:           "08:00",
+			ClosingTime:           "22:00",
+			WorkingDays:           "[\"monday\",\"tuesday\",\"wednesday\",\"thursday\",\"friday\",\"saturday\"]",
+		}
+		return db.Create(&restaurantConfig).Error
+	} else if err != nil {
+		return fmt.Errorf("failed to check restaurant config: %w", err)
+	}
+
+	// Update existing restaurant config
+	restaurantConfig.Name = name
+	restaurantConfig.BusinessName = businessName
+	restaurantConfig.IdentificationNumber = nit
+	restaurantConfig.Address = address
+	restaurantConfig.Phone = phone
+	restaurantConfig.Email = email
+
+	return db.Save(&restaurantConfig).Error
+}
+
+// ExistingConfigData holds existing configuration from database
+type ExistingConfigData struct {
+	HasConfig       bool   `json:"has_config"`
+	RestaurantName  string `json:"restaurant_name"`
+	BusinessName    string `json:"business_name"`
+	NIT             string `json:"nit"`
+	Address         string `json:"address"`
+	Phone           string `json:"phone"`
+	Email           string `json:"email"`
+	HasSystemConfig bool   `json:"has_system_config"`
+}
+
+// CheckExistingConfig checks if configuration already exists in the database
+// This is useful for reinstallation scenarios where DB already has data
+func (s *ConfigManagerService) CheckExistingConfig(dbConfig config.DatabaseConfig) (*ExistingConfigData, error) {
+	// Build connection string
+	dsn := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		dbConfig.Host,
+		dbConfig.Port,
+		dbConfig.Username,
+		dbConfig.Password,
+		dbConfig.Database,
+		dbConfig.SSLMode,
+	)
+
+	// Try to open connection
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return &ExistingConfigData{HasConfig: false}, nil
+	}
+
+	// Get underlying SQL DB
+	sqlDB, err := db.DB()
+	if err != nil {
+		return &ExistingConfigData{HasConfig: false}, nil
+	}
+	defer sqlDB.Close()
+
+	// Check if restaurant_configs table exists
+	var tableExists bool
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'restaurant_configs')").Scan(&tableExists).Error
+	if err != nil || !tableExists {
+		return &ExistingConfigData{HasConfig: false}, nil
+	}
+
+	// Try to get restaurant config
+	var config struct {
+		Name                 string `gorm:"column:name"`
+		BusinessName         string `gorm:"column:business_name"`
+		IdentificationNumber string `gorm:"column:identification_number"`
+		Address              string `gorm:"column:address"`
+		Phone                string `gorm:"column:phone"`
+		Email                string `gorm:"column:email"`
+	}
+
+	err = db.Table("restaurant_configs").First(&config).Error
+	if err != nil {
+		// No config found
+		return &ExistingConfigData{HasConfig: false}, nil
+	}
+
+	// Check for system_configs table
+	var hasSystemConfig bool
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'system_configs')").Scan(&hasSystemConfig).Error
+	if err != nil {
+		hasSystemConfig = false
+	}
+
+	// Return existing config data
+	return &ExistingConfigData{
+		HasConfig:       true,
+		RestaurantName:  config.Name,
+		BusinessName:    config.BusinessName,
+		NIT:             config.IdentificationNumber,
+		Address:         config.Address,
+		Phone:           config.Phone,
+		Email:           config.Email,
+		HasSystemConfig: hasSystemConfig,
+	}, nil
 }

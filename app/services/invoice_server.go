@@ -385,16 +385,6 @@ func (s *InvoiceService) sendToDIAN(data interface{}, documentType string) (map[
 		return nil, err
 	}
 
-	// LOG: Request details
-	fmt.Println("========== DIAN INVOICE REQUEST ==========")
-	fmt.Printf("URL: %s\n", url)
-	fmt.Printf("Method: POST\n")
-	fmt.Printf("Environment: %s\n", s.config.Environment)
-	fmt.Printf("Token: %s...\n", s.config.APIToken[:20])
-	fmt.Println("Payload:")
-	fmt.Println(string(jsonData))
-	fmt.Println("==========================================")
-
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -406,33 +396,21 @@ func (s *InvoiceService) sendToDIAN(data interface{}, documentType string) (map[
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		fmt.Printf("ERROR: Failed to send request to DIAN: %v\n", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("ERROR: Failed to read response body: %v\n", err)
 		return nil, err
 	}
 
-	// LOG: Response details
-	fmt.Println("========== DIAN INVOICE RESPONSE ==========")
-	fmt.Printf("Status Code: %d\n", resp.StatusCode)
-	fmt.Printf("Status: %s\n", resp.Status)
-	fmt.Println("Response Body:")
-	fmt.Println(string(body))
-	fmt.Println("===========================================")
-
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("ERROR: DIAN API returned error status %d\n", resp.StatusCode)
 		return nil, fmt.Errorf("DIAN API error: %s", string(body))
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Printf("ERROR: Failed to parse JSON response: %v\n", err)
 		return nil, err
 	}
 
@@ -483,40 +461,6 @@ func (s *InvoiceService) sendToDIAN(data interface{}, documentType string) (map[
 	if qrStr, ok := result["QRStr"].(string); ok {
 		result["qr_code"] = qrStr
 	}
-
-	// LOG: Parsed response
-	fmt.Println("========== DIAN PARSED RESPONSE ==========")
-	fmt.Printf("Success: %v\n", result["success"])
-	fmt.Printf("Message: %v\n", result["message"])
-	if uuid, ok := result["uuid"]; ok {
-		fmt.Printf("UUID: %v\n", uuid)
-	}
-	if cufe, ok := result["cufe"]; ok {
-		fmt.Printf("CUFE: %v\n", cufe)
-	}
-	if zipKey, ok := result["zip_key"]; ok {
-		fmt.Printf("ZIP Key (Async): %v\n", zipKey)
-	}
-	if qrCode, ok := result["qr_code"]; ok {
-		fmt.Printf("QR Code: %v\n", qrCode)
-	}
-	// Log sync validation if present
-	if isValid, ok := result["is_valid"]; ok {
-		fmt.Printf("IsValid (Sync): %v\n", isValid)
-		if statusCode, ok := result["status_code"]; ok {
-			fmt.Printf("Status Code: %v\n", statusCode)
-		}
-		if statusDesc, ok := result["status_description"]; ok {
-			fmt.Printf("Status Description: %v\n", statusDesc)
-		}
-		if errorMsgs, ok := result["error_messages"].([]string); ok && len(errorMsgs) > 0 {
-			fmt.Println("Error Messages:")
-			for _, msg := range errorMsgs {
-				fmt.Printf("  - %s\n", msg)
-			}
-		}
-	}
-	fmt.Println("==========================================")
 
 	result["response"] = body
 	return result, nil

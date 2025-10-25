@@ -15,7 +15,11 @@ import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import wailsLoggerService from './services/wailsLoggerService';
 import './index.css';
+
+// Initialize global error handlers to capture all frontend errors
+wailsLoggerService.initializeGlobalHandlers();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

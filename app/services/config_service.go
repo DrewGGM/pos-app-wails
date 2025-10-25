@@ -93,6 +93,11 @@ func (s *ConfigService) GetSystemConfigBool(key string, defaultValue bool) bool 
 
 // InitializeDefaultSystemConfigs initializes default system configurations
 func (s *ConfigService) InitializeDefaultSystemConfigs() error {
+	// Check if database is initialized
+	if s.db == nil {
+		return nil // Skip if database not ready (e.g., during first run or build)
+	}
+
 	defaults := []struct {
 		Key      string
 		Value    string

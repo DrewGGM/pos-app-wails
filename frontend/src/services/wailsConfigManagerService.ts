@@ -7,17 +7,29 @@ import {
   TestDatabaseConnection,
   InitializeDatabase,
   CompleteSetup,
-  GetConfigPath
+  GetConfigPath,
+  CheckExistingConfig,
+  SaveRestaurantConfig
 } from '../../wailsjs/go/services/ConfigManagerService';
 
 import { config } from '../../wailsjs/go/models';
 
 // Re-export types from generated models
+// NOTE: Only database config is stored in config.json
+// Business/DIAN/System configs are stored in database tables (models.RestaurantConfig, models.DIANConfig, models.SystemConfig)
 export type AppConfig = config.AppConfig;
 export type DatabaseConfig = config.DatabaseConfig;
-export type DianConfig = config.DianConfig;
-export type BusinessConfig = config.BusinessConfig;
-export type SystemConfig = config.SystemConfig;
+
+export interface ExistingConfigData {
+  has_config: boolean;
+  restaurant_name: string;
+  business_name: string;
+  nit: string;
+  address: string;
+  phone: string;
+  email: string;
+  has_system_config: boolean;
+}
 
 export const wailsConfigManagerService = {
   async getConfig(): Promise<AppConfig | null> {
@@ -103,6 +115,32 @@ export const wailsConfigManagerService = {
     } catch (error) {
       console.error('Error getting config path:', error);
       return null;
+    }
+  },
+
+  async checkExistingConfig(dbConfig: DatabaseConfig): Promise<ExistingConfigData | null> {
+    try {
+      const existingConfig = await CheckExistingConfig(dbConfig);
+      return existingConfig as unknown as ExistingConfigData;
+    } catch (error) {
+      console.error('Error checking existing config:', error);
+      return null;
+    }
+  },
+
+  async saveRestaurantConfig(
+    name: string,
+    businessName: string,
+    nit: string,
+    address: string,
+    phone: string,
+    email: string
+  ): Promise<void> {
+    try {
+      await SaveRestaurantConfig(name, businessName, nit, address, phone, email);
+    } catch (error) {
+      console.error('Error saving restaurant config:', error);
+      throw error;
     }
   },
 };

@@ -9,19 +9,11 @@ import (
 	"PosApp/app/security"
 )
 
-// AppConfig holds all application configuration
+// AppConfig holds application configuration (ONLY database connection)
+// Business, DIAN, and System configs are stored in database tables
 type AppConfig struct {
 	// Database Configuration
 	Database DatabaseConfig `json:"database"`
-
-	// DIAN API Configuration
-	DIAN DianConfig `json:"dian"`
-
-	// Business Information
-	Business BusinessConfig `json:"business"`
-
-	// System Configuration
-	System SystemConfig `json:"system"`
 
 	// First run flag
 	FirstRun bool `json:"first_run"`
@@ -37,31 +29,11 @@ type DatabaseConfig struct {
 	SSLMode  string `json:"ssl_mode"`
 }
 
-// DianConfig holds DIAN electronic invoicing settings
-type DianConfig struct {
-	APIUrl      string `json:"api_url"`
-	TestMode    bool   `json:"test_mode"`
-	SoftwareID  string `json:"software_id"`
-	SoftwarePin string `json:"software_pin"`
-	TestSetID   string `json:"test_set_id"`
-}
-
-// BusinessConfig holds business information
-type BusinessConfig struct {
-	Name       string `json:"name"`
-	LegalName  string `json:"legal_name"`
-	NIT        string `json:"nit"`
-	Address    string `json:"address"`
-	Phone      string `json:"phone"`
-	Email      string `json:"email"`
-}
-
-// SystemConfig holds system settings
-type SystemConfig struct {
-	DataPath    string `json:"data_path"`
-	PrinterName string `json:"printer_name"`
-	Language    string `json:"language"`
-}
+// NOTE: Business, DIAN, and System configurations are stored in database tables:
+// - models.RestaurantConfig (table: restaurant_configs)
+// - models.DIANConfig (table: dian_configs)
+// - models.SystemConfig (table: system_configs)
+// config.json is ONLY for database connection (replaces .env file)
 
 // GetConfigPath returns the path to the config file
 func GetConfigPath() (string, error) {
@@ -164,7 +136,7 @@ func ConfigExists() (bool, error) {
 	return true, nil
 }
 
-// CreateDefaultConfig creates a default configuration file
+// CreateDefaultConfig creates a default configuration file with ONLY database settings
 func CreateDefaultConfig() (*AppConfig, error) {
 	cfg := &AppConfig{
 		Database: DatabaseConfig{
@@ -174,26 +146,6 @@ func CreateDefaultConfig() (*AppConfig, error) {
 			Username: "postgres",
 			Password: "",
 			SSLMode:  "disable",
-		},
-		DIAN: DianConfig{
-			APIUrl:      "",
-			TestMode:    true,
-			SoftwareID:  "",
-			SoftwarePin: "",
-			TestSetID:   "",
-		},
-		Business: BusinessConfig{
-			Name:      "Mi Negocio",
-			LegalName: "",
-			NIT:       "",
-			Address:   "",
-			Phone:     "",
-			Email:     "",
-		},
-		System: SystemConfig{
-			DataPath:    "",
-			PrinterName: "",
-			Language:    "es",
 		},
 		FirstRun: true,
 	}
@@ -261,21 +213,6 @@ func (cfg *AppConfig) encryptSensitiveFields() error {
 		}
 	}
 
-	// Encrypt DIAN API credentials
-	if cfg.DIAN.SoftwarePin != "" {
-		cfg.DIAN.SoftwarePin, err = security.Encrypt(cfg.DIAN.SoftwarePin)
-		if err != nil {
-			return fmt.Errorf("could not encrypt DIAN software pin: %w", err)
-		}
-	}
-
-	if cfg.DIAN.TestSetID != "" {
-		cfg.DIAN.TestSetID, err = security.Encrypt(cfg.DIAN.TestSetID)
-		if err != nil {
-			return fmt.Errorf("could not encrypt DIAN test set ID: %w", err)
-		}
-	}
-
 	return nil
 }
 
@@ -291,25 +228,6 @@ func (cfg *AppConfig) decryptSensitiveFields() error {
 			decrypted = cfg.Database.Password
 		}
 		cfg.Database.Password = decrypted
-	}
-
-	// Decrypt DIAN API credentials
-	if cfg.DIAN.SoftwarePin != "" {
-		decrypted, err := security.Decrypt(cfg.DIAN.SoftwarePin)
-		if err != nil {
-			// If decryption fails, assume it's plain text
-			decrypted = cfg.DIAN.SoftwarePin
-		}
-		cfg.DIAN.SoftwarePin = decrypted
-	}
-
-	if cfg.DIAN.TestSetID != "" {
-		decrypted, err := security.Decrypt(cfg.DIAN.TestSetID)
-		if err != nil {
-			// If decryption fails, assume it's plain text
-			decrypted = cfg.DIAN.TestSetID
-		}
-		cfg.DIAN.TestSetID = decrypted
 	}
 
 	return nil

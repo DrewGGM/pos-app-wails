@@ -27,7 +27,10 @@ func NewDIANService() *DIANService {
 		db:     database.GetDB(),
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
-	service.loadConfig()
+	// Only load config if database is initialized
+	if service.db != nil {
+		service.loadConfig()
+	}
 	return service
 }
 
@@ -825,22 +828,6 @@ func (s *DIANService) SendInvoice(invoice *DIANInvoice) (*DIANInvoiceResponse, e
 		return nil, fmt.Errorf("failed to marshal invoice: %w", err)
 	}
 
-	// LOG: Request details
-	fmt.Println("\n========== DIAN SERVICE - INVOICE REQUEST ==========")
-	fmt.Printf("URL: %s\n", url)
-	fmt.Printf("Environment: %s\n", dianConfig.Environment)
-	if dianConfig.Environment == "test" {
-		fmt.Printf("Test Set ID: %s\n", dianConfig.TestSetID)
-	}
-	tokenPreview := dianConfig.APIToken
-	if len(tokenPreview) > 20 {
-		tokenPreview = tokenPreview[:20]
-	}
-	fmt.Printf("Token: %s...\n", tokenPreview)
-	fmt.Println("Invoice Payload:")
-	fmt.Println(string(jsonData))
-	fmt.Println("====================================================")
-
 	// Create HTTP request
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -854,7 +841,6 @@ func (s *DIANService) SendInvoice(invoice *DIANInvoice) (*DIANInvoiceResponse, e
 	// Send request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		fmt.Printf("❌ ERROR: Failed to send invoice to DIAN: %v\n", err)
 		return nil, fmt.Errorf("failed to send invoice: %w", err)
 	}
 	defer resp.Body.Close()
@@ -862,44 +848,14 @@ func (s *DIANService) SendInvoice(invoice *DIANInvoice) (*DIANInvoiceResponse, e
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("❌ ERROR: Failed to read response body: %v\n", err)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-
-	// LOG: Response details
-	fmt.Println("\n========== DIAN SERVICE - INVOICE RESPONSE ==========")
-	fmt.Printf("HTTP Status: %d %s\n", resp.StatusCode, resp.Status)
-	fmt.Println("Response Body:")
-	fmt.Println(string(body))
-	fmt.Println("=====================================================")
 
 	// Parse response
 	var invoiceResp DIANInvoiceResponse
 	if err := json.Unmarshal(body, &invoiceResp); err != nil {
-		fmt.Printf("❌ ERROR: Failed to parse JSON response: %v\n", err)
 		return nil, fmt.Errorf("failed to parse response (status %d): %s", resp.StatusCode, string(body))
 	}
-
-	// LOG: Parsed response details
-	fmt.Println("\n========== DIAN SERVICE - PARSED RESPONSE ==========")
-	fmt.Printf("✅ Success: %v\n", invoiceResp.Success)
-	fmt.Printf("📝 Message: %s\n", invoiceResp.Message)
-	if invoiceResp.UUID != "" {
-		fmt.Printf("🆔 UUID: %s\n", invoiceResp.UUID)
-	}
-	if invoiceResp.CUFE != "" {
-		fmt.Printf("🔑 CUFE: %s\n", invoiceResp.CUFE)
-	}
-	if invoiceResp.ZipKey != "" {
-		fmt.Printf("📦 ZIP Key: %s\n", invoiceResp.ZipKey)
-	}
-	if invoiceResp.Number != "" {
-		fmt.Printf("🧾 Invoice Number: %s\n", invoiceResp.Number)
-	}
-	if len(invoiceResp.ErrorMessages) > 0 {
-		fmt.Printf("❌ Errors: %v\n", invoiceResp.ErrorMessages)
-	}
-	fmt.Println("====================================================\n")
 
 	// Check for errors
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {

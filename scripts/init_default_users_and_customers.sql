@@ -27,8 +27,8 @@ INSERT INTO employees (
 VALUES (
     'Administrador',
     'admin',
-    '$2a$10$ASVN2q6/JJVwfE4na3Ze/elb40oe32smjIRClrOBoKfyi7PY2exH6', -- password: admin123
-    '$2a$10$A.68B1.ATZxuOMYc2QpKbuDvu1wPlbhF/Vxap546P3d8uBTHh4FsC',  -- pin: 1234
+    '$2a$10$ASVN2q6/JJVwfE4na3Ze/elb40oe32smjIRClrOBoKfyi7PY2exH6', -- password: admin
+    '$2a$10$A.68B1.ATZxuOMYc2QpKbuDvu1wPlbhF/Vxap546P3d8uBTHh4FsC',  -- pin: 12345
     'admin',
     'admin@restaurant.com',
     TRUE,

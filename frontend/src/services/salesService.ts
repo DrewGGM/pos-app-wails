@@ -256,31 +256,10 @@ class SalesService {
     return paid - total;
   }
 
-  // Cash Register - These methods should use Wails services, not HTTP API
-  async getCashRegisterStatus(cashRegisterId: number): Promise<any> {
-    // This should be implemented using Wails EmployeeService
-    // For now, return a mock response
-    return {
-      id: cashRegisterId,
-      status: 'open',
-      opening_amount: 0,
-      current_amount: 0,
-      sales_summary: { cash: 0, card: 0, digital: 0 },
-      movements: []
-    };
-  }
-
-  async openCashRegister(openingAmount: number, notes: string): Promise<void> {
-    // This should use Wails EmployeeService.OpenCashRegister
-    // For now, throw an error to indicate it needs to be implemented
-    throw new Error('openCashRegister debe usar wailsAuthService.openCashRegister');
-  }
-
-  async closeCashRegister(closingAmount: number, notes: string): Promise<void> {
-    // This should use Wails EmployeeService.CloseCashRegister
-    // For now, throw an error to indicate it needs to be implemented
-    throw new Error('closeCashRegister debe usar wailsAuthService.closeCashRegister');
-  }
+  // Cash Register Management
+  // Note: Cash register operations (open, close, status) are handled by wailsAuthService
+  // Use: wailsAuthService.getOpenCashRegister(), openCashRegister(), closeCashRegister(), addCashMovement()
+  // Only HTTP API methods remain below for legacy/offline support
 
   async registerCashMovement(type: 'in' | 'out', amount: number, reason: string): Promise<void> {
     await apiClient.post('/api/cash-register/movement', {

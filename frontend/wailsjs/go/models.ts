@@ -1,63 +1,5 @@
 export namespace config {
 	
-	export class SystemConfig {
-	    data_path: string;
-	    printer_name: string;
-	    language: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SystemConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.data_path = source["data_path"];
-	        this.printer_name = source["printer_name"];
-	        this.language = source["language"];
-	    }
-	}
-	export class BusinessConfig {
-	    name: string;
-	    legal_name: string;
-	    nit: string;
-	    address: string;
-	    phone: string;
-	    email: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new BusinessConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.legal_name = source["legal_name"];
-	        this.nit = source["nit"];
-	        this.address = source["address"];
-	        this.phone = source["phone"];
-	        this.email = source["email"];
-	    }
-	}
-	export class DianConfig {
-	    api_url: string;
-	    test_mode: boolean;
-	    software_id: string;
-	    software_pin: string;
-	    test_set_id: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DianConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.api_url = source["api_url"];
-	        this.test_mode = source["test_mode"];
-	        this.software_id = source["software_id"];
-	        this.software_pin = source["software_pin"];
-	        this.test_set_id = source["test_set_id"];
-	    }
-	}
 	export class DatabaseConfig {
 	    host: string;
 	    port: number;
@@ -82,9 +24,6 @@ export namespace config {
 	}
 	export class AppConfig {
 	    database: DatabaseConfig;
-	    dian: DianConfig;
-	    business: BusinessConfig;
-	    system: SystemConfig;
 	    first_run: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -94,9 +33,6 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.database = this.convertValues(source["database"], DatabaseConfig);
-	        this.dian = this.convertValues(source["dian"], DianConfig);
-	        this.business = this.convertValues(source["business"], BusinessConfig);
-	        this.system = this.convertValues(source["system"], SystemConfig);
 	        this.first_run = source["first_run"];
 	    }
 	
@@ -118,9 +54,6 @@ export namespace config {
 		    return a;
 		}
 	}
-	
-	
-	
 
 }
 
@@ -2736,6 +2669,32 @@ export namespace services {
 		    }
 		    return a;
 		}
+	}
+	export class ExistingConfigData {
+	    has_config: boolean;
+	    restaurant_name: string;
+	    business_name: string;
+	    nit: string;
+	    address: string;
+	    phone: string;
+	    email: string;
+	    has_system_config: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExistingConfigData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.has_config = source["has_config"];
+	        this.restaurant_name = source["restaurant_name"];
+	        this.business_name = source["business_name"];
+	        this.nit = source["nit"];
+	        this.address = source["address"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	        this.has_system_config = source["has_system_config"];
+	    }
 	}
 	export class HourlySalesData {
 	    hour: number;

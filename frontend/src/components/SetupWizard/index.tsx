@@ -25,7 +25,7 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-import { wailsConfigManagerService, DatabaseConfig, AppConfig } from '../../services/wailsConfigManagerService';
+import { wailsConfigManagerService, DatabaseConfig, AppConfig, ExistingConfigData } from '../../services/wailsConfigManagerService';
 
 const steps = ['Configuración de Base de Datos', 'Información del Negocio', 'Configuración del Sistema', 'Finalizar'];
 
@@ -38,6 +38,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionTested, setConnectionTested] = useState(false);
+  const [existingConfig, setExistingConfig] = useState<ExistingConfigData | null>(null);
 
   const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
     host: 'localhost',
@@ -79,6 +80,12 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
     }
   };
 
+  const handleSkipToFinish = () => {
+    if (existingConfig && existingConfig.has_config) {
+      setActiveStep(steps.length - 1);
+    }
+  };
+
   const handleBack = () => {
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
@@ -89,9 +96,30 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
       await wailsConfigManagerService.testDatabaseConnection(dbConfig);
       toast.success('Conexión exitosa a la base de datos!');
       setConnectionTested(true);
+
+      // Check if database already has configuration
+      const existing = await wailsConfigManagerService.checkExistingConfig(dbConfig);
+      if (existing && existing.has_config) {
+        setExistingConfig(existing);
+        // Pre-fill business config with existing data
+        setBusinessConfig({
+          name: existing.restaurant_name || '',
+          legal_name: existing.business_name || '',
+          nit: existing.nit || '',
+          address: existing.address || '',
+          phone: existing.phone || '',
+          email: existing.email || '',
+        });
+        toast.info('Se detectó configuración existente en la base de datos. Puedes saltarla o modificarla.', {
+          autoClose: 5000,
+        });
+      } else {
+        setExistingConfig(null);
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Error al conectar a la base de datos');
       setConnectionTested(false);
+      setExistingConfig(null);
     } finally {
       setTesting(false);
     }
@@ -100,29 +128,31 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
   const handleFinish = async () => {
     setLoading(true);
     try {
-      // Create config object
+      // Step 1: Save ONLY database connection to config.json
       const appConfig: any = {
         database: dbConfig,
-        dian: {
-          api_url: '',
-          test_mode: true,
-          software_id: '',
-          software_pin: '',
-          test_set_id: '',
-        },
-        business: businessConfig,
-        system: systemConfig,
         first_run: true,
       };
 
-      // Save configuration
+      toast.info('Guardando configuración de base de datos...');
       await wailsConfigManagerService.saveConfig(appConfig);
 
-      // Initialize database
+      // Step 2: Initialize database (runs GORM migrations automatically)
       toast.info('Inicializando base de datos...');
       await wailsConfigManagerService.initializeDatabase(dbConfig);
 
-      // Complete setup (run seeds, etc.)
+      // Step 3: Save business info to database table (restaurant_configs)
+      toast.info('Guardando información del negocio...');
+      await wailsConfigManagerService.saveRestaurantConfig(
+        businessConfig.name,
+        businessConfig.legal_name,
+        businessConfig.nit,
+        businessConfig.address,
+        businessConfig.phone,
+        businessConfig.email
+      );
+
+      // Step 4: Complete setup (run seeds for admin user, etc.)
       toast.info('Configurando datos iniciales...');
       await wailsConfigManagerService.completeSetup();
 
@@ -259,9 +289,19 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
                 <Typography variant="h5">Información del Negocio</Typography>
               </Box>
 
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Esta información se utilizará en las facturas y configuración DIAN. Podrás editarla más tarde.
-              </Alert>
+              {existingConfig && existingConfig.has_config ? (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  <strong>Configuración Existente Detectada</strong>
+                  <br />
+                  Se ha cargado la información existente de tu negocio: <strong>{existingConfig.restaurant_name}</strong>
+                  <br />
+                  Puedes modificarla o continuar con la configuración actual.
+                </Alert>
+              ) : (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Esta información se utilizará en las facturas y configuración DIAN. Podrás editarla más tarde.
+                </Alert>
+              )}
 
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
@@ -413,7 +453,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
                 <Alert severity="success" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
                   Se creará un usuario administrador por defecto:
                   <br />
-                  <strong>Usuario:</strong> admin | <strong>Contraseña:</strong> admin123
+                  <strong>Usuario:</strong> admin | <strong>Contraseña:</strong> admin
                 </Alert>
               </Box>
             </CardContent>
@@ -462,22 +502,34 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
             >
               Atrás
             </Button>
-            <Button
-              variant="contained"
-              onClick={handleNext}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Configurando...
-                </>
-              ) : activeStep === steps.length - 1 ? (
-                'Finalizar'
-              ) : (
-                'Siguiente'
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              {existingConfig && existingConfig.has_config && activeStep > 0 && activeStep < steps.length - 1 && (
+                <Button
+                  variant="outlined"
+                  color="success"
+                  onClick={handleSkipToFinish}
+                  disabled={loading}
+                >
+                  Usar Config. Existente y Finalizar
+                </Button>
               )}
-            </Button>
+              <Button
+                variant="contained"
+                onClick={handleNext}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <CircularProgress size={20} sx={{ mr: 1 }} />
+                    Configurando...
+                  </>
+                ) : activeStep === steps.length - 1 ? (
+                  'Finalizar'
+                ) : (
+                  'Siguiente'
+                )}
+              </Button>
+            </Box>
           </Box>
         </Paper>
       </Box>
