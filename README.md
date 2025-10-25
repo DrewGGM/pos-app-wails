@@ -135,15 +135,56 @@ Este sistema utiliza la API de **FacturaLatam.com** para la facturación electr�
 
 - 🌐 **Website**: https://facturalatam.com
 - 📖 **Documentación API**: https://facturalatam.com/api/
-- 🔑 **Registro**: Necesitas crear una cuenta y obtener credenciales
-- 💰 **Planes**: Freemium con opciones de pago según volumen
+- 💰 **Compra**: Licencia de software de facturación
+- 🔧 **Instalación**: API REST que se instala en tu servidor o local
+
+**¿Qué es FacturaLatam.com?**
+
+FacturaLatam.com ofrece un **código/software de facturación electrónica** que se compra e instala en tu infraestructura. No es un servicio en la nube que requiere cuenta, sino una API REST que se ejecuta localmente o en tu servidor.
 
 **Pasos para configurar:**
-1. Regístrate en https://facturalatam.com
-2. Crea tu empresa en la plataforma
-3. Obtén tus credenciales de API (Token)
-4. Configura el software en el panel de FacturaLatam
-5. Ingresa las credenciales en el sistema POS (Settings → DIAN)
+
+1. **Comprar la licencia del software**
+   - Visita https://facturalatam.com
+   - Adquiere la licencia según tus necesidades
+   - Descarga el paquete de instalación
+
+2. **Instalar la API**
+
+   La API de FacturaLatam se puede instalar de varias formas:
+
+   **Opción A: Instalación Local (Recomendada para desarrollo)**
+   ```bash
+   # Descargar el instalador desde facturalatam.com
+   # Seguir las instrucciones del instalador
+   # La API estará disponible en: http://localhost:8080
+   ```
+
+   **Opción B: Instalación en Servidor**
+   ```bash
+   # Desplegar en tu servidor (Windows Server, Linux, etc.)
+   # Configurar como servicio del sistema
+   # Exponer mediante proxy reverso (nginx, Apache)
+   # URL: https://api.tudominio.com
+   ```
+
+   **Opción C: Docker (si está disponible)**
+   ```bash
+   # Verificar si FacturaLatam ofrece imagen Docker
+   docker run -d -p 8080:8080 facturalatam/api
+   ```
+
+3. **Configurar la API instalada**
+   - Abrir el panel de administración de la API
+   - Configurar certificados DIAN
+   - Configurar ambiente (Testing/Producción)
+   - Obtener el Software ID y PIN
+
+4. **Conectar el POS con la API instalada**
+   - En el POS: Settings → DIAN
+   - Ingresar URL de la API instalada (ej: `http://localhost:8080` o `https://api.tudominio.com`)
+   - Ingresar Software ID y PIN obtenidos de la API
+   - Configurar resolución de facturación DIAN
 
 **Endpoints principales utilizados:**
 - `POST /api/ubl2.1/config/{nit}/{dv}` - Configuración de empresa
@@ -151,6 +192,12 @@ Este sistema utiliza la API de **FacturaLatam.com** para la facturación electr�
 - `POST /api/ubl2.1/invoice/{nit}/{dv}` - Emisión de factura
 - `POST /api/ubl2.1/credit-note/{nit}/{dv}` - Nota crédito
 - `POST /api/ubl2.1/debit-note/{nit}/{dv}` - Nota débito
+
+**Ventajas de esta arquitectura:**
+- ✅ Control total de tus datos
+- ✅ Sin dependencias de servicios en la nube de terceros
+- ✅ Funciona sin internet (excepto para validación DIAN)
+- ✅ Instalación única, sin costos recurrentes por transacción
 
 #### 2. **Base de Datos PostgreSQL**
 
@@ -293,10 +340,11 @@ wails build
 
 ### Requisitos Previos
 
-1. **Cuenta en FacturaLatam.com**
-   - Registrarse en https://facturalatam.com
-   - Crear empresa en la plataforma
+1. **API de FacturaLatam.com instalada y configurada**
+   - Comprar e instalar la API (ver sección anterior)
+   - API corriendo en localhost o servidor
    - Tener habilitación DIAN (testset o producción)
+   - Software ID y PIN obtenidos de la configuración de la API
 
 2. **Información Tributaria del Restaurante**
    - NIT con dígito de verificación
@@ -388,9 +436,10 @@ Una vez configurado:
 
 | Error | Solución |
 |-------|----------|
-| **401 Unauthorized** | Verificar API Token, regenerar si es necesario |
+| **Connection refused** | Verificar que la API de FacturaLatam esté corriendo (localhost:8080 o URL configurada) |
+| **401 Unauthorized** | Verificar Software ID y PIN en configuración del POS |
 | **400 Bad Request** | Revisar datos tributarios, NIT, DV |
-| **Resolución inválida** | Verificar fechas de vigencia, prefijo, rangos |
+| **Resolución inválida** | Verificar fechas de vigencia, prefijo, rangos en la API instalada |
 | **Cliente inválido** | Asegurar que tiene tipo de documento y número de identificación |
 | **Producto sin código** | Todos los productos necesitan código (usar SKU) |
 
@@ -633,16 +682,21 @@ lpadmin -p
 
 | Error | Causa | Solución |
 |-------|-------|----------|
-| `401 Unauthorized` | Token inválido o expirado | Regenerar token en FacturaLatam.com |
+| `Connection refused` | API no está corriendo | Iniciar la API de FacturaLatam instalada |
+| `401 Unauthorized` | Software ID/PIN inválido | Verificar credenciales en configuración del POS y panel de la API |
 | `400 Bad Request` | Datos inválidos | Revisar NIT, DV, datos tributarios |
-| `404 Not Found` | Endpoint incorrecto | Verificar URL API en configuración |
-| `500 Server Error` | Error en API DIAN | Contactar soporte FacturaLatam |
-| `Resolución inválida` | Fuera de vigencia o rango | Actualizar resolución DIAN |
+| `404 Not Found` | Endpoint incorrecto | Verificar URL API en configuración (debe apuntar a tu instalación) |
+| `500 Server Error` | Error en API instalada | Revisar logs de la API de FacturaLatam, reiniciar servicio |
+| `Resolución inválida` | Fuera de vigencia o rango | Actualizar resolución DIAN en el panel de la API |
 
 **Verificar conexión:**
 ```bash
-# Test de conectividad
-curl -X GET https://api.facturalatam.com/api/health
+# Test de conectividad a tu API instalada
+# Cambiar localhost:8080 por tu URL si está en servidor
+curl -X GET http://localhost:8080/api/health
+
+# O si está en tu servidor
+curl -X GET https://api.tudominio.com/api/health
 ```
 
 ### La app va directo al dashboard sin login
@@ -729,7 +783,8 @@ hashedPIN := bcrypt.GenerateFromPassword([]byte(pin), 10)
 - ✅ Monitorear intentos de login fallidos
 
 **5. Facturación DIAN:**
-- ✅ Proteger API Token de FacturaLatam
+- ✅ Proteger Software ID y PIN de la API instalada
+- ✅ Asegurar acceso restringido a la API de FacturaLatam (firewall, localhost)
 - ✅ Usar ambiente de testing antes de producción
 - ✅ Validar resolución DIAN vigente
 - ❌ No compartir credenciales DIAN

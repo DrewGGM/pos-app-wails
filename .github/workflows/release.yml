@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'   # Solo se ejecuta cuando haces un tag tipo v1.0.0
 
+permissions:
+  contents: write  # Necesario para crear releases
+
 jobs:
   build:
     runs-on: windows-latest
@@ -42,7 +45,7 @@ jobs:
           cd ../..
         shell: pwsh
 
-      - name: Upload to public repo
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -62,15 +65,15 @@ jobs:
             - Windows 10/11 (64-bit)
             - PostgreSQL 14+ (local o cloud)
             - WebView2 Runtime (se instala automáticamente si no está presente)
-            - Cuenta en [FacturaLatam.com](https://facturalatam.com) para facturación electrónica DIAN
+            - **API de FacturaLatam.com** instalada (comprar e instalar desde https://facturalatam.com)
 
             ### 📖 Documentación
             Ver [README.md](https://github.com/DrewGGM/pos-app-wails/blob/main/README.md) para guía completa de instalación y configuración.
+
+            **Importante**: La facturación electrónica DIAN requiere instalar la API de FacturaLatam.com (no es una cuenta en la nube, es código que se compra e instala localmente o en tu servidor).
 
             ### 🔑 Credenciales por Defecto
             - Usuario: `admin`
             - Contraseña: `admin`
             - ⚠️ **Cambiar inmediatamente después del primer login**
-          repository: DrewGGM/wails-posapp-releases
-          token: ${{ secrets.RELEASE_TOKEN }}
           files: RestaurantPOS-Windows-x64.zip
