@@ -15,7 +15,9 @@ import {
   CreateTableArea,
   UpdateTableArea,
   DeleteTableArea,
-  CancelOrder
+  CancelOrder,
+  DeleteOrder,
+  SendToKitchen
 } from '../../wailsjs/go/services/OrderService';
 import { models } from '../../wailsjs/go/models';
 import { Order, Table, OrderItem, CreateOrderData } from '../types/models';
@@ -132,9 +134,14 @@ class WailsOrderService {
     }
   }
 
-  async updateOrder(id: number, orderData: Partial<Order>): Promise<Order> {
+  async updateOrder(id: number, orderData: CreateOrderData): Promise<Order> {
     try {
-      const order = await UpdateOrder(orderData as any);
+      // Add the ID to the order data for update
+      const orderWithId = {
+        ...orderData,
+        id: id
+      };
+      const order = await UpdateOrder(orderWithId as any);
       return mapOrder(order as any);
     } catch (error) {
       console.error('Error updating order:', error);
@@ -144,7 +151,7 @@ class WailsOrderService {
 
   async deleteOrder(id: number): Promise<void> {
     try {
-      await CancelOrder(id, 'Cancelled by user');
+      await DeleteOrder(id);
     } catch (error) {
       console.error('Error deleting order:', error);
       throw new Error('Error al eliminar orden');
@@ -304,6 +311,15 @@ class WailsOrderService {
     } catch (error) {
       console.error('Error updating order status:', error);
       throw new Error('Error al actualizar estado de orden');
+    }
+  }
+
+  async sendToKitchen(orderId: number): Promise<void> {
+    try {
+      await SendToKitchen(orderId);
+    } catch (error) {
+      console.error('Error sending order to kitchen:', error);
+      throw new Error('Error al enviar orden a cocina');
     }
   }
 }

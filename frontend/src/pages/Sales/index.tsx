@@ -58,6 +58,7 @@ import { Sale } from '../../types/models';
 import { wailsSalesService } from '../../services/wailsSalesService';
 import { useAuth } from '../../hooks';
 import { toast } from 'react-toastify';
+import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
 
 const Sales: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -80,11 +81,26 @@ const Sales: React.FC = () => {
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [companyLiabilityId, setCompanyLiabilityId] = useState<number | null>(null);
+  const [dianResponseDialog, setDianResponseDialog] = useState(false);
+  const [selectedDianResponse, setSelectedDianResponse] = useState<string>('');
 
   useEffect(() => {
     dispatch(fetchTodaySales());
     loadSalesHistory();
+    loadCompanyConfig();
   }, [dispatch]);
+
+  const loadCompanyConfig = async () => {
+    try {
+      const config = await GetRestaurantConfig();
+      if (config) {
+        setCompanyLiabilityId(config.type_liability_id || null);
+      }
+    } catch (error) {
+      console.error('Error loading company config:', error);
+    }
+  };
 
   const loadSalesHistory = async () => {
     dispatch(fetchSalesHistory({}));
@@ -421,52 +437,68 @@ const Sales: React.FC = () => {
                       {sale.needs_electronic_invoice ? (
                         sale.electronic_invoice ? (
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                            {/* Envío Status */}
-                            {sale.electronic_invoice.status === 'accepted' ? (
-                              <Chip
-                                size="small"
-                                icon={<CheckCircleIcon />}
-                                label="Aceptada"
-                                color="success"
-                              />
-                            ) : sale.electronic_invoice.status === 'sent' ? (
-                              <Chip
-                                size="small"
-                                icon={<CheckCircleIcon />}
-                                label="Enviada"
-                                color="success"
-                              />
-                            ) : sale.electronic_invoice.status === 'validating' ? (
-                              <Chip
-                                size="small"
-                                icon={<PendingIcon />}
-                                label="Validando DIAN..."
-                                color="warning"
-                              />
-                            ) : sale.electronic_invoice.status === 'error' || sale.electronic_invoice.status === 'rejected' ? (
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              {/* Envío Status */}
+                              {sale.electronic_invoice.status === 'accepted' ? (
                                 <Chip
                                   size="small"
-                                  icon={<ErrorIcon />}
-                                  label="Error"
-                                  color="error"
+                                  icon={<CheckCircleIcon />}
+                                  label="Aceptada"
+                                  color="success"
                                 />
+                              ) : sale.electronic_invoice.status === 'sent' ? (
+                                <Chip
+                                  size="small"
+                                  icon={<CheckCircleIcon />}
+                                  label="Enviada"
+                                  color="success"
+                                />
+                              ) : sale.electronic_invoice.status === 'validating' ? (
+                                <Chip
+                                  size="small"
+                                  icon={<PendingIcon />}
+                                  label="Validando..."
+                                  color="warning"
+                                />
+                              ) : sale.electronic_invoice.status === 'error' || sale.electronic_invoice.status === 'rejected' ? (
+                                <>
+                                  <Chip
+                                    size="small"
+                                    icon={<ErrorIcon />}
+                                    label="Error"
+                                    color="error"
+                                  />
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleSendElectronicInvoice(sale)}
+                                    title="Reintentar envío"
+                                  >
+                                    <SendIcon fontSize="small" />
+                                  </IconButton>
+                                </>
+                              ) : (
+                                <Chip
+                                  size="small"
+                                  icon={<PendingIcon />}
+                                  label="Pendiente"
+                                  color="warning"
+                                />
+                              )}
+
+                              {/* Button to view DIAN response */}
+                              {sale.electronic_invoice.dian_response && (
                                 <IconButton
                                   size="small"
-                                  onClick={() => handleSendElectronicInvoice(sale)}
-                                  title="Reintentar envío"
+                                  onClick={() => {
+                                    setSelectedDianResponse(sale.electronic_invoice!.dian_response || '');
+                                    setDianResponseDialog(true);
+                                  }}
+                                  title="Ver respuesta DIAN"
                                 >
-                                  <SendIcon fontSize="small" />
+                                  <ViewIcon fontSize="small" />
                                 </IconButton>
-                              </Box>
-                            ) : (
-                              <Chip
-                                size="small"
-                                icon={<PendingIcon />}
-                                label="Pendiente"
-                                color="warning"
-                              />
-                            )}
+                              )}
+                            </Box>
 
                             {/* Validación DIAN Status */}
                             {sale.electronic_invoice.is_valid === true && (
@@ -554,6 +586,15 @@ const Sales: React.FC = () => {
         {selectedSale?.invoice_type === 'electronic' && (
           <MenuItem onClick={() => selectedSale && handleResendInvoice(selectedSale)}>
             <ReceiptIcon sx={{ mr: 1 }} /> Reenviar Factura Electrónica
+          </MenuItem>
+        )}
+        {selectedSale?.electronic_invoice?.dian_response && (
+          <MenuItem onClick={() => {
+            setSelectedDianResponse(selectedSale?.electronic_invoice?.dian_response || '');
+            setDianResponseDialog(true);
+            handleMenuClose();
+          }}>
+            <ViewIcon sx={{ mr: 1 }} /> Ver Respuesta DIAN
           </MenuItem>
         )}
         {selectedSale?.status === 'completed' && (
@@ -736,9 +777,11 @@ const Sales: React.FC = () => {
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Impuestos:</Typography>
                   <Typography variant="body2">
-                    ${(selectedSale.tax || 0).toLocaleString('es-CO')}
+                    {companyLiabilityId !== null && companyLiabilityId !== 117 ? 'Impuestos (19%):' : 'Impuestos (N/A):'}
+                  </Typography>
+                  <Typography variant="body2">
+                    ${companyLiabilityId !== null && companyLiabilityId !== 117 ? (selectedSale.tax || 0).toLocaleString('es-CO') : '0'}
                   </Typography>
                 </Box>
                 {selectedSale.discount && selectedSale.discount > 0 && (
@@ -838,6 +881,59 @@ const Sales: React.FC = () => {
           <Button onClick={() => setRefundDialog(false)}>Cancelar</Button>
           <Button onClick={handleRefund} variant="contained" color="error">
             Procesar Reembolso
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* DIAN Response Dialog */}
+      <Dialog
+        open={dianResponseDialog}
+        onClose={() => setDianResponseDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Respuesta DIAN</Typography>
+            <Chip
+              label="JSON"
+              size="small"
+              color="primary"
+            />
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{
+            bgcolor: '#1e1e1e',
+            color: '#d4d4d4',
+            p: 2,
+            borderRadius: 1,
+            fontFamily: 'monospace',
+            fontSize: '0.875rem',
+            overflow: 'auto',
+            maxHeight: '60vh'
+          }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+              {selectedDianResponse ? (() => {
+                try {
+                  return JSON.stringify(JSON.parse(selectedDianResponse), null, 2);
+                } catch (e) {
+                  return selectedDianResponse;
+                }
+              })() : 'No hay respuesta DIAN disponible'}
+            </pre>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDianResponseDialog(false)}>Cerrar</Button>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              navigator.clipboard.writeText(selectedDianResponse);
+              toast.success('Respuesta copiada al portapapeles');
+            }}
+          >
+            Copiar JSON
           </Button>
         </DialogActions>
       </Dialog>

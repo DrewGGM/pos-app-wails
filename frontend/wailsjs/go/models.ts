@@ -743,6 +743,8 @@ export namespace models {
 	    category?: Category;
 	    image: string;
 	    stock: number;
+	    track_inventory: boolean;
+	    minimum_stock: number;
 	    is_active: boolean;
 	    tax_type_id: number;
 	    unit_measure_id: number;
@@ -765,6 +767,8 @@ export namespace models {
 	        this.category = this.convertValues(source["category"], Category);
 	        this.image = source["image"];
 	        this.stock = source["stock"];
+	        this.track_inventory = source["track_inventory"];
+	        this.minimum_stock = source["minimum_stock"];
 	        this.is_active = source["is_active"];
 	        this.tax_type_id = source["tax_type_id"];
 	        this.unit_measure_id = source["unit_measure_id"];
@@ -1358,6 +1362,7 @@ export namespace models {
 	    step4_completed: boolean;
 	    step5_completed: boolean;
 	    step6_completed: boolean;
+	    step7_completed: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -1421,6 +1426,7 @@ export namespace models {
 	        this.step4_completed = source["step4_completed"];
 	        this.step5_completed = source["step5_completed"];
 	        this.step6_completed = source["step6_completed"];
+	        this.step7_completed = source["step7_completed"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
@@ -1726,6 +1732,74 @@ export namespace models {
 	
 	
 	
+	export class GoogleSheetsConfig {
+	    id: number;
+	    is_enabled: boolean;
+	    service_account_email: string;
+	    private_key: string;
+	    spreadsheet_id: string;
+	    sheet_name: string;
+	    auto_sync: boolean;
+	    sync_interval: number;
+	    sync_time: string;
+	    sync_mode: string;
+	    include_sales: boolean;
+	    include_orders: boolean;
+	    include_products: boolean;
+	    include_clients: boolean;
+	    last_sync_at?: time.Time;
+	    last_sync_status: string;
+	    last_sync_error: string;
+	    total_syncs: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoogleSheetsConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.is_enabled = source["is_enabled"];
+	        this.service_account_email = source["service_account_email"];
+	        this.private_key = source["private_key"];
+	        this.spreadsheet_id = source["spreadsheet_id"];
+	        this.sheet_name = source["sheet_name"];
+	        this.auto_sync = source["auto_sync"];
+	        this.sync_interval = source["sync_interval"];
+	        this.sync_time = source["sync_time"];
+	        this.sync_mode = source["sync_mode"];
+	        this.include_sales = source["include_sales"];
+	        this.include_orders = source["include_orders"];
+	        this.include_products = source["include_products"];
+	        this.include_clients = source["include_clients"];
+	        this.last_sync_at = this.convertValues(source["last_sync_at"], time.Time);
+	        this.last_sync_status = source["last_sync_status"];
+	        this.last_sync_error = source["last_sync_error"];
+	        this.total_syncs = source["total_syncs"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class InventoryMovement {
 	    id: number;
 	    product_id: number;
@@ -2806,6 +2880,22 @@ export namespace services {
 	        this.reference = source["reference"];
 	    }
 	}
+	export class ProductDetail {
+	    product_name: string;
+	    quantity: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product_name = source["product_name"];
+	        this.quantity = source["quantity"];
+	        this.total = source["total"];
+	    }
+	}
 	
 	export class ProductSalesData {
 	    product_id: number;
@@ -2826,6 +2916,50 @@ export namespace services {
 	        this.total_sales = source["total_sales"];
 	        this.percentage = source["percentage"];
 	    }
+	}
+	export class ReportData {
+	    fecha: string;
+	    ventas_totales: number;
+	    ventas_dian: number;
+	    ventas_no_dian: number;
+	    numero_ordenes: number;
+	    productos_vendidos: number;
+	    ticket_promedio: number;
+	    detalle_productos: ProductDetail[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ReportData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fecha = source["fecha"];
+	        this.ventas_totales = source["ventas_totales"];
+	        this.ventas_dian = source["ventas_dian"];
+	        this.ventas_no_dian = source["ventas_no_dian"];
+	        this.numero_ordenes = source["numero_ordenes"];
+	        this.productos_vendidos = source["productos_vendidos"];
+	        this.ticket_promedio = source["ticket_promedio"];
+	        this.detalle_productos = this.convertValues(source["detalle_productos"], ProductDetail);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SalesChartData {
 	    date: string;
@@ -2948,6 +3082,23 @@ export namespace time {
 	
 	    static createFrom(source: any = {}) {
 	        return new Time(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
+
+}
+
+export namespace websocket {
+	
+	export class Server {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new Server(source);
 	    }
 	
 	    constructor(source: any = {}) {

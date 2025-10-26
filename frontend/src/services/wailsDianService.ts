@@ -72,6 +72,12 @@ export const wailsDianService = {
     return await svc.GetNumberingRanges();
   },
 
+  async migrateToProduction(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.MigrateToProduction();
+  },
+
   async testConnection(): Promise<void> {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');

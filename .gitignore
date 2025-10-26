@@ -20,6 +20,7 @@ data/local.db
 
 # IDE
 .vscode/
+.claude/
 .idea/
 *.swp
 *.swo

@@ -25,7 +25,7 @@ type DIANService struct {
 func NewDIANService() *DIANService {
 	service := &DIANService{
 		db:     database.GetDB(),
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: 120 * time.Second}, // 2 minutes for DIAN API calls that may take time
 	}
 	// Only load config if database is initialized
 	if service.db != nil {
@@ -543,9 +543,10 @@ func (s *DIANService) ChangeEnvironment(environment string) error {
 
 	url := fmt.Sprintf("%s/api/ubl2.1/config/environment", s.config.APIURL)
 
-	envID := 1 // Test
+	// Environment IDs: 1=Production, 2=Test
+	envID := 2 // Test by default
 	if environment == "production" {
-		envID = 2
+		envID = 1
 	}
 
 	data := map[string]interface{}{
@@ -581,6 +582,12 @@ func (s *DIANService) ChangeEnvironment(environment string) error {
 
 	// Update local config
 	s.config.Environment = environment
+
+	// Mark step 7 as completed when migrating to production
+	if environment == "production" {
+		s.config.Step7Completed = true
+	}
+
 	s.db.Save(s.config)
 
 	return nil
@@ -633,6 +640,115 @@ func (s *DIANService) GetNumberingRanges() (map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// MigrateToProduction performs the complete migration to production environment
+func (s *DIANService) MigrateToProduction() error {
+	if s.config == nil || s.config.APIToken == "" {
+		return fmt.Errorf("DIAN configuration not complete")
+	}
+
+	// Step 1: Change environment to production
+	if err := s.ChangeEnvironment("production"); err != nil {
+		return fmt.Errorf("failed to change environment to production: %w", err)
+	}
+
+	// Step 2: Get numbering ranges from DIAN
+	numberingRanges, err := s.GetNumberingRanges()
+	if err != nil {
+		return fmt.Errorf("failed to get numbering ranges: %w", err)
+	}
+
+	// Step 3: Parse and update configuration with production data
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	// Extract data from numbering ranges response
+	// The API response structure may vary - extracting common fields
+	if data, ok := numberingRanges["data"].(map[string]interface{}); ok {
+		// Try to find resolution data in various possible locations
+		if resolutions, ok := data["resolutions"].([]interface{}); ok && len(resolutions) > 0 {
+			// Get first resolution (invoice resolution)
+			if resolution, ok := resolutions[0].(map[string]interface{}); ok {
+				s.updateConfigFromResolution(&dianConfig, resolution)
+			}
+		} else {
+			// Data might be directly in the response
+			s.updateConfigFromResolution(&dianConfig, data)
+		}
+	} else {
+		// Data might be directly in the response
+		s.updateConfigFromResolution(&dianConfig, numberingRanges)
+	}
+
+	// Save updated configuration
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save production configuration: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &dianConfig
+
+	// Step 4: Register the production resolution with DIAN API
+	if err := s.ConfigureResolution(); err != nil {
+		return fmt.Errorf("failed to configure production resolution: %w", err)
+	}
+
+	return nil
+}
+
+// updateConfigFromResolution updates DIAN config from resolution data
+func (s *DIANService) updateConfigFromResolution(config *models.DIANConfig, data map[string]interface{}) {
+	// Extract prefix
+	if prefix, ok := data["prefix"].(string); ok && prefix != "" {
+		config.ResolutionPrefix = prefix
+	}
+
+	// Extract resolution number
+	if resolution, ok := data["resolution"].(string); ok && resolution != "" {
+		config.ResolutionNumber = resolution
+	}
+
+	// Extract technical key
+	if technicalKey, ok := data["technical_key"].(string); ok && technicalKey != "" {
+		config.TechnicalKey = technicalKey
+	}
+
+	// Extract from number
+	if from, ok := data["from"].(float64); ok {
+		config.ResolutionFrom = int(from)
+	}
+
+	// Extract to number
+	if to, ok := data["to"].(float64); ok {
+		config.ResolutionTo = int(to)
+	}
+
+	// Extract dates
+	if dateFrom, ok := data["date_from"].(string); ok && dateFrom != "" {
+		if t, err := time.Parse("2006-01-02", dateFrom); err == nil {
+			config.ResolutionDateFrom = t
+		}
+	}
+
+	if dateTo, ok := data["date_to"].(string); ok && dateTo != "" {
+		if t, err := time.Parse("2006-01-02", dateTo); err == nil {
+			config.ResolutionDateTo = t
+		}
+	}
+
+	// resolution_date from API response is typically the same as date_from
+	// If it exists and date_from doesn't, use it as date_from
+	if resolutionDate, ok := data["resolution_date"].(string); ok && resolutionDate != "" {
+		if config.ResolutionDateFrom.IsZero() {
+			if t, err := time.Parse("2006-01-02", resolutionDate); err == nil {
+				config.ResolutionDateFrom = t
+			}
+		}
+	}
 }
 
 // GetDIANConfig returns current DIAN configuration

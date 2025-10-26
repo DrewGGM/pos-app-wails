@@ -16,6 +16,8 @@ type Product struct {
 	Category        *Category      `json:"category,omitempty"`
 	Image           string         `gorm:"type:text" json:"image"`                         // Base64 encoded image
 	Stock           int            `json:"stock"`                                          // Can go negative
+	TrackInventory  bool           `gorm:"default:true" json:"track_inventory"`            // Whether to track inventory for this product
+	MinimumStock    int            `gorm:"default:0" json:"minimum_stock"`                 // Minimum stock threshold for low stock alerts
 	IsActive        bool           `gorm:"default:true" json:"is_active"`
 	TaxTypeID       int            `gorm:"default:1" json:"tax_type_id"`                   // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
 	UnitMeasureID   int            `gorm:"default:796" json:"unit_measure_id"`             // DIAN Unit Measure (70=Unidad, 796=Porción, 797=Ración)

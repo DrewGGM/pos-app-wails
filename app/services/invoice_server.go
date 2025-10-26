@@ -26,7 +26,7 @@ type InvoiceService struct {
 func NewInvoiceService() *InvoiceService {
 	return &InvoiceService{
 		db:     database.GetDB(),
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: 120 * time.Second}, // 2 minutes for DIAN API calls that may take time
 	}
 }
 
@@ -143,10 +143,45 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 
 	// Send to DIAN API
 	response, err := s.sendToDIAN(invoiceData, "invoice")
+
+	// Always create electronic invoice record, even on error
+	now := time.Now()
+	status := "error"
+	validationMessage := ""
+
+	// Create error response if sendToDIAN failed
 	if err != nil {
+		// Build error response
+		errorResponse := map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"message": "Error al enviar factura a DIAN",
+		}
+
+		// Convert error to JSON
+		responseJSON, _ := json.Marshal(errorResponse)
+
+		// Create electronic invoice record with error
+		electronicInvoice := &models.ElectronicInvoice{
+			SaleID:            sale.ID,
+			InvoiceNumber:     strconv.Itoa(invoiceData.Number),
+			Prefix:            invoiceData.Prefix,
+			Status:            status,
+			ValidationMessage: fmt.Sprintf("Error: %s", err.Error()),
+			DIANResponse:      string(responseJSON),
+			LastError:         err.Error(),
+			RetryCount:        0,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		}
+
+		if saveErr := s.db.Create(electronicInvoice).Error; saveErr != nil {
+			fmt.Printf("Warning: Could not save error electronic invoice: %v\n", saveErr)
+		}
+
 		// Queue for later retry if offline
 		s.queueInvoice(sale.ID, invoiceData, "invoice", err.Error())
-		return nil, fmt.Errorf("failed to send invoice: %w", err)
+		return electronicInvoice, fmt.Errorf("failed to send invoice: %w", err)
 	}
 
 	// Extract fields safely from response
@@ -164,11 +199,13 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 		zipKey = val
 	}
 
-	// Determine initial status and validation
-	now := time.Now()
-	status := "sent"
+	// Determine initial status and validation (now already declared above)
+	status = "sent"
 	var isValid *bool
-	var validationMessage string
+	validationMessage = ""
+
+	// Check if there's a zipKey (means test_set_id was used - async validation)
+	hasZipKey := zipKey != ""
 
 	// Check if sync validation result is present (no test_set_id used)
 	if isValidStr, ok := response["is_valid"].(string); ok {
@@ -190,6 +227,18 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 				validationMessage += "\nErrores:\n- " + strings.Join(errorMsgs, "\n- ")
 			}
 		}
+	} else if hasZipKey {
+		// test_set_id was used - validation is asynchronous via zipkey
+		status = "validating"
+		validationMessage = "Pendiente de validación DIAN (verificando con zipkey...)"
+		fmt.Printf("📋 Invoice sent with test_set_id - Status: validating, ZipKey: %s\n", zipKey)
+	}
+
+	// Convert full response to JSON string for storage
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		fmt.Printf("Warning: Could not marshal DIAN response to JSON: %v\n", err)
+		responseJSON = []byte("{}")
 	}
 
 	// Create electronic invoice record
@@ -204,7 +253,7 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 		Status:              status,
 		IsValid:             isValid,
 		ValidationMessage:   validationMessage,
-		DIANResponse:        string(response["response"].([]byte)),
+		DIANResponse:        string(responseJSON),
 		SentAt:              &now,
 		ValidationCheckedAt: &now, // Set if sync validation was performed
 	}
@@ -222,7 +271,187 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 	config.LastInvoiceNumber++
 	s.db.Save(&config)
 
+	// If zipkey was returned, start validation worker
+	if hasZipKey {
+		go s.validateZipKeyAsync(electronicInvoice.ID, zipKey)
+	}
+
 	return electronicInvoice, nil
+}
+
+// validateZipKeyAsync validates invoice with zipkey asynchronously
+func (s *InvoiceService) validateZipKeyAsync(invoiceID uint, zipKey string) {
+	maxRetries := 20 // Try for up to 20 times (20 * 3 seconds = 60 seconds)
+	retryInterval := 3 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(retryInterval)
+		}
+
+		fmt.Printf("🔍 Checking zipkey validation (attempt %d/%d) for invoice ID: %d\n", i+1, maxRetries, invoiceID)
+
+		// Call DIAN API to check status with zipkey
+		validated, isValid, validationMessage, dianResponse, err := s.checkZipKeyStatus(zipKey)
+
+		if err != nil {
+			fmt.Printf("❌ Error checking zipkey: %v\n", err)
+			continue
+		}
+
+		if !validated {
+			// Not ready yet, continue waiting
+			fmt.Printf("⏳ Zipkey validation not ready yet, will retry...\n")
+			continue
+		}
+
+		// Validation complete - update invoice
+		now := time.Now()
+		updateData := map[string]interface{}{
+			"is_valid":               &isValid,
+			"validation_message":     validationMessage,
+			"dian_response":          dianResponse,
+			"validation_checked_at":  &now,
+		}
+
+		if isValid {
+			updateData["status"] = "accepted"
+			updateData["accepted_at"] = &now
+			fmt.Printf("✅ Invoice validated successfully with zipkey\n")
+		} else {
+			updateData["status"] = "rejected"
+			fmt.Printf("❌ Invoice rejected by DIAN: %s\n", validationMessage)
+		}
+
+		if err := s.db.Model(&models.ElectronicInvoice{}).Where("id = ?", invoiceID).Updates(updateData).Error; err != nil {
+			fmt.Printf("Error updating invoice status: %v\n", err)
+		}
+
+		return // Successfully validated, exit
+	}
+
+	// Max retries reached without validation
+	fmt.Printf("⚠️  Max retries reached for zipkey validation, invoice remains in validating status\n")
+	s.db.Model(&models.ElectronicInvoice{}).Where("id = ?", invoiceID).Updates(map[string]interface{}{
+		"validation_message": "Timeout esperando validación DIAN - Verifique manualmente",
+	})
+}
+
+// checkZipKeyStatus checks invoice status using zipkey
+func (s *InvoiceService) checkZipKeyStatus(zipKey string) (validated bool, isValid bool, validationMessage string, dianResponse string, err error) {
+	// Load config
+	var config models.DIANConfig
+	if err := s.db.First(&config).Error; err != nil {
+		return false, false, "", "", fmt.Errorf("DIAN configuration not found")
+	}
+
+	// Call status endpoint
+	url := fmt.Sprintf("%s/api/ubl2.1/status/zip/%s", config.APIURL, zipKey)
+
+	// Prepare request body
+	requestData := map[string]interface{}{
+		"sendmail":     false,
+		"sendmailtome": false,
+		"is_payroll":   false,
+		"is_eqdoc":     true,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return false, false, "", "", err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return false, false, "", "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return false, false, "", "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, false, "", "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return false, false, "", "", fmt.Errorf("API error: %s", string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false, false, "", "", err
+	}
+
+	// Save full response
+	responseJSON, _ := json.Marshal(result)
+	dianResponse = string(responseJSON)
+
+	// Navigate to IsValid field in nested structure
+	// Path: ResponseDian -> Envelope -> Body -> GetStatusZipResponse -> GetStatusZipResult -> DianResponse -> IsValid
+	responseDian, ok := result["ResponseDian"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	envelope, ok := responseDian["Envelope"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	soapBody, ok := envelope["Body"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	getStatusZipResponse, ok := soapBody["GetStatusZipResponse"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	getStatusZipResult, ok := getStatusZipResponse["GetStatusZipResult"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	dianResponseData, ok := getStatusZipResult["DianResponse"].(map[string]interface{})
+	if !ok {
+		return false, false, "", dianResponse, nil
+	}
+
+	// Check if IsValid field is present (note: capital I and V)
+	isValidStr, hasIsValid := dianResponseData["IsValid"].(string)
+	if !hasIsValid || isValidStr == "" {
+		// Validation not ready yet
+		return false, false, "", dianResponse, nil
+	}
+
+	// Validation is ready
+	validated = true
+	isValid = isValidStr == "true"
+
+	if isValid {
+		validationMessage = "Validado exitosamente por DIAN"
+	} else {
+		// Extract error details from DianResponse
+		statusCode, _ := dianResponseData["StatusCode"].(string)
+		statusDesc, _ := dianResponseData["StatusDescription"].(string)
+		validationMessage = fmt.Sprintf("Código: %s - %s", statusCode, statusDesc)
+
+		// Check for error message
+		if errorMsg, ok := dianResponseData["ErrorMessage"].(string); ok && errorMsg != "" {
+			validationMessage += "\nError: " + errorMsg
+		}
+	}
+
+	return validated, isValid, validationMessage, dianResponse, nil
 }
 
 // prepareInvoiceData prepares invoice data from a sale
@@ -303,8 +532,8 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 		},
 	}
 
-	// Set invoice lines
-	invoice.InvoiceLines = s.prepareInvoiceLines(sale.Order)
+	// Set invoice lines - pass tax info to ensure consistency between header and lines
+	invoice.InvoiceLines = s.prepareInvoiceLines(sale.Order, taxID, taxPercent)
 
 	// Set discounts if any
 	if sale.Discount > 0 {
@@ -323,39 +552,41 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 }
 
 // prepareInvoiceLines prepares invoice lines from order items
-func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine {
+// headerTaxID and headerTaxPercent ensure consistency between header and line taxes
+func (s *InvoiceService) prepareInvoiceLines(order *models.Order, headerTaxID int, headerTaxPercent string) []InvoiceLine {
 	lines := make([]InvoiceLine, 0)
 
-	// Get DIAN parametric data for tax calculations
-	dianData := models.GetDIANParametricData()
+	// Convert tax percent to float for calculations
+	headerTaxPercentFloat := 0.0
+	if headerTaxPercent != "0" {
+		fmt.Sscanf(headerTaxPercent, "%f", &headerTaxPercentFloat)
+	}
 
 	for _, item := range order.Items {
 		// Use product ID as code (DIAN requires non-empty code)
-		// Based on API examples, simple unique identifiers are acceptable
 		productCode := fmt.Sprintf("%d", item.Product.ID)
 
-		// Get tax rate from product's tax type
-		taxType := dianData.TaxTypes[item.Product.TaxTypeID]
-		taxPercent := taxType.Percent
-		taxAmount := item.Subtotal * (taxPercent / 100.0)
+		// Use header tax info to ensure consistency with header TaxTotals
+		// This prevents FAS01b error (tax mismatch between header and lines)
+		taxAmount := item.Subtotal * (headerTaxPercentFloat / 100.0)
 
 		line := InvoiceLine{
-			UnitMeasureID:            item.Product.UnitMeasureID, // From product configuration (Porción, Ración, Unidad)
+			UnitMeasureID:            item.Product.UnitMeasureID,
 			InvoicedQuantity:         strconv.Itoa(item.Quantity),
 			LineExtensionAmount:      fmt.Sprintf("%.2f", item.Subtotal),
 			FreeOfChargeIndicator:    false,
 			Description:              item.Product.Name,
 			Notes:                    item.Notes,
-			Code:                     productCode, // Non-empty code required by DIAN
-			TypeItemIdentificationID: 4, // Standard item code (Código estándar de ítems)
+			Code:                     productCode,
+			TypeItemIdentificationID: 4,
 			PriceAmount:              fmt.Sprintf("%.2f", item.UnitPrice),
 			BaseQuantity:             "1",
 			TaxTotals: []TaxTotal{
 				{
-					TaxID:         item.Product.TaxTypeID, // From product configuration
+					TaxID:         headerTaxID,
 					TaxAmount:     fmt.Sprintf("%.2f", taxAmount),
 					TaxableAmount: fmt.Sprintf("%.2f", item.Subtotal),
-					Percent:       fmt.Sprintf("%.2f", taxPercent),
+					Percent:       headerTaxPercent,
 				},
 			},
 		}
@@ -556,6 +787,13 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 	}
 	if customer.Email != "" {
 		invoiceCustomer.Email = customer.Email
+	} else if customer.IdentificationNumber == "222222222222" {
+		// For CONSUMIDOR FINAL, use company email for sending invoice
+		var restaurantConfig models.RestaurantConfig
+		if err := s.db.First(&restaurantConfig).Error; err == nil && restaurantConfig.Email != "" {
+			invoiceCustomer.Email = restaurantConfig.Email
+			fmt.Printf("Using company email for CONSUMIDOR FINAL: %s\n", restaurantConfig.Email)
+		}
 	}
 	if customer.MerchantRegistration != nil && *customer.MerchantRegistration != "" {
 		invoiceCustomer.MerchantRegistration = *customer.MerchantRegistration

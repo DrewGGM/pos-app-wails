@@ -55,12 +55,19 @@ import {
   SystemUpdate as SystemUpdateIcon,
   Info as InfoIcon,
   CheckCircle as CheckCircleIcon,
+  Wifi as WifiIcon,
+  WifiOff as WifiOffIcon,
+  Refresh as RefreshIcon,
+  Send as SendIcon,
+  Close as CloseIcon,
+  CloudSync as CloudSyncIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
 import { wailsConfigService } from '../../services/wailsConfigService';
 import { wailsPrinterService, DetectedPrinter } from '../../services/wailsPrinterService';
 import { wailsUpdateService, UpdateInfo } from '../../services/wailsUpdateService';
+import { wailsWebSocketService, WebSocketStatus, WebSocketClient } from '../../services/wailsWebSocketService';
 import { useEffect } from 'react';
 import {
   GetDepartments,
@@ -71,6 +78,7 @@ import {
   GetTypeOrganizations
 } from '../../../wailsjs/go/services/ParametricService';
 import { compressImageToBase64, validateImageFile } from '../../utils/imageUtils';
+import GoogleSheetsSettings from './GoogleSheetsSettings';
 
 interface Department {
   id: number;
@@ -186,6 +194,7 @@ const Settings: React.FC = () => {
     resolution: false,
     creditNote: false,
     debitNote: false,
+    production: false,
   });
 
   // Print Settings
@@ -257,6 +266,11 @@ const Settings: React.FC = () => {
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<string>('');
 
+  // WebSocket Settings
+  const [wsStatus, setWsStatus] = useState<WebSocketStatus>({ running: false });
+  const [wsClients, setWsClients] = useState<WebSocketClient[]>([]);
+  const [refreshingWs, setRefreshingWs] = useState(false);
+
   // Load configurations on mount
   useEffect(() => {
     loadBusinessConfig();
@@ -265,7 +279,19 @@ const Settings: React.FC = () => {
     loadDianConfig();
     loadPrinterConfigs();
     loadSyncConfig();
+    loadWebSocketStatus();
   }, []);
+
+  // Auto-refresh WebSocket status every 5 seconds when on WebSocket tab
+  useEffect(() => {
+    if (selectedTab !== 6) return; // Only refresh when on WebSocket tab
+
+    const interval = setInterval(() => {
+      loadWebSocketStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedTab]);
 
   // Load municipalities when department changes
   useEffect(() => {
@@ -407,6 +433,7 @@ const Settings: React.FC = () => {
           resolution: config.step4_completed || false,
           creditNote: config.step5_completed || false,
           debitNote: config.step6_completed || false,
+          production: config.step7_completed || false,
         });
       }
     } catch (e) {
@@ -427,6 +454,47 @@ const Settings: React.FC = () => {
       }
     } catch (e) {
       console.error('Error loading sync config:', e);
+    }
+  };
+
+  const loadWebSocketStatus = async () => {
+    try {
+      const status = await wailsWebSocketService.getStatus();
+      setWsStatus(status);
+
+      if (status.running) {
+        const clients = await wailsWebSocketService.getConnectedClients();
+        setWsClients(clients);
+      }
+    } catch (e) {
+      console.error('Error loading WebSocket status:', e);
+      setWsStatus({ running: false, error: 'Failed to load status' });
+    }
+  };
+
+  const handleRefreshWebSocketStatus = async () => {
+    setRefreshingWs(true);
+    await loadWebSocketStatus();
+    setRefreshingWs(false);
+    toast.success('Estado actualizado');
+  };
+
+  const handleDisconnectClient = async (clientID: string) => {
+    try {
+      await wailsWebSocketService.disconnectClient(clientID);
+      toast.success('Cliente desconectado');
+      await loadWebSocketStatus();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al desconectar cliente');
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    try {
+      await wailsWebSocketService.sendTestNotification();
+      toast.success('Notificación de prueba enviada');
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al enviar notificación');
     }
   };
 
@@ -1005,6 +1073,38 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleMigrateToProduction = async () => {
+    try {
+      // Validate all previous steps are completed
+      if (!completedSteps.debitNote) {
+        toast.error('Por favor completa todos los pasos anteriores primero');
+        return;
+      }
+
+      if (!dianSettings.apiToken) {
+        toast.error('No se ha configurado el token de API');
+        return;
+      }
+
+      toast.info('Migrando ambiente a Producción...');
+
+      // Call backend to perform complete production migration
+      // This will: 1) Change environment, 2) Get numbering ranges, 3) Update config, 4) Register resolution
+      await wailsDianService.migrateToProduction();
+
+      toast.success('Migración a Producción completada exitosamente. Resolución de producción configurada.');
+      setCompletedSteps(prev => ({ ...prev, production: true }));
+
+      // Update DIAN settings to reflect production mode
+      setDianSettings(prev => ({ ...prev, testMode: false }));
+
+      await loadDianConfig();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error migrando a producción');
+      console.error('Error migrating to production:', e);
+    }
+  };
+
   const handleChangeEnvironment = async () => {
     try {
       await wailsDianService.changeEnvironment(dianSettings.testMode ? 'test' : 'production');
@@ -1098,8 +1198,10 @@ const Settings: React.FC = () => {
           <Tab icon={<ReceiptIcon />} label="Facturación" />
           <Tab icon={<PrintIcon />} label="Impresión" />
           <Tab icon={<SyncIcon />} label="Sincronización" />
+          <Tab icon={<CloudSyncIcon />} label="Google Sheets" />
           <Tab icon={<NotificationsIcon />} label="Notificaciones" />
           <Tab icon={<SecurityIcon />} label="Sistema" />
+          <Tab icon={<WifiIcon />} label="WebSocket" />
         </Tabs>
 
         <TabPanel value={selectedTab} index={0}>
@@ -2209,6 +2311,35 @@ const Settings: React.FC = () => {
                       )}
                     </Grid>
 
+                    {/* Step 7: Migrate to Production */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={handleMigrateToProduction}
+                        disabled={!completedSteps.debitNote || completedSteps.production}
+                        startIcon={completedSteps.production ? <span>✓</span> : null}
+                        sx={{
+                          backgroundColor: completedSteps.production ? 'success.main' : 'warning.main',
+                          '&:hover': {
+                            backgroundColor: completedSteps.production ? 'success.dark' : 'warning.dark',
+                          }
+                        }}
+                      >
+                        {completedSteps.production ? "✓ Paso 7 Completado: En Producción" : "Paso 7: Migrar a Producción"}
+                      </Button>
+                      {!completedSteps.debitNote && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                          Completa todos los pasos anteriores primero
+                        </Typography>
+                      )}
+                      {!completedSteps.production && completedSteps.debitNote && (
+                        <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5, ml: 2, fontWeight: 'bold' }}>
+                          ⚠️ Este paso cambiará el ambiente de pruebas a producción. Asegúrate de haber completado todas las pruebas necesarias.
+                        </Typography>
+                      )}
+                    </Grid>
+
                     <Grid item xs={12}>
                       <Button
                         variant="contained"
@@ -2595,6 +2726,11 @@ const Settings: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={selectedTab} index={4}>
+          {/* Google Sheets Settings */}
+          <GoogleSheetsSettings />
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={5}>
           {/* Notification Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2724,7 +2860,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={5}>
+        <TabPanel value={selectedTab} index={6}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2884,6 +3020,245 @@ const Settings: React.FC = () => {
                       </Grid>
                     )}
                   </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={7}>
+          {/* WebSocket Management */}
+          <Grid container spacing={3}>
+            {/* Server Status */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {wsStatus.running ? <WifiIcon sx={{ mr: 1, color: 'success.main' }} /> : <WifiOffIcon sx={{ mr: 1, color: 'error.main' }} />}
+                      <Typography variant="h6">
+                        Estado del Servidor
+                      </Typography>
+                    </Box>
+                    <IconButton onClick={handleRefreshWebSocketStatus} disabled={refreshingWs}>
+                      <RefreshIcon />
+                    </IconButton>
+                  </Box>
+
+                  {wsStatus.error ? (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {wsStatus.error}
+                    </Alert>
+                  ) : (
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ minWidth: 120 }}>
+                            Estado:
+                          </Typography>
+                          <Chip
+                            label={wsStatus.running ? 'Activo' : 'Inactivo'}
+                            color={wsStatus.running ? 'success' : 'error'}
+                            size="small"
+                          />
+                        </Box>
+                      </Grid>
+
+                      {wsStatus.running && (
+                        <>
+                          <Grid item xs={12}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ minWidth: 120 }}>
+                                Puerto:
+                              </Typography>
+                              <Typography variant="body2" fontWeight="bold">
+                                {wsStatus.port}
+                              </Typography>
+                            </Box>
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              Direcciones IP:
+                            </Typography>
+                            {wsStatus.local_ips && wsStatus.local_ips.length > 0 ? (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                {wsStatus.local_ips.map((ip, idx) => (
+                                  <Chip
+                                    key={idx}
+                                    label={`ws://${ip}:${wsStatus.port}`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                No disponible
+                              </Typography>
+                            )}
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <Divider sx={{ my: 1 }} />
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" color="primary.main">
+                                {wsStatus.total_clients || 0}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Clientes Totales
+                              </Typography>
+                            </Box>
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" color="info.main">
+                                {wsStatus.kitchen_clients || 0}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Cocinas
+                              </Typography>
+                            </Box>
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" color="warning.main">
+                                {wsStatus.waiter_clients || 0}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Meseros
+                              </Typography>
+                            </Box>
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" color="success.main">
+                                {wsStatus.pos_clients || 0}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                POS
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        </>
+                      )}
+                    </Grid>
+                  )}
+
+                  {wsStatus.running && (
+                    <Box sx={{ mt: 2 }}>
+                      <Button
+                        variant="outlined"
+                        startIcon={<SendIcon />}
+                        onClick={handleSendTestNotification}
+                        fullWidth
+                      >
+                        Enviar Notificación de Prueba
+                      </Button>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Connected Clients */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Clientes Conectados
+                  </Typography>
+
+                  {wsClients.length === 0 ? (
+                    <Alert severity="info">
+                      No hay clientes conectados
+                    </Alert>
+                  ) : (
+                    <List>
+                      {wsClients.map((client) => (
+                        <ListItem
+                          key={client.id}
+                          secondaryAction={
+                            <IconButton
+                              edge="end"
+                              onClick={() => handleDisconnectClient(client.id)}
+                              color="error"
+                            >
+                              <CloseIcon />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemText
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {client.type.toUpperCase()}
+                                </Typography>
+                                <Chip
+                                  label={
+                                    client.type === 'kitchen' ? 'Cocina' :
+                                    client.type === 'waiter' ? 'Mesero' :
+                                    client.type === 'pos' ? 'POS' : client.type
+                                  }
+                                  size="small"
+                                  color={
+                                    client.type === 'kitchen' ? 'info' :
+                                    client.type === 'waiter' ? 'warning' : 'success'
+                                  }
+                                />
+                              </Box>
+                            }
+                            secondary={
+                              <>
+                                <Typography variant="caption" component="div">
+                                  ID: {client.id.substring(0, 8)}...
+                                </Typography>
+                                <Typography variant="caption" component="div">
+                                  IP: {client.remote_addr}
+                                </Typography>
+                                <Typography variant="caption" component="div">
+                                  Conectado: {new Date(client.connected_at).toLocaleString('es-CO')}
+                                </Typography>
+                              </>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* WebSocket Information */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Información del WebSocket
+                  </Typography>
+                  <Alert severity="info">
+                    <Typography variant="body2" gutterBottom>
+                      El servidor WebSocket permite la comunicación en tiempo real con las aplicaciones móviles (Cocina y Meseros).
+                    </Typography>
+                    <Typography variant="body2" gutterBottom sx={{ mt: 1 }}>
+                      <strong>Puerto:</strong> {wsStatus.port || '8080'}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Tipos de clientes:</strong>
+                    </Typography>
+                    <ul style={{ marginTop: 8, marginBottom: 0 }}>
+                      <li><Typography variant="body2">Kitchen - Recibe nuevas órdenes de cocina</Typography></li>
+                      <li><Typography variant="body2">Waiter - Carga productos y envía órdenes</Typography></li>
+                      <li><Typography variant="body2">POS - Notificaciones del sistema principal</Typography></li>
+                    </ul>
+                  </Alert>
                 </CardContent>
               </Card>
             </Grid>

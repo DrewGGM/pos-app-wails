@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/grandcat/zeroconf"
+	"gorm.io/gorm"
 )
 
 // MessageType represents the type of WebSocket message
@@ -48,32 +52,39 @@ type Message struct {
 
 // Client represents a connected WebSocket client
 type Client struct {
-	ID         string
-	Type       ClientType
-	Connection *websocket.Conn
-	Send       chan []byte
-	Server     *Server
+	ID          string
+	Type        ClientType
+	Connection  *websocket.Conn
+	Send        chan []byte
+	Server      *Server
+	ConnectedAt time.Time
+	RemoteAddr  string
 }
 
 // Server represents the WebSocket server
 type Server struct {
-	clients    map[string]*Client
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	upgrader   websocket.Upgrader
-	mu         sync.RWMutex
-	port       string
+	clients      map[string]*Client
+	broadcast    chan []byte
+	register     chan *Client
+	unregister   chan *Client
+	upgrader     websocket.Upgrader
+	mu           sync.RWMutex
+	port         string
+	db           *gorm.DB
+	restHandlers *RESTHandlers
+	mdnsServer   interface{} // zeroconf.Server
+	mdnsShutdown chan bool
 }
 
 // NewServer creates a new WebSocket server
 func NewServer(port string) *Server {
 	return &Server{
-		clients:    make(map[string]*Client),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		port:       port,
+		clients:      make(map[string]*Client),
+		broadcast:    make(chan []byte),
+		register:     make(chan *Client),
+		unregister:   make(chan *Client),
+		port:         port,
+		mdnsShutdown: make(chan bool),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -85,6 +96,13 @@ func NewServer(port string) *Server {
 	}
 }
 
+// SetDB sets the database connection for REST API endpoints
+func (s *Server) SetDB(db *gorm.DB) {
+	s.db = db
+	s.restHandlers = NewRESTHandlers(db)
+	log.Println("WebSocket server: Database connection set for REST API")
+}
+
 // Start starts the WebSocket server
 func (s *Server) Start() error {
 	// Start the hub
@@ -94,12 +112,68 @@ func (s *Server) Start() error {
 	http.HandleFunc("/ws", s.handleWebSocket)
 	http.HandleFunc("/health", s.handleHealth)
 
+	// REST API endpoints for mobile apps
+	if s.restHandlers != nil {
+		http.HandleFunc("/api/products", s.restHandlers.HandleGetProducts)
+		http.HandleFunc("/api/orders/", s.restHandlers.HandleOrderByID)
+		http.HandleFunc("/api/orders", s.restHandlers.HandleOrders)
+		http.HandleFunc("/api/tables", s.restHandlers.HandleGetTables)
+		http.HandleFunc("/api/tables/status", s.restHandlers.HandleUpdateTableStatus)
+		log.Println("WebSocket server: REST API endpoints registered")
+	}
+
+	// Start mDNS service announcement
+	go s.startMDNS()
+
 	log.Printf("WebSocket server starting on port %s", s.port)
 	return http.ListenAndServe(s.port, nil)
 }
 
+// startMDNS announces the POS server via mDNS/Zeroconf
+func (s *Server) startMDNS() {
+	// Extract port number from ":8080" format
+	portStr := strings.TrimPrefix(s.port, ":")
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		log.Printf("mDNS: Invalid port format %s: %v", s.port, err)
+		return
+	}
+
+	// Register mDNS service
+	server, err := zeroconf.Register(
+		"POS Server",              // Service instance name
+		"_posserver._tcp",         // Service type
+		"local.",                  // Domain
+		port,                      // Port
+		[]string{"version=1.0"},   // TXT records
+		nil,                       // Network interfaces (nil = all)
+	)
+	if err != nil {
+		log.Printf("mDNS: Failed to register service: %v", err)
+		return
+	}
+
+	s.mdnsServer = server
+	log.Println("mDNS: POS Server announced successfully on _posserver._tcp.local")
+
+	// Wait for shutdown signal
+	<-s.mdnsShutdown
+	if server != nil {
+		server.Shutdown()
+		log.Println("mDNS: Service announcement stopped")
+	}
+}
+
 // Stop stops the WebSocket server
 func (s *Server) Stop() {
+	// Stop mDNS announcement
+	select {
+	case s.mdnsShutdown <- true:
+		log.Println("mDNS: Shutdown signal sent")
+	default:
+		log.Println("mDNS: Shutdown channel already closed or not listening")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -189,11 +263,13 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Create client
 	client := &Client{
-		ID:         generateClientID(),
-		Type:       clientType,
-		Connection: conn,
-		Send:       make(chan []byte, 256),
-		Server:     s,
+		ID:          generateClientID(),
+		Type:        clientType,
+		Connection:  conn,
+		Send:        make(chan []byte, 256),
+		Server:      s,
+		ConnectedAt: time.Now(),
+		RemoteAddr:  r.RemoteAddr,
 	}
 
 	// Register client
@@ -390,6 +466,11 @@ func (s *Server) broadcastToKitchen(message *Message) {
 	}
 }
 
+// BroadcastToKitchen broadcasts a message to all kitchen clients (public method)
+func (s *Server) BroadcastToKitchen(message Message) {
+	s.broadcastToKitchen(&message)
+}
+
 // broadcastToPOS broadcasts a message to all POS clients
 func (s *Server) broadcastToPOS(message *Message) {
 	data, err := json.Marshal(message)
@@ -522,13 +603,71 @@ func (s *Server) GetConnectedClients() []map[string]interface{} {
 
 	clients := make([]map[string]interface{}, 0, len(s.clients))
 	for _, client := range s.clients {
-		clients = append(clients, map[string]interface{}{
-			"id":   client.ID,
-			"type": client.Type,
-		})
+		clientData := map[string]interface{}{
+			"id":           client.ID,
+			"type":         string(client.Type),
+			"connected_at": client.ConnectedAt.Format(time.RFC3339),
+			"remote_addr":  client.RemoteAddr,
+		}
+		log.Printf("GetConnectedClients: Client data: %+v", clientData)
+		clients = append(clients, clientData)
 	}
 
+	log.Printf("GetConnectedClients: Returning %d clients", len(clients))
 	return clients
+}
+
+// GetServerStatus returns current server status
+func (s *Server) GetServerStatus() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Count clients by type
+	kitchenCount := 0
+	waiterCount := 0
+	posCount := 0
+
+	for _, client := range s.clients {
+		switch client.Type {
+		case ClientKitchen:
+			kitchenCount++
+		case ClientWaiter:
+			waiterCount++
+		case ClientPOS:
+			posCount++
+		}
+	}
+
+	return map[string]interface{}{
+		"running":        true,
+		"port":           s.port,
+		"total_clients":  len(s.clients),
+		"kitchen_clients": kitchenCount,
+		"waiter_clients":  waiterCount,
+		"pos_clients":     posCount,
+	}
+}
+
+// GetPort returns the server port
+func (s *Server) GetPort() string {
+	return s.port
+}
+
+// DisconnectClient disconnects a specific client
+func (s *Server) DisconnectClient(clientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	client, exists := s.clients[clientID]
+	if !exists {
+		return fmt.Errorf("client not found: %s", clientID)
+	}
+
+	// Close the client connection
+	client.Connection.Close()
+	delete(s.clients, clientID)
+
+	return nil
 }
 
 // Helper functions

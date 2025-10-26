@@ -200,15 +200,35 @@ func RunMigrations() error {
 		&models.SyncConfig{},
 		&models.TableLayout{},
 		&models.UITheme{},
+		&models.GoogleSheetsConfig{},
 	)
 
 	if err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
+	// Run additional column migrations for fields that might be missing
+	if err := runAdditionalMigrations(); err != nil {
+		log.Printf("Warning: Some additional migrations failed: %v", err)
+	}
+
 	// Create indexes for better performance
 	createIndexes()
 
+	return nil
+}
+
+// runAdditionalMigrations adds columns that might be missing in existing databases
+func runAdditionalMigrations() error {
+	// Add dian_response column to electronic_invoices if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE electronic_invoices
+		ADD COLUMN IF NOT EXISTS dian_response TEXT
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add dian_response column: %w", err)
+	}
+
+	log.Println("✅ Additional migrations completed successfully")
 	return nil
 }
 

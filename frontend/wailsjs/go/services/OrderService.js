@@ -26,6 +26,10 @@ export function CreateTableArea(arg1) {
   return window['go']['services']['OrderService']['CreateTableArea'](arg1);
 }
 
+export function DeleteOrder(arg1) {
+  return window['go']['services']['OrderService']['DeleteOrder'](arg1);
+}
+
 export function DeleteTable(arg1) {
   return window['go']['services']['OrderService']['DeleteTable'](arg1);
 }
@@ -76,6 +80,14 @@ export function GetTodayOrders() {
 
 export function RemoveItemFromOrder(arg1, arg2) {
   return window['go']['services']['OrderService']['RemoveItemFromOrder'](arg1, arg2);
+}
+
+export function SendToKitchen(arg1) {
+  return window['go']['services']['OrderService']['SendToKitchen'](arg1);
+}
+
+export function SetWebSocketServer(arg1) {
+  return window['go']['services']['OrderService']['SetWebSocketServer'](arg1);
 }
 
 export function UpdateOrder(arg1) {

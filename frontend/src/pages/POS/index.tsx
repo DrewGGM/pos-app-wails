@@ -132,16 +132,18 @@ const POS: React.FC = () => {
     };
   }, [subscribe]);
 
-  // Load order from navigation state (when continuing from Orders page)
+  // Load order from navigation state (when continuing or editing from Orders page)
   useEffect(() => {
-    const state = location.state as { continueOrder?: Order };
-    if (state?.continueOrder) {
-      const order = state.continueOrder;
+    const state = location.state as { continueOrder?: Order; editOrder?: Order };
+    const order = state?.continueOrder || state?.editOrder;
+
+    if (order) {
+      const isEditing = !!state?.editOrder;
       setCurrentOrder(order);
       setOrderItems(order.items || []);
       setSelectedTable(order.table || null);
       setSelectedCustomer(order.customer || null);
-      toast.info(`Orden ${order.order_number} cargada`);
+      toast.info(`Orden ${order.order_number} ${isEditing ? 'lista para editar' : 'cargada'}`);
 
       // Clear the state to avoid reloading on future renders
       window.history.replaceState({}, document.title);
@@ -359,7 +361,7 @@ const POS: React.FC = () => {
 
     setIsSavingOrder(true);
     try {
-      const order: CreateOrderData = {
+      const orderData: CreateOrderData = {
         type: selectedTable ? 'dine_in' : 'takeout',
         table_id: selectedTable?.id,
         customer_id: selectedCustomer?.id,
@@ -369,7 +371,18 @@ const POS: React.FC = () => {
         source: 'pos',
       };
 
-      const createdOrder = await wailsOrderService.createOrder(order);
+      let resultOrder: Order;
+
+      // Check if we're updating an existing order or creating a new one
+      if (currentOrder && currentOrder.id) {
+        // Update existing order
+        resultOrder = await wailsOrderService.updateOrder(currentOrder.id, orderData);
+        toast.success('Orden actualizada exitosamente');
+      } else {
+        // Create new order
+        resultOrder = await wailsOrderService.createOrder(orderData);
+        toast.success('Orden guardada exitosamente');
+      }
 
       // Send to kitchen if dine-in
       if (selectedTable) {
@@ -377,7 +390,7 @@ const POS: React.FC = () => {
           type: 'kitchen_order',
           timestamp: new Date().toISOString(),
           data: {
-            order: createdOrder,
+            order: resultOrder,
             table: selectedTable,
           },
         });
@@ -388,14 +401,13 @@ const POS: React.FC = () => {
         }
       }
 
-      toast.success('Orden guardada exitosamente');
       clearOrder();
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar la orden');
     } finally {
       setIsSavingOrder(false);
     }
-  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, clearOrder]);
+  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, clearOrder, currentOrder]);
 
   // Process payment
   const processPayment = useCallback(async (paymentData: any) => {
@@ -629,8 +641,9 @@ const POS: React.FC = () => {
             onClick={() => setCustomerDialogOpen(true)}
             variant={selectedCustomer ? 'contained' : 'outlined'}
             size="small"
+            color={selectedCustomer ? 'primary' : 'inherit'}
           >
-            Cliente
+            {selectedCustomer ? selectedCustomer.name : 'Cliente'}
           </Button>
           <Button
             startIcon={<DiscountIcon />}
@@ -694,44 +707,51 @@ const POS: React.FC = () => {
             </Typography>
           </Box>
 
+          {/* Electronic Invoice Option */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={needsElectronicInvoice}
+                onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="Factura Electrónica"
+            sx={{ mb: 2 }}
+          />
+
           {/* Action Buttons */}
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={needsElectronicInvoice}
-                  onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Factura Electrónica"
-              sx={{ mb: 1 }}
-            />
-            <Button
-              fullWidth
-              variant="outlined"
-              color="error"
-              onClick={clearOrder}
-              disabled={orderItems.length === 0}
-              sx={{ mb: 1 }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              fullWidth
-              variant="contained"
-              color="primary"
-              startIcon={isSavingOrder ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-              onClick={saveOrder}
-              disabled={orderItems.length === 0 || isSavingOrder || isProcessingPayment}
-              sx={{ mb: 1 }}
-            >
-              {isSavingOrder ? 'Guardando...' : 'Guardar Orden'}
-            </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {/* Row 1: Management Actions */}
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                color="error"
+                startIcon={<ClearIcon />}
+                onClick={clearOrder}
+                disabled={orderItems.length === 0}
+              >
+                Cancelar
+              </Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                color="primary"
+                startIcon={isSavingOrder ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                onClick={saveOrder}
+                disabled={orderItems.length === 0 || isSavingOrder || isProcessingPayment}
+              >
+                {isSavingOrder ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </Box>
+
+            {/* Row 2: Payment Action (Primary) */}
             <Button
               fullWidth
               variant="contained"
               color="success"
+              size="large"
               startIcon={isProcessingPayment ? <CircularProgress size={20} color="inherit" /> : <PaymentIcon />}
               onClick={() => setPaymentDialogOpen(true)}
               disabled={orderItems.length === 0 || !cashRegisterId || isSavingOrder || isProcessingPayment}
@@ -800,6 +820,7 @@ const POS: React.FC = () => {
         onClose={() => setTableDialogOpen(false)}
         onSelectTable={setSelectedTable}
         selectedTable={selectedTable}
+        onlyAvailable={!!(currentOrder && currentOrder.id && currentOrder.table_id)}
       />
     </Box>
   );

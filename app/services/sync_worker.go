@@ -34,10 +34,6 @@ func StartSyncWorker() {
 
 	// Ensure local DB is initialised to avoid nil dereference
 	if worker.localDB == nil {
-		if err := database.InitializeLocalDB("./data/local.db"); err != nil {
-			log.Printf("Local DB init failed: %v. Sync worker will not start.", err)
-			return
-		}
 		worker.localDB = database.GetLocalDB()
 		if worker.localDB == nil {
 			log.Println("Local DB is nil after initialisation. Sync worker will not start.")

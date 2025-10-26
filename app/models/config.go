@@ -148,6 +148,7 @@ type DIANConfig struct {
 	Step4Completed bool `json:"step4_completed"` // Resolution configuration (Invoice)
 	Step5Completed bool `json:"step5_completed"` // Resolution configuration (Credit Note - NC)
 	Step6Completed bool `json:"step6_completed"` // Resolution configuration (Debit Note - ND)
+	Step7Completed bool `json:"step7_completed"` // Production migration
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -213,4 +214,41 @@ type UITheme struct {
 	DarkMode        bool      `json:"dark_mode"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// GoogleSheetsConfig represents Google Sheets integration configuration
+type GoogleSheetsConfig struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	// Enable/Disable
+	IsEnabled bool `json:"is_enabled"`
+
+	// Google Service Account Credentials
+	ServiceAccountEmail string `json:"service_account_email"`
+	PrivateKey          string `gorm:"type:text" json:"private_key"` // JSON key file content
+
+	// Spreadsheet Configuration
+	SpreadsheetID string `json:"spreadsheet_id"` // ID from Google Sheets URL
+	SheetName     string `json:"sheet_name"`     // Tab name (default: "Reportes")
+
+	// Sync Settings
+	AutoSync     bool `json:"auto_sync"`      // Enable automatic sync
+	SyncInterval int  `json:"sync_interval"`  // Minutes (default: 60 = hourly)
+	SyncTime     string `json:"sync_time"`    // Specific time for daily sync (format: "23:00")
+	SyncMode     string `json:"sync_mode"`    // "interval" or "daily"
+
+	// Data to Export
+	IncludeSales    bool `json:"include_sales"`
+	IncludeOrders   bool `json:"include_orders"`
+	IncludeProducts bool `json:"include_products"`
+	IncludeClients  bool `json:"include_clients"`
+
+	// Status
+	LastSyncAt     *time.Time `json:"last_sync_at,omitempty"`
+	LastSyncStatus string     `json:"last_sync_status"` // "success", "error", "pending"
+	LastSyncError  string     `json:"last_sync_error"`
+	TotalSyncs     int        `json:"total_syncs"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

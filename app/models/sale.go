@@ -108,7 +108,7 @@ type ElectronicInvoice struct {
 	Status               string       `json:"status"`                   // "pending", "sent", "accepted", "rejected", "validating"
 	IsValid              *bool        `json:"is_valid,omitempty"`       // DIAN validation result
 	ValidationMessage    string       `json:"validation_message"`       // DIAN validation message
-	DIANResponse         string       `json:"dian_response"`            // JSON response from DIAN
+	DIANResponse         string       `gorm:"type:text" json:"dian_response"` // JSON response from DIAN
 	SentAt               *time.Time   `json:"sent_at,omitempty"`        // When sent to DIAN
 	AcceptedAt           *time.Time   `json:"accepted_at,omitempty"`    // When accepted by DIAN
 	ValidationCheckedAt  *time.Time   `json:"validation_checked_at,omitempty"` // Last validation check

@@ -429,6 +429,7 @@ export interface DIANConfig extends BaseModel {
   step4_completed?: boolean;
   step5_completed?: boolean;
   step6_completed?: boolean;
+  step7_completed?: boolean;
 }
 
 // Printer config model

@@ -73,6 +73,21 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [error, setError] = useState('');
   const [change, setChange] = useState(0);
 
+  // Reset all state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setPaymentLines([]);
+      setSelectedMethod(null);
+      setAmount('');
+      setReference('');
+      setPrintReceipt(true);
+      setSendByEmail(true);
+      setCustomerEmail(customer?.email || '');
+      setError('');
+      setChange(0);
+    }
+  }, [open, customer?.email]);
+
   useEffect(() => {
     // Set initial amount to remaining balance
     const totalPaid = paymentLines.reduce((sum, line) => sum + line.amount, 0);

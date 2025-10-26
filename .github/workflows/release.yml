@@ -1,15 +1,15 @@
-name: Build and Release Wails App
+name: Build and Release POS System
 
 on:
   push:
     tags:
-      - 'v*'   # Solo se ejecuta cuando haces un tag tipo v1.0.0
+      - 'v*'
 
 permissions:
-  contents: write  # Necesario para crear releases
+  contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -55,45 +55,158 @@ jobs:
           cd ..
         shell: pwsh
 
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            RestaurantPOS-Windows-x64.zip
+            build/installer/RestaurantPOS-Setup-*.exe
+
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > $HOME/release-keystore.jks
+
+      - name: Create keystore.properties for Kitchen
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
+        run: |
+          cat > mobile-apps/kitchen/keystore.properties << EOF
+          storeFile=$HOME/release-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Create keystore.properties for Waiter
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
+        run: |
+          cat > mobile-apps/waiter/keystore.properties << EOF
+          storeFile=$HOME/release-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build Kitchen APK
+        run: |
+          cd mobile-apps/kitchen
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cd ../..
+
+      - name: Build Waiter APK
+        run: |
+          cd mobile-apps/waiter
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cd ../..
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Rename APKs
+        run: |
+          mv mobile-apps/kitchen/app/build/outputs/apk/release/app-release.apk kitchen-app-${{ steps.get_version.outputs.VERSION }}.apk
+          mv mobile-apps/waiter/app/build/outputs/apk/release/app-release.apk waiter-app-${{ steps.get_version.outputs.VERSION }}.apk
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-builds
+          path: |
+            kitchen-app-*.apk
+            waiter-app-*.apk
+
+  release:
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-builds
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "Restaurant POS System ${{ github.ref_name }}"
+          name: "Restaurant POS System ${{ steps.get_version.outputs.VERSION }}"
           body: |
-            ## Restaurant POS System Release ${{ github.ref_name }}
+            ## Restaurant POS System Release ${{ steps.get_version.outputs.VERSION }}
 
             Sistema de Punto de Venta para Restaurantes con Facturación Electrónica DIAN (Colombia)
 
             ### 📦 Instalación
 
-            **Opción 1: Instalador (Recomendado)**
-            1. Descargar `RestaurantPOS-Setup-1.0.0.exe`
-            2. Ejecutar el instalador (pedirá permisos de administrador una sola vez)
-            3. El instalador configurará todo automáticamente
-            4. Ejecutar desde el Menú Inicio
+            **Windows (Aplicación Principal)**
 
-            **Opción 2: Portable**
-            1. Descargar `RestaurantPOS-Windows-x64.zip`
-            2. Extraer el archivo `RestaurantPOS.exe`
-            3. Ejecutar `RestaurantPOS.exe`
-            4. Completar el Setup Wizard en el primer inicio
+            1. Descargar e instalar `RestaurantPOS-Setup-*.exe` (recomendado)
+            2. O descargar `RestaurantPOS-Windows-x64.zip` para versión portable
+
+            **Android (Apps Móviles)**
+
+            1. Descargar en tu dispositivo Android:
+               - `kitchen-app-${{ steps.get_version.outputs.VERSION }}.apk` - App de Cocina
+               - `waiter-app-${{ steps.get_version.outputs.VERSION }}.apk` - App de Mesero
+            2. Habilitar "Instalar desde fuentes desconocidas"
+            3. Instalar las APKs
+            4. Las apps se actualizarán automáticamente
+
+            ### 🔄 Actualización Automática
+
+            Las apps móviles detectan automáticamente nuevas versiones al iniciar:
+            - ✅ Verificación automática de actualizaciones
+            - ✅ Descarga en segundo plano
+            - ✅ Notificación cuando está lista
+            - ✅ Instalación con un clic
 
             ### ✅ Requisitos
-            - Windows 10/11 (64-bit)
-            - PostgreSQL 14+ (local o cloud)
-            - WebView2 Runtime (se instala automáticamente si no está presente)
-            - **API de FacturaLatam.com** instalada (comprar e instalar desde https://facturalatam.com)
 
-            ### 📖 Documentación
-            Ver [README.md](https://github.com/DrewGGM/pos-app-wails/blob/main/README.md) para guía completa de instalación y configuración.
+            **Windows:** Windows 10/11 (64-bit), PostgreSQL 14+, WebView2 Runtime
 
-            **Importante**: La facturación electrónica DIAN requiere instalar la API de FacturaLatam.com (no es una cuenta en la nube, es código que se compra e instala localmente o en tu servidor).
+            **Android:** Android 8.0 (API 26) o superior
 
             ### 🔑 Credenciales por Defecto
+
             - Usuario: `admin`
             - Contraseña: `admin`
-            - ⚠️ **Cambiar inmediatamente después del primer login**
+            - ⚠️ Cambiar inmediatamente después del primer login
           files: |
             RestaurantPOS-Windows-x64.zip
             build/installer/RestaurantPOS-Setup-*.exe
+            kitchen-app-*.apk
+            waiter-app-*.apk

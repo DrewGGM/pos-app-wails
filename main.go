@@ -23,22 +23,25 @@ var assets embed.FS
 
 // App struct
 type App struct {
-	ctx                  context.Context
-	LoggerService        *services.LoggerService
-	ConfigManagerService *services.ConfigManagerService
-	ProductService       *services.ProductService
-	OrderService         *services.OrderService
-	SalesService         *services.SalesService
-	DIANService          *services.DIANService
-	EmployeeService      *services.EmployeeService
-	ReportsService       *services.ReportsService
-	PrinterService       *services.PrinterService
-	ConfigService        *services.ConfigService
-	ParametricService    *services.ParametricService
-	DashboardService     *services.DashboardService
-	UpdateService        *services.UpdateService
-	WSServer             *websocket.Server
-	isFirstRun           bool
+	ctx                     context.Context
+	LoggerService           *services.LoggerService
+	ConfigManagerService    *services.ConfigManagerService
+	ProductService          *services.ProductService
+	OrderService            *services.OrderService
+	SalesService            *services.SalesService
+	DIANService             *services.DIANService
+	EmployeeService         *services.EmployeeService
+	ReportsService          *services.ReportsService
+	PrinterService          *services.PrinterService
+	ConfigService           *services.ConfigService
+	ParametricService       *services.ParametricService
+	DashboardService        *services.DashboardService
+	UpdateService           *services.UpdateService
+	GoogleSheetsService     *services.GoogleSheetsService
+	ReportSchedulerService  *services.ReportSchedulerService
+	WSServer                *websocket.Server
+	WSManagementService     *services.WebSocketManagementService
+	isFirstRun              bool
 }
 
 // NewApp creates a new App application struct
@@ -63,6 +66,16 @@ func (a *App) startup(ctx context.Context) {
 		}
 		a.LoggerService.LogInfo("Starting WebSocket server", "Port: "+wsPort)
 		a.WSServer = websocket.NewServer(":" + wsPort)
+		// Set database connection for REST API endpoints
+		a.WSServer.SetDB(database.GetDB())
+		// Update the WebSocket management service with the server instance
+		if a.WSManagementService != nil {
+			a.WSManagementService.SetServer(a.WSServer)
+		}
+		// Update the OrderService with the server instance
+		if a.OrderService != nil {
+			a.OrderService.SetWebSocketServer(a.WSServer)
+		}
 		go func() {
 			defer a.LoggerService.RecoverPanic()
 			a.WSServer.Start()
@@ -81,6 +94,17 @@ func (a *App) startup(ctx context.Context) {
 			defer a.LoggerService.RecoverPanic()
 			services.StartValidationWorker()
 		}()
+
+		// Start Google Sheets report scheduler
+		if a.ReportSchedulerService != nil {
+			a.LoggerService.LogInfo("Starting Google Sheets report scheduler")
+			go func() {
+				defer a.LoggerService.RecoverPanic()
+				if err := a.ReportSchedulerService.Start(); err != nil {
+					a.LoggerService.LogWarning("Report scheduler start error", err.Error())
+				}
+			}()
+		}
 	}
 }
 
@@ -93,6 +117,22 @@ func (a *App) domReady(ctx context.Context) {
 // either by clicking the window close button or calling runtime.Quit.
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	a.LoggerService.LogInfo("Application closing")
+
+	// Send final report to Google Sheets if enabled
+	if a.GoogleSheetsService != nil && !a.isFirstRun {
+		a.LoggerService.LogInfo("Sending final report to Google Sheets")
+		if err := a.GoogleSheetsService.SyncNow(); err != nil {
+			a.LoggerService.LogWarning("Failed to send final report to Google Sheets", err.Error())
+		} else {
+			a.LoggerService.LogInfo("Final report sent to Google Sheets successfully")
+		}
+	}
+
+	// Stop report scheduler
+	if a.ReportSchedulerService != nil {
+		a.LoggerService.LogInfo("Stopping report scheduler")
+		a.ReportSchedulerService.Stop()
+	}
 
 	// Stop WebSocket server
 	if a.WSServer != nil {
@@ -130,6 +170,10 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.ParametricService = services.NewParametricService()
 	a.DashboardService = services.NewDashboardService()
 
+	// Initialize Google Sheets services
+	a.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
+	a.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), a.GoogleSheetsService)
+
 	// Initialize default system configurations
 	if err := a.ConfigService.InitializeDefaultSystemConfigs(); err != nil {
 		return fmt.Errorf("failed to initialize system configs: %w", err)
@@ -166,6 +210,10 @@ func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
 func main() {
 	// Initialize logger FIRST to catch all errors
 	loggerService := services.NewLoggerService()
+	if loggerService == nil {
+		fmt.Println("CRITICAL: Logger service failed to initialize")
+		os.Exit(1)
+	}
 	defer loggerService.Close()
 
 	// Recover from any panic and log it
@@ -201,7 +249,6 @@ func main() {
 	app.isFirstRun = isFirstRun
 
 	// Always initialize services (needed for Wails bindings generation)
-	// Services should handle nil database gracefully
 	loggerService.LogInfo("Initializing services")
 	app.ProductService = services.NewProductService()
 	app.OrderService = services.NewOrderService()
@@ -213,50 +260,52 @@ func main() {
 	app.ConfigService = services.NewConfigService()
 	app.ParametricService = services.NewParametricService()
 	app.DashboardService = services.NewDashboardService()
+	app.WSManagementService = services.NewWebSocketManagementService(nil)
+	app.GoogleSheetsService = services.NewGoogleSheetsService(nil)
+	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
 
 	if !isFirstRun {
-		// Load configuration from config.json
 		loggerService.LogInfo("Loading configuration from config.json")
 		cfg, err := app.ConfigManagerService.GetConfig()
 		if err != nil {
-			loggerService.LogError("Error loading config, trying fallback to environment variables", err)
-			// Fallback to environment variables
-			if err := database.Initialize(); err != nil {
-				loggerService.LogFatal("Failed to initialize database", err)
-				return
-			}
+			loggerService.LogError("Error loading config, will show setup wizard", err)
+			app.isFirstRun = true
+			isFirstRun = true
 		} else {
-			// Initialize database with config
 			loggerService.LogInfo("Initializing database with config.json settings")
 			if err := database.InitializeWithConfig(cfg); err != nil {
-				loggerService.LogFatal("Failed to initialize database with config", err)
-				return
+				loggerService.LogError("Failed to initialize database with config", err)
+				app.isFirstRun = true
+				isFirstRun = true
 			}
 		}
 
-		// CRITICAL: Reinitialize all services AFTER database is ready
-		// This ensures they get the actual database connection, not nil
-		loggerService.LogInfo("Reinitializing services with database connection")
-		app.ProductService = services.NewProductService()
-		app.OrderService = services.NewOrderService()
-		app.SalesService = services.NewSalesService()
-		app.DIANService = services.NewDIANService()
-		app.EmployeeService = services.NewEmployeeService()
-		app.ReportsService = services.NewReportsService()
-		app.PrinterService = services.NewPrinterService()
-		app.ConfigService = services.NewConfigService()
-		app.ParametricService = services.NewParametricService()
-		app.DashboardService = services.NewDashboardService()
+		if !isFirstRun {
+			loggerService.LogInfo("Reinitializing services with database connection")
+			app.ProductService = services.NewProductService()
+			app.OrderService = services.NewOrderService()
+			app.SalesService = services.NewSalesService()
+			app.DIANService = services.NewDIANService()
+			app.EmployeeService = services.NewEmployeeService()
+			app.ReportsService = services.NewReportsService()
+			app.PrinterService = services.NewPrinterService()
+			app.ConfigService = services.NewConfigService()
+			app.ParametricService = services.NewParametricService()
+			app.DashboardService = services.NewDashboardService()
 
-		// Initialize default system configurations (only after DB is ready)
-		loggerService.LogInfo("Initializing default system configurations")
-		app.ConfigService.InitializeDefaultSystemConfigs()
-	} else {
-		loggerService.LogInfo("First run detected - setup wizard will be shown")
-		loggerService.LogInfo("Services initialized but database will be configured via setup wizard")
+			// Initialize Google Sheets services
+			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
+			app.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), app.GoogleSheetsService)
+
+			loggerService.LogInfo("Initializing default system configurations")
+			app.ConfigService.InitializeDefaultSystemConfigs()
+		}
 	}
 
-	// Build bind list with all services (always available for bindings generation)
+	if isFirstRun {
+		loggerService.LogInfo("First run detected - setup wizard will be shown")
+	}
+
 	bindList := []interface{}{
 		app,
 		app.LoggerService,
@@ -272,9 +321,11 @@ func main() {
 		app.ConfigService,
 		app.ParametricService,
 		app.DashboardService,
+		app.GoogleSheetsService,
+		app.ReportSchedulerService,
+		app.WSManagementService,
 	}
 
-	// Create application with options
 	err = wails.Run(&options.App{
 		Title:  "Restaurant POS System",
 		Width:  1400,
@@ -293,11 +344,11 @@ func main() {
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
 		},
-		// App metadata (aparece en Propiedades del .exe)
 		Menu: nil,
 	})
 
 	if err != nil {
+		loggerService.LogError("Wails application error", err)
 		println("Error:", err.Error())
 	}
 }

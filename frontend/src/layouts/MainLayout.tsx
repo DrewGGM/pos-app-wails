@@ -66,12 +66,6 @@ const menuItems: MenuItem[] = [
     roles: ['admin', 'cashier', 'waiter'],
   },
   {
-    text: 'Cocina',
-    icon: <RestaurantIcon />,
-    path: '/kitchen',
-    roles: ['admin', 'kitchen'],
-  },
-  {
     text: 'Órdenes',
     icon: <ReceiptIcon />,
     path: '/orders',

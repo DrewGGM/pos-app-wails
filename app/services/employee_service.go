@@ -314,6 +314,17 @@ func (s *EmployeeService) CloseCashRegister(registerID uint, closingAmount float
 	// Print report
 	go s.printerSvc.PrintCashRegisterReport(report)
 
+	// Send report to Google Sheets if enabled
+	go func() {
+		googleSheetsService := NewGoogleSheetsService(s.db)
+		if googleSheetsService != nil {
+			if err := googleSheetsService.SyncNow(); err != nil {
+				// Log error but don't fail the cash register close
+				fmt.Printf("Failed to send report to Google Sheets: %v\n", err)
+			}
+		}
+	}()
+
 	return report, nil
 }
 

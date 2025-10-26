@@ -35,7 +35,7 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { Customer } from '../../types/models';
-import { salesService } from '../../services/salesService';
+import { wailsSalesService } from '../../services/wailsSalesService';
 import { toast } from 'react-toastify';
 
 interface CustomerDialogProps {
@@ -97,7 +97,7 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
 
     setLoading(true);
     try {
-      const results = await salesService.searchCustomers(searchQuery);
+      const results = await wailsSalesService.searchCustomers(searchQuery);
       setSearchResults(results);
       if (results.length === 0) {
         toast.info('No se encontraron clientes');
@@ -141,20 +141,23 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
 
     setLoading(true);
     try {
-      let savedCustomer: Customer;
-      
       if (editMode && formData.id) {
-        savedCustomer = await salesService.updateCustomer(formData.id, formData);
+        await wailsSalesService.updateCustomer(formData.id, formData);
         toast.success('Cliente actualizado');
       } else {
-        savedCustomer = await salesService.createCustomer(formData);
+        await wailsSalesService.createCustomer(formData);
         toast.success('Cliente registrado');
       }
-      
+
+      // Re-fetch to get the saved customer with ID
+      const savedCustomer = formData.id
+        ? await wailsSalesService.getCustomer(formData.id)
+        : (await wailsSalesService.searchCustomers(formData.identification_number!))[0];
+
       onSelectCustomer(savedCustomer);
       handleClose();
     } catch (error: any) {
-      if (error.response?.status === 409) {
+      if (error.message?.includes('duplicate') || error.message?.includes('existe')) {
         toast.error('Ya existe un cliente con ese número de identificación');
       } else {
         toast.error('Error al guardar cliente');

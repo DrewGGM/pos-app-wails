@@ -54,17 +54,8 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 ; Ejecutable principal
 Source: "..\build\bin\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
-; Archivos de configuración de ejemplo
+; Archivos de documentación
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
-
-; IMPORTANTE: No copiar config.json - se creará en el primer run
-
-[Dirs]
-; Crear directorios con permisos de escritura para todos los usuarios
-; Esto permite que la app escriba logs sin permisos de admin
-Name: "{commonappdata}\{#MyAppName}"; Permissions: users-full
-Name: "{commonappdata}\{#MyAppName}\logs"; Permissions: users-full
-Name: "{commonappdata}\{#MyAppName}\data"; Permissions: users-full
 
 [Icons]
 ; Acceso directo en menú inicio
@@ -83,12 +74,13 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 
 [Run]
 ; Ejecutar la app después de instalar (opcional)
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; IMPORTANTE: shellexec ejecuta sin permisos elevados para que %APPDATA% apunte al usuario correcto
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallDelete]
-; Limpiar archivos de configuración al desinstalar (OPCIONAL - pregunta al usuario)
-Type: filesandordirs; Name: "{commonappdata}\{#MyAppName}"
-Type: files; Name: "{app}\config.json"
+; NOTA: Los archivos de datos están en %APPDATA%\PosApp\ (específico por usuario)
+; No se eliminan automáticamente al desinstalar para preservar la configuración
+; El usuario puede eliminarlos manualmente desde: C:\Users\<usuario>\AppData\Roaming\PosApp\
 
 [Code]
 // Verificar si WebView2 Runtime está instalado

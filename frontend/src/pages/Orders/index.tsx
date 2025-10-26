@@ -33,6 +33,9 @@ import {
   Add as AddIcon,
   Visibility as VisibilityIcon,
   Payment as PaymentIcon,
+  Restaurant as RestaurantIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
@@ -105,8 +108,14 @@ const Orders: React.FC = () => {
   };
 
   const handleProcessPayment = (order: Order) => {
-    // Navigate to POS with the order loaded
+    // Navigate to POS with the order loaded for payment
     navigate('/pos', { state: { continueOrder: order } });
+    handleMenuClose();
+  };
+
+  const handleEditOrder = (order: Order) => {
+    // Navigate to POS with the order loaded for editing
+    navigate('/pos', { state: { editOrder: order } });
     handleMenuClose();
   };
 
@@ -130,6 +139,38 @@ const Orders: React.FC = () => {
       }
     } catch (error) {
       toast.error('Error al duplicar orden');
+    }
+    handleMenuClose();
+  };
+
+  const handleSendToKitchen = async (order: Order) => {
+    try {
+      if (order.id) {
+        await wailsOrderService.sendToKitchen(order.id);
+        toast.success(`Orden #${order.order_number} enviada a cocina`);
+      }
+    } catch (error) {
+      console.error('Error sending order to kitchen:', error);
+      toast.error('Error al enviar orden a cocina');
+    }
+    handleMenuClose();
+  };
+
+  const handleDeleteOrder = async (order: Order) => {
+    if (!window.confirm(`¿Estás seguro de eliminar la orden #${order.order_number}? Esta acción no se puede deshacer.`)) {
+      handleMenuClose();
+      return;
+    }
+
+    try {
+      if (order.id) {
+        await wailsOrderService.deleteOrder(order.id);
+        toast.success(`Orden #${order.order_number} eliminada`);
+        loadOrders(); // Reload orders after deletion
+      }
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      toast.error('Error al eliminar orden');
     }
     handleMenuClose();
   };
@@ -256,6 +297,17 @@ const Orders: React.FC = () => {
           )}
           <IconButton
             size="small"
+            color="warning"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSendToKitchen(params.row);
+            }}
+            title="Enviar a cocina"
+          >
+            <RestaurantIcon fontSize="small" />
+          </IconButton>
+          <IconButton
+            size="small"
             onClick={(e) => {
               e.stopPropagation();
               handleMenuClick(e, params.row);
@@ -338,17 +390,29 @@ const Orders: React.FC = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
+        <MenuItem onClick={() => selectedOrder && handleEditOrder(selectedOrder)}>
+          <EditIcon sx={{ mr: 1 }} /> Editar Orden
+        </MenuItem>
+        <MenuItem onClick={() => selectedOrder && handleViewDetails()}>
+          <VisibilityIcon sx={{ mr: 1 }} /> Ver Detalles
+        </MenuItem>
+        <Divider />
         <MenuItem onClick={() => selectedOrder && handlePrintOrder(selectedOrder)}>
           <PrintIcon sx={{ mr: 1 }} /> Imprimir
         </MenuItem>
         <MenuItem onClick={() => selectedOrder && handleDuplicateOrder(selectedOrder)}>
           <ReceiptIcon sx={{ mr: 1 }} /> Duplicar
         </MenuItem>
-        {selectedOrder?.status === 'pending' && (
-          <MenuItem onClick={() => navigate(`/kitchen`)}>
-            Enviar a Cocina
-          </MenuItem>
-        )}
+        <MenuItem onClick={() => selectedOrder && handleSendToKitchen(selectedOrder)}>
+          <RestaurantIcon sx={{ mr: 1 }} /> Enviar a Cocina
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => selectedOrder && handleDeleteOrder(selectedOrder)}
+          sx={{ color: 'error.main' }}
+        >
+          <DeleteIcon sx={{ mr: 1 }} /> Eliminar Orden
+        </MenuItem>
       </Menu>
 
       {/* Order Details Dialog */}

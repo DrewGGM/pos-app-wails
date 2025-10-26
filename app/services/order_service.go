@@ -3,8 +3,10 @@ package services
 import (
 	"PosApp/app/database"
 	"PosApp/app/models"
+	"PosApp/app/websocket"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -16,6 +18,7 @@ type OrderService struct {
 	localDB    *database.LocalDB
 	productSvc *ProductService
 	printerSvc *PrinterService
+	wsServer   *websocket.Server
 }
 
 // NewOrderService creates a new order service
@@ -25,7 +28,14 @@ func NewOrderService() *OrderService {
 		localDB:    database.GetLocalDB(),
 		productSvc: NewProductService(),
 		printerSvc: NewPrinterService(),
+		wsServer:   nil, // Will be set later
 	}
+}
+
+// SetWebSocketServer sets the WebSocket server instance
+func (s *OrderService) SetWebSocketServer(server *websocket.Server) {
+	log.Printf("OrderService: Setting WebSocket server (server=%v)", server != nil)
+	s.wsServer = server
 }
 
 // CreateOrder creates a new order
@@ -100,7 +110,74 @@ func (s *OrderService) UpdateOrder(order *models.Order) error {
 		return s.localDB.SaveOrder(order)
 	}
 
-	return s.db.Save(order).Error
+	// Get existing order to preserve order_number and other fields
+	var existingOrder models.Order
+	if err := s.db.Preload("Items").First(&existingOrder, order.ID).Error; err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	// Preserve critical fields
+	order.OrderNumber = existingOrder.OrderNumber
+	order.CreatedAt = existingOrder.CreatedAt
+
+	// Use transaction to update order and items
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing items
+		if err := tx.Where("order_id = ?", order.ID).Delete(&models.OrderItem{}).Error; err != nil {
+			return fmt.Errorf("failed to delete existing items: %w", err)
+		}
+
+		// Set order_id for all new items
+		for i := range order.Items {
+			order.Items[i].OrderID = order.ID
+			order.Items[i].ID = 0 // Ensure new items are created
+		}
+
+		// Update order (without items first)
+		if err := tx.Model(&models.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
+			"type":        order.Type,
+			"status":      order.Status,
+			"table_id":    order.TableID,
+			"customer_id": order.CustomerID,
+			"employee_id": order.EmployeeID,
+			"subtotal":    order.Subtotal,
+			"tax":         order.Tax,
+			"discount":    order.Discount,
+			"total":       order.Total,
+			"notes":       order.Notes,
+			"source":      order.Source,
+		}).Error; err != nil {
+			return fmt.Errorf("failed to update order: %w", err)
+		}
+
+		// Create new items
+		for i := range order.Items {
+			if err := tx.Create(&order.Items[i]).Error; err != nil {
+				return fmt.Errorf("failed to create item: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Check if order has unsent items and send to kitchen
+	hasUnsentItems := false
+	for _, item := range order.Items {
+		if !item.SentToKitchen {
+			hasUnsentItems = true
+			break
+		}
+	}
+
+	if order.Status == models.OrderStatusPending && hasUnsentItems {
+		go s.sendToKitchen(order)
+	}
+
+	return nil
 }
 
 // GetOrder gets an order by ID
@@ -270,7 +347,7 @@ func (s *OrderService) RemoveItemFromOrder(orderID uint, itemID uint) error {
 
 // CancelOrder cancels an order
 func (s *OrderService) CancelOrder(orderID uint, reason string) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Get order with items
 		var order models.Order
 		if err := tx.Preload("Items").First(&order, orderID).Error; err != nil {
@@ -291,6 +368,29 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 
 		return tx.Save(&order).Error
 	})
+
+	if err != nil {
+		return err
+	}
+
+	// Notify kitchen about cancellation via WebSocket
+	if s.wsServer != nil {
+		data := map[string]interface{}{
+			"order_id": fmt.Sprintf("%d", orderID),
+			"status":   "cancelled",
+		}
+		dataJSON, _ := json.Marshal(data)
+
+		message := websocket.Message{
+			Type:      websocket.TypeOrderUpdate,
+			Timestamp: time.Now(),
+			Data:      dataJSON,
+		}
+		s.wsServer.BroadcastToKitchen(message)
+		log.Printf("OrderService: Cancellation notification sent to kitchen for order ID %d", orderID)
+	}
+
+	return nil
 }
 
 // Table Management
@@ -464,8 +564,50 @@ func (s *OrderService) updateInventory(tx *gorm.DB, productID uint, quantity int
 }
 
 func (s *OrderService) sendToKitchen(order *models.Order) {
+	log.Printf("OrderService: Sending order %s to kitchen", order.OrderNumber)
+
 	// Send to kitchen display via WebSocket
-	// This will be implemented with WebSocket service
+	if s.wsServer != nil {
+		// Preload all relationships
+		var fullOrder models.Order
+		if err := s.db.Preload("Items.Product").Preload("Table").First(&fullOrder, order.ID).Error; err != nil {
+			log.Printf("OrderService: Error loading order details: %v", err)
+			return
+		}
+
+		// Create WebSocket message
+		message := websocket.Message{
+			Type:      websocket.TypeKitchenOrder,
+			Timestamp: time.Now(),
+		}
+
+		// Serialize order data
+		orderData, err := json.Marshal(fullOrder)
+		if err != nil {
+			log.Printf("OrderService: Error marshaling order: %v", err)
+			return
+		}
+		message.Data = orderData
+
+		// Broadcast to kitchen clients
+		s.wsServer.BroadcastToKitchen(message)
+		log.Printf("OrderService: Order %s sent to kitchen successfully", order.OrderNumber)
+
+		// Mark all items as sent to kitchen
+		now := time.Now()
+		for i := range fullOrder.Items {
+			if !fullOrder.Items[i].SentToKitchen {
+				fullOrder.Items[i].SentToKitchen = true
+				fullOrder.Items[i].SentToKitchenAt = &now
+				if err := s.db.Save(&fullOrder.Items[i]).Error; err != nil {
+					log.Printf("OrderService: Error marking item %d as sent: %v", fullOrder.Items[i].ID, err)
+				}
+			}
+		}
+		log.Printf("OrderService: Marked %d items as sent to kitchen", len(fullOrder.Items))
+	} else {
+		log.Println("OrderService: WebSocket server not initialized, skipping kitchen notification")
+	}
 
 	// Check if kitchen printing is enabled in printer config
 	var printerConfig models.PrinterConfig
@@ -484,13 +626,70 @@ func (s *OrderService) sendItemToKitchen(order *models.Order, item *models.Order
 	item.SentToKitchenAt = &now
 	s.db.Save(item)
 
+	log.Printf("OrderService: Sending item %d from order %s to kitchen", item.ID, order.OrderNumber)
+
 	// Send via WebSocket
-	// This will be implemented with WebSocket service
+	if s.wsServer != nil {
+		// Preload product
+		s.db.Preload("Product").First(item, item.ID)
+
+		message := websocket.Message{
+			Type:      websocket.TypeKitchenOrder,
+			Timestamp: time.Now(),
+		}
+
+		itemData, err := json.Marshal(map[string]interface{}{
+			"order_id":     order.ID,
+			"order_number": order.OrderNumber,
+			"item":         item,
+			"type":         "single_item",
+		})
+		if err != nil {
+			log.Printf("OrderService: Error marshaling item: %v", err)
+			return
+		}
+		message.Data = itemData
+
+		s.wsServer.BroadcastToKitchen(message)
+	}
 }
 
 func (s *OrderService) notifyOrderReady(order *models.Order) {
-	// Send notification via WebSocket
-	// This will be implemented with WebSocket service
+	log.Printf("OrderService: Notifying that order %s is ready", order.OrderNumber)
+
+	// Send notification via WebSocket to POS and waiter apps
+	if s.wsServer != nil {
+		message := websocket.Message{
+			Type:      websocket.TypeNotification,
+			Timestamp: time.Now(),
+		}
+
+		notificationData, err := json.Marshal(map[string]interface{}{
+			"type":         "order_ready",
+			"order_id":     order.ID,
+			"order_number": order.OrderNumber,
+			"message":      fmt.Sprintf("Order %s is ready", order.OrderNumber),
+		})
+		if err != nil {
+			log.Printf("OrderService: Error marshaling notification: %v", err)
+			return
+		}
+		message.Data = notificationData
+
+		// Broadcast to all clients (POS and waiters)
+		s.wsServer.BroadcastMessage(message)
+	}
+}
+
+// SendToKitchen manually sends an order to kitchen (can be called from UI to resend)
+func (s *OrderService) SendToKitchen(orderID uint) error {
+	var order models.Order
+	if err := s.db.Preload("Items.Product").Preload("Table").First(&order, orderID).Error; err != nil {
+		return fmt.Errorf("order not found: %w", err)
+	}
+
+	s.sendToKitchen(&order)
+	return nil
 }
 
 // Local cache methods
@@ -600,4 +799,68 @@ func (s *OrderService) UpdateTableArea(area *models.TableArea) error {
 // DeleteTableArea soft deletes a table area
 func (s *OrderService) DeleteTableArea(id uint) error {
 	return s.db.Delete(&models.TableArea{}, id).Error
+}
+
+// DeleteOrder permanently deletes an order and updates table status
+func (s *OrderService) DeleteOrder(orderID uint) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Get order to check table ID
+		var order models.Order
+		if err := tx.First(&order, orderID).Error; err != nil {
+			return fmt.Errorf("order not found: %w", err)
+		}
+
+		tableID := order.TableID
+
+		// Delete order items first
+		if err := tx.Where("order_id = ?", orderID).Delete(&models.OrderItem{}).Error; err != nil {
+			return fmt.Errorf("failed to delete order items: %w", err)
+		}
+
+		// Delete the order
+		if err := tx.Delete(&order).Error; err != nil {
+			return fmt.Errorf("failed to delete order: %w", err)
+		}
+
+		// If order had a table, check if table should be marked as available
+		if tableID != nil {
+			var count int64
+			tx.Model(&models.Order{}).Where("table_id = ? AND status = ?", *tableID, models.OrderStatusPending).Count(&count)
+
+			// If no more pending orders, mark table as available
+			if count == 0 {
+				if err := tx.Model(&models.Table{}).Where("id = ?", *tableID).Update("status", "available").Error; err != nil {
+					log.Printf("Warning: Failed to update table status after deleting order: %v", err)
+				} else {
+					log.Printf("Table %d marked as available after deleting last pending order", *tableID)
+				}
+			}
+		}
+
+		log.Printf("Order %d deleted successfully", orderID)
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Notify kitchen about deletion via WebSocket
+	if s.wsServer != nil {
+		data := map[string]interface{}{
+			"order_id": fmt.Sprintf("%d", orderID),
+			"status":   "cancelled",
+		}
+		dataJSON, _ := json.Marshal(data)
+
+		message := websocket.Message{
+			Type:      websocket.TypeOrderUpdate,
+			Timestamp: time.Now(),
+			Data:      dataJSON,
+		}
+		s.wsServer.BroadcastToKitchen(message)
+		log.Printf("OrderService: Deletion notification sent to kitchen for order ID %d", orderID)
+	}
+
+	return nil
 }

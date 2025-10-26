@@ -22,6 +22,24 @@ type LocalDB struct {
 
 var localDB *LocalDB
 
+// getLocalDBPath returns the path for local database in AppData
+func getLocalDBPath() string {
+	// Get AppData directory
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		// Fallback to user's home directory
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			// Ultimate fallback to current directory
+			return "./data/local.db"
+		}
+		appData = filepath.Join(homeDir, "AppData", "Roaming")
+	}
+
+	// Create path in AppData/PosApp/data/local.db
+	return filepath.Join(appData, "PosApp", "data", "local.db")
+}
+
 // InitializeLocalDB initializes the local SQLite database
 func InitializeLocalDB(dbPath string) error {
 	// Create directory if it doesn't exist
@@ -59,7 +77,7 @@ func InitializeLocalDB(dbPath string) error {
 // GetLocalDB returns the local database instance
 func GetLocalDB() *LocalDB {
 	if localDB == nil {
-		InitializeLocalDB("./data/local.db")
+		InitializeLocalDB(getLocalDBPath())
 	}
 	return localDB
 }

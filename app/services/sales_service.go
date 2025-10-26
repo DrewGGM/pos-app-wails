@@ -79,7 +79,7 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		IsSynced:       false,
 	}
 
-	// Set customer if provided
+	// Set customer if provided, or use default CONSUMIDOR FINAL
 	if customerData != nil {
 		// Create or update customer
 		customer, err := s.createOrUpdateCustomer(customerData)
@@ -88,6 +88,17 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		}
 		sale.CustomerID = &customer.ID
 		sale.Customer = customer
+	} else {
+		// No customer provided - use default CONSUMIDOR FINAL
+		var defaultCustomer models.Customer
+		err := s.db.Where("identification_number = ?", "222222222222").First(&defaultCustomer).Error
+		if err == nil {
+			sale.CustomerID = &defaultCustomer.ID
+			sale.Customer = &defaultCustomer
+			fmt.Printf("Using default CONSUMIDOR FINAL customer for sale\n")
+		} else {
+			fmt.Printf("Warning: Default CONSUMIDOR FINAL customer not found, sale will have no customer\n")
+		}
 	}
 
 	// Set invoice type and flag
@@ -152,22 +163,28 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 	// Process electronic invoice and print if needed
 	if needsElectronicInvoice {
 		go func() {
+			fmt.Printf("🧾 Sending electronic invoice for sale #%s...\n", sale.SaleNumber)
 			invoice, err := s.invoiceSvc.SendInvoice(sale, sendEmailToCustomer)
 			if err != nil {
 				// Log error, invoice will be queued for retry
-				fmt.Printf("Failed to send electronic invoice: %v\n", err)
-				// Print simple receipt if invoice fails
-				if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
-					fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
-				}
+				fmt.Printf("❌ Failed to send electronic invoice for sale #%s: %v\n", sale.SaleNumber, err)
+				fmt.Printf("⚠️  Invoice queued for retry. Will not print automatically.\n")
+				// DO NOT print simple receipt when electronic invoice was requested
+				// User can manually reprint once invoice is sent successfully
 			} else {
 				// Attach electronic invoice to sale
 				sale.ElectronicInvoice = invoice
-				s.db.Save(sale)
+				if err := s.db.Save(sale).Error; err != nil {
+					fmt.Printf("Error saving electronic invoice to sale: %v\n", err)
+				}
+
+				fmt.Printf("✅ Electronic invoice created for sale #%s (Status: %s)\n", sale.SaleNumber, invoice.Status)
 
 				// Print electronic invoice after successful creation
 				if err := s.printerSvc.PrintReceipt(sale, true); err != nil {
-					fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
+					fmt.Printf("Failed to print electronic invoice for sale #%s: %v\n", sale.SaleNumber, err)
+				} else {
+					fmt.Printf("🖨️  Electronic invoice printed for sale #%s\n", sale.SaleNumber)
 				}
 			}
 		}()
@@ -176,7 +193,9 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		go func() {
 			if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
 				// Log error but don't fail the sale
-				fmt.Printf("Failed to print receipt for sale %d: %v\n", sale.ID, err)
+				fmt.Printf("Failed to print simple receipt for sale #%s: %v\n", sale.SaleNumber, err)
+			} else {
+				fmt.Printf("🖨️  Simple receipt printed for sale #%s\n", sale.SaleNumber)
 			}
 		}()
 	}
@@ -683,8 +702,14 @@ func (s *SalesService) PrintReceiptWithPrinter(saleID uint, printerID uint) erro
 		return fmt.Errorf("sale not found: %w", err)
 	}
 
-	// Determine if it's an electronic invoice
-	isElectronicInvoice := sale.ElectronicInvoice != nil
+	// Determine if it's an electronic invoice based on the flag, not just presence of invoice object
+	// This ensures we print the electronic format when requested, even if invoice is still processing
+	isElectronicInvoice := sale.NeedsElectronicInvoice && sale.ElectronicInvoice != nil
+
+	// If electronic invoice was requested but not yet created, return error
+	if sale.NeedsElectronicInvoice && sale.ElectronicInvoice == nil {
+		return fmt.Errorf("factura electrónica aún no está lista - intente nuevamente en unos segundos")
+	}
 
 	// Print receipt with specific printer
 	if printerID > 0 {

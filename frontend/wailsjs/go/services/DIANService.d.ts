@@ -21,6 +21,8 @@ export function GetDIANConfig():Promise<models.DIANConfig>;
 
 export function GetNumberingRanges():Promise<Record<string, any>>;
 
+export function MigrateToProduction():Promise<void>;
+
 export function SendInvoice(arg1:services.DIANInvoice):Promise<services.DIANInvoiceResponse>;
 
 export function TestConnection():Promise<void>;

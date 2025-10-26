@@ -34,6 +34,7 @@ interface TableSelectorProps {
   onClose: () => void;
   onSelectTable: (table: Table | null) => void;
   selectedTable: Table | null;
+  onlyAvailable?: boolean; // When true, only show available tables (for changing tables)
 }
 
 const TableSelector: React.FC<TableSelectorProps> = ({
@@ -41,6 +42,7 @@ const TableSelector: React.FC<TableSelectorProps> = ({
   onClose,
   onSelectTable,
   selectedTable,
+  onlyAvailable = false,
 }) => {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,9 +76,9 @@ const TableSelector: React.FC<TableSelectorProps> = ({
     }
   };
 
-  const filteredTables = selectedZone 
-    ? tables.filter(t => (t.zone || 'general') === selectedZone)
-    : tables;
+  const filteredTables = tables
+    .filter(t => !selectedZone || (t.zone || 'general') === selectedZone)
+    .filter(t => !onlyAvailable || t.status === 'available');
 
   const getTableColor = (table: Table) => {
     switch (table.status) {
@@ -122,6 +124,13 @@ const TableSelector: React.FC<TableSelectorProps> = ({
   };
 
   const handleSelectTable = (table: Table) => {
+    // When onlyAvailable is true, only allow available tables
+    if (onlyAvailable && table.status !== 'available') {
+      toast.warning(`Mesa ${table.number} no está disponible para cambiar`);
+      return;
+    }
+
+    // Normal mode: allow available and occupied tables
     if (table.status === 'available' || table.status === 'occupied') {
       onSelectTable(table);
       onClose();
@@ -215,7 +224,11 @@ const TableSelector: React.FC<TableSelectorProps> = ({
                   >
                     <CardActionArea
                       onClick={() => handleSelectTable(table)}
-                      disabled={table.status === 'reserved' || table.status === 'cleaning'}
+                      disabled={
+                        table.status === 'reserved' ||
+                        table.status === 'cleaning' ||
+                        (onlyAvailable && table.status !== 'available')
+                      }
                     >
                       <CardContent>
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

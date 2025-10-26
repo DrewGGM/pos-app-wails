@@ -27,15 +27,27 @@ func NewLoggerService() *LoggerService {
 
 // initializeLogger sets up the logging system
 func (s *LoggerService) initializeLogger() error {
-	// Get application data directory
-	userConfigDir, err := os.UserConfigDir()
-	if err != nil {
-		log.Printf("Warning: Could not get user config dir: %v", err)
-		userConfigDir = "."
+	// Get AppData directory for logs
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		// Fallback to user's home directory
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Printf("Warning: Could not get home directory: %v", err)
+			s.logDir = "logs"
+		} else {
+			appData = filepath.Join(homeDir, "AppData", "Roaming")
+		}
 	}
 
-	// Create logs directory in AppData/Roaming/PosApp/logs
-	s.logDir = filepath.Join(userConfigDir, "PosApp", "logs")
+	if appData != "" {
+		// Create logs directory in AppData/PosApp/logs
+		s.logDir = filepath.Join(appData, "PosApp", "logs")
+	} else {
+		s.logDir = "logs"
+	}
+
+	// Create logs directory
 	if err := os.MkdirAll(s.logDir, 0755); err != nil {
 		log.Printf("Warning: Could not create logs directory: %v", err)
 		// Fallback to current directory
@@ -45,7 +57,12 @@ func (s *LoggerService) initializeLogger() error {
 
 	// Create or open log file for today
 	if err := s.rotateLogFile(); err != nil {
-		return err
+		log.Printf("Warning: Could not create log file: %v. Logging to stdout only.", err)
+		// Continue without file logging - log to stdout only
+		s.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+		log.SetOutput(os.Stdout)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+		return nil
 	}
 
 	// Set up multi-writer to write to both file and stdout
