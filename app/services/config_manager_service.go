@@ -3,12 +3,13 @@ package services
 import (
 	"database/sql"
 	"fmt"
-	"os"
+	"log"
 	"strings"
 
 	"PosApp/app/config"
 	"PosApp/app/database"
 	"PosApp/app/models"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -119,6 +120,13 @@ func (s *ConfigManagerService) InitializeDatabase(dbConfig config.DatabaseConfig
 		return fmt.Errorf("failed to initialize database connection: %w", err)
 	}
 
+	// Create default data (admin user and default customer) after migrations
+	// This is idempotent - it only creates if they don't exist
+	log.Println("[Setup] Database initialized successfully, creating default data...")
+	if err := s.CreateDefaultData(); err != nil {
+		return fmt.Errorf("failed to create default data: %w", err)
+	}
+
 	return nil
 }
 
@@ -149,52 +157,102 @@ func (s *ConfigManagerService) createDatabase(dbConfig config.DatabaseConfig) er
 	return nil
 }
 
-// RunSeeds executes the seed data from init_default_users_and_customers.sql script
-func (s *ConfigManagerService) RunSeeds() error {
-	// Get database instance
+// CreateDefaultData creates default admin user and customer if they don't exist
+// This is called automatically after database migration during first run
+func (s *ConfigManagerService) CreateDefaultData() error {
 	db := database.GetDB()
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
-	// Check if admin already exists (table might be 'employees' or 'users')
-	var count int64
+	log.Println("[Setup] Checking for default data...")
 
-	// Try employees table first
-	err := db.Table("employees").Where("username = ?", "admin").Count(&count).Error
-	if err != nil {
-		// If employees table doesn't exist or error, try users table
-		err = db.Table("users").Where("username = ?", "admin").Count(&count).Error
+	// ============================================================
+	// Create default admin user
+	// ============================================================
+	var adminCount int64
+	db.Model(&models.Employee{}).Where("username = ?", "admin").Count(&adminCount)
+
+	if adminCount == 0 {
+		log.Println("[Setup] Creating default admin user...")
+
+		// Hash password and PIN
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
 		if err != nil {
-			return fmt.Errorf("failed to check existing admin: %w", err)
+			return fmt.Errorf("failed to hash admin password: %w", err)
 		}
+
+		hashedPIN, err := bcrypt.GenerateFromPassword([]byte("12345"), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("failed to hash admin PIN: %w", err)
+		}
+
+		admin := models.Employee{
+			Name:       "Administrador",
+			Username:   "admin",
+			Password:   string(hashedPassword),
+			PIN:        string(hashedPIN),
+			Role:       "admin",
+			Email:      "admin@restaurant.com",
+			IsActive:   true,
+		}
+
+		if err := db.Create(&admin).Error; err != nil {
+			return fmt.Errorf("failed to create admin user: %w", err)
+		}
+
+		log.Println("✅ Created default admin user")
+		log.Println("   Username: admin")
+		log.Println("   Password: admin")
+		log.Println("   PIN: 12345")
+		log.Println("   ⚠️  IMPORTANT: Change these credentials after first login!")
+	} else {
+		log.Println("[Setup] Admin user already exists, skipping...")
 	}
 
-	if count > 0 {
-		// Admin already exists, skip seeding
-		return nil
+	// ============================================================
+	// Create default customer: CONSUMIDOR FINAL
+	// ============================================================
+	var customerCount int64
+	db.Model(&models.Customer{}).Where("identification_number = ?", "222222222222").Count(&customerCount)
+
+	if customerCount == 0 {
+		log.Println("[Setup] Creating default customer (CONSUMIDOR FINAL)...")
+
+		// Helper function to convert int to *int
+		intPtr := func(i int) *int { return &i }
+
+		customer := models.Customer{
+			IdentificationType:   "RC",
+			IdentificationNumber: "222222222222",
+			Name:                 "CONSUMIDOR FINAL",
+			Email:                "",
+			Phone:                "0",
+			Address:              "NO REGISTRADO",
+			TypeOrganizationID:   intPtr(2),
+			TypeLiabilityID:      intPtr(117),
+			TypeRegimeID:         intPtr(2),
+			IsActive:             true,
+		}
+
+		if err := db.Create(&customer).Error; err != nil {
+			return fmt.Errorf("failed to create default customer: %w", err)
+		}
+
+		log.Println("✅ Created default customer: CONSUMIDOR FINAL")
+	} else {
+		log.Println("[Setup] Default customer already exists, skipping...")
 	}
 
-	// Read SQL script from scripts/init_default_users_and_customers.sql
-	scriptPath := "scripts/init_default_users_and_customers.sql"
-	seedSQL, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return fmt.Errorf("failed to read init_default_users_and_customers.sql: %w (make sure %s exists)", err, scriptPath)
-	}
-
-	// Execute SQL script
-	if err := db.Exec(string(seedSQL)).Error; err != nil {
-		return fmt.Errorf("failed to execute init_default_users_and_customers.sql: %w", err)
-	}
-
+	log.Println("[Setup] Default data initialization complete!")
 	return nil
 }
 
-// CompleteSetup marks the setup as complete and runs seeds
+// CompleteSetup marks the setup as complete and creates default data
 func (s *ConfigManagerService) CompleteSetup() error {
-	// Run seeds
-	if err := s.RunSeeds(); err != nil {
-		return fmt.Errorf("failed to run seeds: %w", err)
+	// Create default data (admin user and default customer)
+	if err := s.CreateDefaultData(); err != nil {
+		return fmt.Errorf("failed to create default data: %w", err)
 	}
 
 	// Mark first run as complete

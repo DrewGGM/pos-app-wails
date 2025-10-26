@@ -45,6 +45,16 @@ jobs:
           cd ../..
         shell: pwsh
 
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build Windows Installer
+        run: |
+          cd installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+          cd ..
+        shell: pwsh
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -56,6 +66,14 @@ jobs:
             Sistema de Punto de Venta para Restaurantes con Facturación Electrónica DIAN (Colombia)
 
             ### 📦 Instalación
+
+            **Opción 1: Instalador (Recomendado)**
+            1. Descargar `RestaurantPOS-Setup-1.0.0.exe`
+            2. Ejecutar el instalador (pedirá permisos de administrador una sola vez)
+            3. El instalador configurará todo automáticamente
+            4. Ejecutar desde el Menú Inicio
+
+            **Opción 2: Portable**
             1. Descargar `RestaurantPOS-Windows-x64.zip`
             2. Extraer el archivo `RestaurantPOS.exe`
             3. Ejecutar `RestaurantPOS.exe`
@@ -76,4 +94,6 @@ jobs:
             - Usuario: `admin`
             - Contraseña: `admin`
             - ⚠️ **Cambiar inmediatamente después del primer login**
-          files: RestaurantPOS-Windows-x64.zip
+          files: |
+            RestaurantPOS-Windows-x64.zip
+            build/installer/RestaurantPOS-Setup-*.exe

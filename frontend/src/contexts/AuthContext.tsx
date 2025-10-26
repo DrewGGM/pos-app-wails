@@ -33,7 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (userData) {
             setUser(userData);
             setIsAuthenticated(true);
-            
+
             // Check for open cash register
             const register = await wailsAuthService.getOpenCashRegister(userData.id!);
             if (register && register.id) {
@@ -43,8 +43,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem('token');
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Auth check failed:', error);
+        // Clear token if database not initialized (first run) or any other error
+        if (error?.message?.includes('database not initialized') ||
+            error?.message?.includes('invalid memory address')) {
+          console.log('Database not initialized - clearing old session');
+        }
         localStorage.removeItem('token');
       } finally {
         setLoading(false);

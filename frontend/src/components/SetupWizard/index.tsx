@@ -450,10 +450,41 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
                   </Grid>
                 </Grid>
 
-                <Alert severity="success" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
-                  Se creará un usuario administrador por defecto:
-                  <br />
-                  <strong>Usuario:</strong> admin | <strong>Contraseña:</strong> admin
+                <Alert severity="warning" sx={{ mt: 3, maxWidth: 600, mx: 'auto' }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    📝 Datos por defecto que se crearán automáticamente:
+                  </Typography>
+
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      👤 Usuario Administrador:
+                    </Typography>
+                    <Typography variant="body2">
+                      • <strong>Usuario:</strong> admin
+                    </Typography>
+                    <Typography variant="body2">
+                      • <strong>Contraseña:</strong> admin
+                    </Typography>
+                    <Typography variant="body2">
+                      • <strong>PIN:</strong> 12345
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      👥 Cliente por Defecto:
+                    </Typography>
+                    <Typography variant="body2">
+                      • <strong>Nombre:</strong> CONSUMIDOR FINAL
+                    </Typography>
+                    <Typography variant="body2">
+                      • <strong>Documento:</strong> 222222222222
+                    </Typography>
+                  </Box>
+
+                  <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 'bold' }}>
+                    ⚠️ IMPORTANTE: Cambia las credenciales del administrador inmediatamente después del primer login
+                  </Typography>
                 </Alert>
               </Box>
             </CardContent>

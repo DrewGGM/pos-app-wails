@@ -11,6 +11,8 @@ export function ConfigExists():Promise<boolean>;
 
 export function CreateDefaultConfig():Promise<config.AppConfig>;
 
+export function CreateDefaultData():Promise<void>;
+
 export function GetConfig():Promise<config.AppConfig>;
 
 export function GetConfigPath():Promise<string>;
@@ -18,8 +20,6 @@ export function GetConfigPath():Promise<string>;
 export function InitializeDatabase(arg1:config.DatabaseConfig):Promise<void>;
 
 export function IsFirstRun():Promise<boolean>;
-
-export function RunSeeds():Promise<void>;
 
 export function SaveConfig(arg1:config.AppConfig):Promise<void>;
 

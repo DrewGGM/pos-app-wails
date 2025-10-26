@@ -18,6 +18,10 @@ export function CreateDefaultConfig() {
   return window['go']['services']['ConfigManagerService']['CreateDefaultConfig']();
 }
 
+export function CreateDefaultData() {
+  return window['go']['services']['ConfigManagerService']['CreateDefaultData']();
+}
+
 export function GetConfig() {
   return window['go']['services']['ConfigManagerService']['GetConfig']();
 }
@@ -32,10 +36,6 @@ export function InitializeDatabase(arg1) {
 
 export function IsFirstRun() {
   return window['go']['services']['ConfigManagerService']['IsFirstRun']();
-}
-
-export function RunSeeds() {
-  return window['go']['services']['ConfigManagerService']['RunSeeds']();
 }
 
 export function SaveConfig(arg1) {

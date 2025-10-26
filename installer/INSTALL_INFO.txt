@@ -1,0 +1,68 @@
+========================================
+Restaurant POS System - Instalador
+========================================
+
+Bienvenido al instalador de Restaurant POS System.
+
+REQUISITOS PREVIOS:
+-------------------
+
+1. PostgreSQL 14 o superior instalado y configurado
+   - Asegurese de que el servicio PostgreSQL este activo
+   - Tendra que configurar la conexion en el primer inicio
+
+2. Microsoft Edge WebView2 Runtime
+   - Se verificara durante la instalacion
+   - Si no esta instalado, la aplicacion lo descargara automaticamente
+
+3. (Opcional) API de FacturaLatam.com
+   - Requerida solo si desea usar facturacion electronica DIAN
+   - Se compra e instala en su infraestructura local/servidor
+   - Mas informacion: https://facturalatam.com
+
+
+UBICACIONES DE INSTALACION:
+----------------------------
+
+El instalador creara los siguientes directorios:
+
+C:\Program Files\Restaurant POS System\
+  - Ejecutable principal (RestaurantPOS.exe)
+  - Archivos de solo lectura
+
+C:\ProgramData\Restaurant POS System\
+  - Archivos de configuracion (config.json)
+  - Logs de la aplicacion
+  - Base de datos local SQLite (para modo offline)
+
+
+CREDENCIALES POR DEFECTO:
+--------------------------
+
+Al ejecutar la aplicacion por primera vez, se crearan automaticamente:
+
+  Usuario: admin
+  Contrasena: admin
+  PIN: 12345
+
+IMPORTANTE: Cambie estas credenciales inmediatamente despues del primer login.
+
+
+ASISTENTE DE CONFIGURACION:
+----------------------------
+
+En el primer inicio, se mostrara un asistente que le guiara para:
+  - Configurar conexion a PostgreSQL
+  - Configurar datos del restaurante
+  - Configurar impresoras
+  - (Opcional) Configurar DIAN para facturacion electronica
+
+
+SOPORTE:
+--------
+
+Para reportar problemas o consultar documentacion:
+https://github.com/DrewGGM/pos-app-wails
+
+
+Presione "Siguiente" para continuar con la instalacion.
