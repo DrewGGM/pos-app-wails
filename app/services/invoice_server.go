@@ -497,7 +497,7 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 		payment := sale.PaymentDetails[0]
 		invoice.PaymentForm = PaymentFormData{
 			PaymentFormID:   1, // Contado (1) - restaurants typically don't offer credit
-			PaymentMethodID: s.getPaymentMethodCode(payment.PaymentMethod.Type),
+			PaymentMethodID: s.getPaymentMethodCode(payment.PaymentMethod),
 			PaymentDueDate:  time.Now().Format("2006-01-02"),
 			DurationMeasure: "0", // Same day payment
 		}
@@ -713,8 +713,14 @@ func (s *InvoiceService) queueInvoice(saleID uint, data interface{}, invoiceType
 }
 
 // getPaymentMethodCode converts payment type to DIAN code
-func (s *InvoiceService) getPaymentMethodCode(paymentType string) int {
-	switch paymentType {
+func (s *InvoiceService) getPaymentMethodCode(paymentMethod *models.PaymentMethod) int {
+	// Use DIAN payment method ID if configured
+	if paymentMethod.DIANPaymentMethodID != nil && *paymentMethod.DIANPaymentMethodID > 0 {
+		return *paymentMethod.DIANPaymentMethodID
+	}
+
+	// Fallback to inferring from type (for backwards compatibility)
+	switch paymentMethod.Type {
 	case "cash":
 		return 10 // Efectivo
 	case "card":

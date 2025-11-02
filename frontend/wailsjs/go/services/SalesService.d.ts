@@ -34,7 +34,7 @@ export function PrintReceipt(arg1:number):Promise<void>;
 
 export function PrintReceiptWithPrinter(arg1:number,arg2:number):Promise<void>;
 
-export function ProcessSale(arg1:number,arg2:Array<services.PaymentData>,arg3:models.Customer,arg4:boolean,arg5:boolean,arg6:number,arg7:number):Promise<models.Sale>;
+export function ProcessSale(arg1:number,arg2:Array<services.PaymentData>,arg3:models.Customer,arg4:boolean,arg5:boolean,arg6:number,arg7:number,arg8:boolean):Promise<models.Sale>;
 
 export function RefundSale(arg1:number,arg2:number,arg3:string,arg4:number):Promise<void>;
 

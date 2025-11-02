@@ -62,6 +62,22 @@ function mapCashRegister(w: models.CashRegister): CashRegister {
     closed_at: (w as any).closed_at ? new Date().toISOString() : undefined,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    // Map cash movements
+    movements: ((w as any).movements || []).map((m: any) => ({
+      id: m.id as number,
+      cash_register_id: m.cash_register_id as number,
+      type: m.type as string,
+      amount: m.amount as number,
+      description: m.description || '',
+      reason: m.reason || '',
+      reference: m.reference || '',
+      employee_id: m.employee_id as number,
+      employee: m.employee ? {
+        id: m.employee.id as number,
+        name: m.employee.name || '',
+      } : undefined,
+      created_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+    })),
   } as CashRegister;
 }
 

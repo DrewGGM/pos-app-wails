@@ -470,6 +470,8 @@ export namespace models {
 	    type: string;
 	    icon: string;
 	    requires_ref: boolean;
+	    dian_payment_method_id?: number;
+	    affects_cash_register: boolean;
 	    is_active: boolean;
 	    display_order: number;
 	    created_at: time.Time;
@@ -486,6 +488,8 @@ export namespace models {
 	        this.type = source["type"];
 	        this.icon = source["icon"];
 	        this.requires_ref = source["requires_ref"];
+	        this.dian_payment_method_id = source["dian_payment_method_id"];
+	        this.affects_cash_register = source["affects_cash_register"];
 	        this.is_active = source["is_active"];
 	        this.display_order = source["display_order"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
@@ -746,6 +750,7 @@ export namespace models {
 	    track_inventory: boolean;
 	    minimum_stock: number;
 	    is_active: boolean;
+	    has_variable_price: boolean;
 	    tax_type_id: number;
 	    unit_measure_id: number;
 	    modifiers?: Modifier[];
@@ -770,6 +775,7 @@ export namespace models {
 	        this.track_inventory = source["track_inventory"];
 	        this.minimum_stock = source["minimum_stock"];
 	        this.is_active = source["is_active"];
+	        this.has_variable_price = source["has_variable_price"];
 	        this.tax_type_id = source["tax_type_id"];
 	        this.unit_measure_id = source["unit_measure_id"];
 	        this.modifiers = this.convertValues(source["modifiers"], Modifier);
@@ -1027,6 +1033,7 @@ export namespace models {
 	    order_number: string;
 	    type: string;
 	    status: string;
+	    takeout_number?: number;
 	    table_id?: number;
 	    table?: Table;
 	    customer_id?: number;
@@ -1056,6 +1063,7 @@ export namespace models {
 	        this.order_number = source["order_number"];
 	        this.type = source["type"];
 	        this.status = source["status"];
+	        this.takeout_number = source["takeout_number"];
 	        this.table_id = source["table_id"];
 	        this.table = this.convertValues(source["table"], Table);
 	        this.customer_id = source["customer_id"];

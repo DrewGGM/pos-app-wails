@@ -150,7 +150,7 @@ fun OrderCardDisplay(
                     Text(
                         text = when (order.type) {
                             "dine-in" -> "Mesa ${order.tableId ?: "?"}"
-                            "takeout" -> "Para Llevar"
+                            "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
                             else -> "Domicilio"
                         },
                         style = MaterialTheme.typography.titleLarge,
@@ -208,7 +208,7 @@ fun OrderCardDisplay(
                         Text(
                             text = when (order.type) {
                                 "dine-in" -> "Mesa ${order.tableId ?: "?"}"
-                                "takeout" -> "Para Llevar"
+                                "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
                                 else -> "Domicilio"
                             },
                             style = MaterialTheme.typography.titleMedium,
@@ -289,6 +289,20 @@ fun OrderCardDisplay(
                                 overflow = TextOverflow.Ellipsis,
                                 fontSize = preferences.itemFontSize.sp
                             )
+                            // Modifiers
+                            if (!item.modifiers.isNullOrEmpty()) {
+                                item.modifiers.forEach { modifier ->
+                                    Text(
+                                        text = "  + ${modifier.modifier?.name ?: ""}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = (preferences.itemFontSize - 2).sp
+                                    )
+                                }
+                            }
                             // Notes
                             if (!item.notes.isNullOrBlank()) {
                                 Text(

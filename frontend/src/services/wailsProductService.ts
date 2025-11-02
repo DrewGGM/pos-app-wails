@@ -38,7 +38,9 @@ function mapProduct(w: models.Product): Product {
     stock: w.stock || 0,
     min_stock: (w as any).min_stock || 0,
     is_active: (w as any).is_active ?? true,
+    has_variable_price: (w as any).has_variable_price ?? false, // Map variable price field
     has_modifiers: false, // Default value
+    modifiers: (w as any).modifiers ? (w as any).modifiers.map(mapModifier) : [], // Map modifiers from product
     tax_type_id: w.tax_type_id || 1, // IVA 19% by default
     unit_measure_id: w.unit_measure_id || 796, // Porción by default
     created_at: new Date().toISOString(),
@@ -83,6 +85,7 @@ function mapModifier(w: models.Modifier): Modifier {
     type: w.type || 'addition',
     price_change: w.price_change || 0,
     group_id: w.group_id as unknown as number,
+    group: (w as any).modifier_group ? mapModifierGroup((w as any).modifier_group) : undefined, // Map the associated group
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Modifier;

@@ -76,5 +76,3 @@ require (
 	modernc.org/memory v1.5.0 // indirect
 	modernc.org/sqlite v1.23.1 // indirect
 )
-
-// replace github.com/wailsapp/wails/v2 v2.10.2 => C:\Users\andre\go\pkg\mod

@@ -469,6 +469,7 @@ func (s *EmployeeService) AddCashMovement(registerID uint, amount float64, movem
 		Type:           movementType,
 		Amount:         amount,
 		Description:    description,
+		Reason:         description, // Use description as reason for user-friendly display
 		Reference:      reference,
 		EmployeeID:     employeeID,
 	}
@@ -526,11 +527,11 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 		}
 	}
 
-	// Add payments in cash from sales in this register
+	// Add payments that affect cash register from sales in this register
 	var cashPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
-		Where("sales.cash_register_id = ? AND payment_methods.type = ?", register.ID, "cash").
+		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
 		Find(&cashPayments)
 
 	for _, payment := range cashPayments {

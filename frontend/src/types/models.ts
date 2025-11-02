@@ -46,6 +46,7 @@ export interface Product extends BaseModel {
   is_active: boolean;
   active?: boolean; // Alias for is_active
   has_modifiers?: boolean; // Made optional
+  has_variable_price?: boolean; // Whether this product requires price input at time of sale
   modifiers?: Modifier[];
   min_stock?: number;
   tax_type_id?: number; // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
@@ -126,6 +127,7 @@ export interface Order extends BaseModel {
   order_number: string;
   type: 'dine_in' | 'takeout' | 'delivery';
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'paid' | 'cancelled';
+  takeout_number?: number; // Sequential number for takeout orders (1,2,3...)
   table_id?: number;
   table?: Table;
   customer_id?: number;
@@ -219,6 +221,8 @@ export interface PaymentMethod extends BaseModel {
   type: 'cash' | 'card' | 'digital' | 'other' | 'check';
   requires_reference?: boolean; // Made optional
   requires_ref?: boolean; // Alias for requires_reference
+  dian_payment_method_id?: number; // DIAN parametric payment method ID for electronic invoicing
+  affects_cash_register?: boolean; // Whether this payment type counts in cash register reconciliation
   is_active: boolean;
   display_order: number;
   icon?: string;
@@ -504,6 +508,7 @@ export interface ProcessSaleData {
   cash_register_id: number;
   needs_electronic_invoice?: boolean;
   send_email_to_customer?: boolean; // Send electronic invoice PDF to customer email
+  print_receipt?: boolean; // Whether to print receipt (checkbox in payment dialog has priority)
 }
 
 // PaymentData interface

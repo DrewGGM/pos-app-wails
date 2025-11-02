@@ -32,6 +32,7 @@ function mapOrder(w: models.Order): Order {
     order_number: w.order_number || '',
     type: w.type as 'dine_in' | 'takeout' | 'delivery',
     status: w.status as 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled' | 'paid',
+    takeout_number: (w as any).takeout_number,
     table_id: w.table_id as unknown as number,
     table: w.table ? mapTable(w.table) : undefined,
     customer_id: w.customer_id as unknown as number,

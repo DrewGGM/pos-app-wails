@@ -29,6 +29,7 @@ interface ModifierDialogProps {
   onClose: () => void;
   product: Product;
   onConfirm: (modifiers: Modifier[]) => void;
+  initialModifiers?: Modifier[];
 }
 
 const ModifierDialog: React.FC<ModifierDialogProps> = ({
@@ -36,9 +37,31 @@ const ModifierDialog: React.FC<ModifierDialogProps> = ({
   onClose,
   product,
   onConfirm,
+  initialModifiers = [],
 }) => {
-  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({});
+  // Initialize selected modifiers from initialModifiers
+  const getInitialSelectedModifiers = () => {
+    const initial: Record<number, number[]> = {};
+    initialModifiers.forEach(mod => {
+      const groupId = mod.group_id;
+      if (!initial[groupId]) {
+        initial[groupId] = [];
+      }
+      initial[groupId].push(mod.id!);
+    });
+    return initial;
+  };
+
+  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>(getInitialSelectedModifiers());
   const [error, setError] = useState('');
+
+  // Reset state when dialog opens or initialModifiers change
+  React.useEffect(() => {
+    if (open) {
+      setSelectedModifiers(getInitialSelectedModifiers());
+      setError('');
+    }
+  }, [open, initialModifiers]);
 
   // Group modifiers by their group
   const modifierGroups = product.modifiers?.reduce((groups, modifier) => {

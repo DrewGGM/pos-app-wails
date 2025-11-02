@@ -33,11 +33,12 @@ func NewSalesService() *SalesService {
 }
 
 // ProcessSale processes a sale from an order
-func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, sendEmailToCustomer bool, employeeID uint, cashRegisterID uint) (*models.Sale, error) {
+func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, sendEmailToCustomer bool, employeeID uint, cashRegisterID uint, printReceipt bool) (*models.Sale, error) {
 	// LOG: Check if electronic invoice is requested
 	fmt.Printf("\n🧾 ========== PROCESSING SALE ==========\n")
 	fmt.Printf("Order ID: %d\n", orderID)
 	fmt.Printf("Needs Electronic Invoice: %v\n", needsElectronicInvoice)
+	fmt.Printf("Print Receipt: %v\n", printReceipt)
 	if customerData != nil {
 		fmt.Printf("Customer: %s (%s)\n", customerData.Name, customerData.IdentificationNumber)
 	} else {
@@ -180,24 +181,32 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 
 				fmt.Printf("✅ Electronic invoice created for sale #%s (Status: %s)\n", sale.SaleNumber, invoice.Status)
 
-				// Print electronic invoice after successful creation
-				if err := s.printerSvc.PrintReceipt(sale, true); err != nil {
-					fmt.Printf("Failed to print electronic invoice for sale #%s: %v\n", sale.SaleNumber, err)
+				// Print electronic invoice after successful creation ONLY if printReceipt is true
+				if printReceipt {
+					if err := s.printerSvc.PrintReceipt(sale, true); err != nil {
+						fmt.Printf("Failed to print electronic invoice for sale #%s: %v\n", sale.SaleNumber, err)
+					} else {
+						fmt.Printf("🖨️  Electronic invoice printed for sale #%s\n", sale.SaleNumber)
+					}
 				} else {
-					fmt.Printf("🖨️  Electronic invoice printed for sale #%s\n", sale.SaleNumber)
+					fmt.Printf("🖨️  Electronic invoice printing skipped (user disabled printReceipt)\n")
 				}
 			}
 		}()
 	} else {
-		// Print simple receipt asynchronously if no electronic invoice needed
-		go func() {
-			if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
-				// Log error but don't fail the sale
-				fmt.Printf("Failed to print simple receipt for sale #%s: %v\n", sale.SaleNumber, err)
-			} else {
-				fmt.Printf("🖨️  Simple receipt printed for sale #%s\n", sale.SaleNumber)
-			}
-		}()
+		// Print simple receipt asynchronously ONLY if printReceipt is true
+		if printReceipt {
+			go func() {
+				if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
+					// Log error but don't fail the sale
+					fmt.Printf("Failed to print simple receipt for sale #%s: %v\n", sale.SaleNumber, err)
+				} else {
+					fmt.Printf("🖨️  Simple receipt printed for sale #%s\n", sale.SaleNumber)
+				}
+			}()
+		} else {
+			fmt.Printf("🖨️  Simple receipt printing skipped (user disabled printReceipt)\n")
+		}
 	}
 
 	return sale, nil
@@ -536,11 +545,13 @@ func (s *SalesService) generateSaleNumber() string {
 }
 
 func (s *SalesService) recordCashMovement(tx *gorm.DB, cashRegisterID uint, amount float64, movementType, reference string, employeeID uint) error {
+	description := fmt.Sprintf("%s - %s", movementType, reference)
 	movement := models.CashMovement{
 		CashRegisterID: cashRegisterID,
 		Type:           movementType,
 		Amount:         amount,
-		Description:    fmt.Sprintf("%s - %s", movementType, reference),
+		Description:    description,
+		Reason:         description, // Use same description for reason
 		Reference:      reference,
 		EmployeeID:     employeeID,
 	}

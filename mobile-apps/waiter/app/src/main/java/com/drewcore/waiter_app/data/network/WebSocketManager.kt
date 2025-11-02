@@ -24,6 +24,10 @@ class WebSocketManager {
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState
 
+    // Flow to emit received messages for ViewModel to handle
+    private val _messages = MutableStateFlow<WebSocketMessage?>(null)
+    val messages: StateFlow<WebSocketMessage?> = _messages
+
     private var clientId: String? = null
 
     companion object {
@@ -95,6 +99,41 @@ class WebSocketManager {
 
                 "heartbeat" -> {
                     Log.d(TAG, "Heartbeat received")
+                }
+
+                "order_new" -> {
+                    Log.d(TAG, "New order received")
+                    _messages.value = message
+                }
+
+                "order_update" -> {
+                    Log.d(TAG, "Order update received")
+                    _messages.value = message
+                }
+
+                "order_ready" -> {
+                    Log.d(TAG, "Order ready notification received")
+                    _messages.value = message
+                }
+
+                "order_cancelled" -> {
+                    Log.d(TAG, "Order cancelled notification received")
+                    _messages.value = message
+                }
+
+                "table_update" -> {
+                    Log.d(TAG, "Table update received")
+                    _messages.value = message
+                }
+
+                "kitchen_order" -> {
+                    Log.d(TAG, "Kitchen order notification received")
+                    _messages.value = message
+                }
+
+                "notification" -> {
+                    Log.d(TAG, "General notification received")
+                    _messages.value = message
                 }
 
                 else -> {

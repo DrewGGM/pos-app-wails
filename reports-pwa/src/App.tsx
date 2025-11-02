@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { googleSheetsService, type ReportData } from './services/googleSheets'
+import { googleSheetsService, type ReportData, type ProductDetail } from './services/googleSheets'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
@@ -62,13 +62,123 @@ function App() {
   }
 
   const updateCurrentReport = () => {
-    const dateStr = formatDateForFilter(selectedDate)
-    const found = reports.find(r => r.fecha === dateStr)
-    setCurrentReport(found || null)
+    if (viewPeriod === 'day') {
+      // For day view, find exact date match
+      const dateStr = formatDateForFilter(selectedDate)
+      const found = reports.find(r => r.fecha === dateStr)
+      setCurrentReport(found || null)
+    } else {
+      // For week/month/year, aggregate reports in that period
+      const periodReports = getReportsInPeriod()
+      if (periodReports.length > 0) {
+        const aggregated = aggregateReports(periodReports)
+        setCurrentReport(aggregated)
+      } else {
+        setCurrentReport(null)
+      }
+    }
   }
 
   const formatDateForFilter = (date: Date): string => {
     return date.toISOString().split('T')[0]
+  }
+
+  const getReportsInPeriod = (): ReportData[] => {
+    const date = new Date(selectedDate)
+
+    switch (viewPeriod) {
+      case 'week': {
+        // Get start of week (Sunday)
+        const startOfWeek = new Date(date)
+        startOfWeek.setDate(date.getDate() - date.getDay())
+        startOfWeek.setHours(0, 0, 0, 0)
+
+        // Get end of week (Saturday)
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 6)
+        endOfWeek.setHours(23, 59, 59, 999)
+
+        return reports.filter(r => {
+          const reportDate = new Date(r.fecha)
+          return reportDate >= startOfWeek && reportDate <= endOfWeek
+        })
+      }
+
+      case 'month': {
+        const year = date.getFullYear()
+        const month = date.getMonth()
+
+        return reports.filter(r => {
+          const reportDate = new Date(r.fecha)
+          return reportDate.getFullYear() === year && reportDate.getMonth() === month
+        })
+      }
+
+      case 'year': {
+        const year = date.getFullYear()
+
+        return reports.filter(r => {
+          const reportDate = new Date(r.fecha)
+          return reportDate.getFullYear() === year
+        })
+      }
+
+      default:
+        return []
+    }
+  }
+
+  const aggregateReports = (periodReports: ReportData[]): ReportData => {
+    // Combine all product details from all reports
+    const allProducts: { [key: string]: ProductDetail } = {}
+
+    periodReports.forEach(report => {
+      if (report.detalle_productos) {
+        report.detalle_productos.forEach(product => {
+          if (allProducts[product.product_name]) {
+            allProducts[product.product_name].quantity += product.quantity
+            allProducts[product.product_name].total += product.total
+          } else {
+            allProducts[product.product_name] = { ...product }
+          }
+        })
+      }
+    })
+
+    // Convert back to array and sort by total
+    const aggregatedProducts = Object.values(allProducts).sort((a, b) => b.total - a.total)
+
+    // Get period label for fecha field
+    const getPeriodLabel = (): string => {
+      switch (viewPeriod) {
+        case 'week': {
+          const startOfWeek = new Date(selectedDate)
+          startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay())
+          const endOfWeek = new Date(startOfWeek)
+          endOfWeek.setDate(startOfWeek.getDate() + 6)
+          return `${formatDateForFilter(startOfWeek)} a ${formatDateForFilter(endOfWeek)}`
+        }
+        case 'month':
+          return selectedDate.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
+        case 'year':
+          return selectedDate.getFullYear().toString()
+        default:
+          return formatDateForFilter(selectedDate)
+      }
+    }
+
+    // Sum all metrics
+    return {
+      fecha: getPeriodLabel(),
+      ventas_totales: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0),
+      ventas_dian: periodReports.reduce((sum, r) => sum + r.ventas_dian, 0),
+      ventas_no_dian: periodReports.reduce((sum, r) => sum + r.ventas_no_dian, 0),
+      ordenes: periodReports.reduce((sum, r) => sum + r.ordenes, 0),
+      productos_vendidos: periodReports.reduce((sum, r) => sum + r.productos_vendidos, 0),
+      ticket_promedio: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0) /
+                       periodReports.reduce((sum, r) => sum + r.ordenes, 0),
+      detalle_productos: aggregatedProducts
+    }
   }
 
   const navigateDate = (direction: 'prev' | 'next') => {

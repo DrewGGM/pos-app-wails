@@ -170,6 +170,11 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.ParametricService = services.NewParametricService()
 	a.DashboardService = services.NewDashboardService()
 
+	// Set WebSocket server on OrderService if available
+	if a.WSServer != nil && a.OrderService != nil {
+		a.OrderService.SetWebSocketServer(a.WSServer)
+	}
+
 	// Initialize Google Sheets services
 	a.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 	a.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), a.GoogleSheetsService)
@@ -199,6 +204,30 @@ func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
 	if err := a.InitializeServicesAfterSetup(); err != nil {
 		return err
 	}
+
+	// Initialize WebSocket server
+	wsPort := os.Getenv("WS_PORT")
+	if wsPort == "" {
+		wsPort = "8080" // Default port
+	}
+	a.LoggerService.LogInfo("Starting WebSocket server", "Port: "+wsPort)
+	a.WSServer = websocket.NewServer(":" + wsPort)
+	a.WSServer.SetDB(database.GetDB())
+
+	// Update the WebSocket management service with the server instance
+	if a.WSManagementService != nil {
+		a.WSManagementService.SetServer(a.WSServer)
+	}
+
+	// Update the OrderService with the server instance
+	if a.OrderService != nil {
+		a.OrderService.SetWebSocketServer(a.WSServer)
+	}
+
+	go func() {
+		defer a.LoggerService.RecoverPanic()
+		a.WSServer.Start()
+	}()
 
 	// Start background workers
 	go services.StartSyncWorker()

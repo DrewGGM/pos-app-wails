@@ -66,6 +66,7 @@ import { posColors } from '../../theme';
 import PaymentDialog from '../../components/pos/PaymentDialog';
 import CustomerDialog from '../../components/pos/CustomerDialog';
 import ModifierDialog from '../../components/pos/ModifierDialog';
+import PriceInputDialog from '../../components/pos/PriceInputDialog';
 import TableSelector from '../../components/pos/TableSelector';
 import QuickPad from '../../components/pos/QuickPad';
 import OrderList from '../../components/pos/OrderList';
@@ -93,8 +94,14 @@ const POS: React.FC = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [modifierDialogOpen, setModifierDialogOpen] = useState(false);
+  const [priceInputDialogOpen, setPriceInputDialogOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
+  const [selectedProductForPrice, setSelectedProductForPrice] = useState<Product | null>(null);
+  const [selectedItemForModifierEdit, setSelectedItemForModifierEdit] = useState<OrderItem | null>(null);
+  const [selectedItemForNotes, setSelectedItemForNotes] = useState<OrderItem | null>(null);
+  const [itemNotes, setItemNotes] = useState('');
 
   // Electronic invoice flag per sale
   const [needsElectronicInvoice, setNeedsElectronicInvoice] = useState(false);
@@ -238,6 +245,27 @@ const POS: React.FC = () => {
     }
   };
 
+  // Helper function to check if two order items are identical
+  const areItemsIdentical = (item1: OrderItem, item2: OrderItem): boolean => {
+    // Check if same product
+    if (item1.product_id !== item2.product_id) return false;
+
+    // Check if same notes
+    if ((item1.notes || '') !== (item2.notes || '')) return false;
+
+    // Check if same modifiers
+    const mods1 = item1.modifiers || [];
+    const mods2 = item2.modifiers || [];
+
+    if (mods1.length !== mods2.length) return false;
+
+    // Sort and compare modifier IDs
+    const modIds1 = mods1.map(m => m.modifier_id).sort();
+    const modIds2 = mods2.map(m => m.modifier_id).sort();
+
+    return modIds1.every((id, index) => id === modIds2[index]);
+  };
+
   // Filter products by category and search
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -251,6 +279,10 @@ const POS: React.FC = () => {
 
   // Add product to order
   const addProductToOrder = useCallback((product: Product) => {
+    console.log('addProductToOrder called with product:', product);
+    console.log('Product has_variable_price:', product.has_variable_price);
+    console.log('Product modifiers:', product.modifiers);
+
     // Check if cash register is open
     if (!cashRegisterId) {
       toast.error('Debe abrir la caja antes de realizar ventas');
@@ -265,28 +297,42 @@ const POS: React.FC = () => {
       });
     }
 
+    // Check if product has variable price - show price input dialog first
+    if (product.has_variable_price === true) {
+      console.log('Opening price input dialog for variable price product');
+      setSelectedProductForPrice(product);
+      setPriceInputDialogOpen(true);
+      return;
+    }
+
     // Check if product has modifiers
     if (product.modifiers && product.modifiers.length > 0) {
+      console.log('Opening modifier dialog, modifiers:', product.modifiers);
       setSelectedProductForModifier(product);
       setModifierDialogOpen(true);
       return;
     }
 
-    // Add to order
-    const existingItem = orderItems.find(item => item.product_id === product.id);
+    console.log('Adding product directly to cart (no modifiers, no variable price)');
+
+    // Create new item
+    const newItem: OrderItem = {
+      id: Date.now(), // Temporary ID for frontend tracking
+      product_id: product.id!,
+      product: product,
+      quantity: 1,
+      unit_price: product.price,
+      subtotal: product.price,
+      notes: '',
+      modifiers: [],
+    };
+
+    // Only stack identical items (same product, same modifiers, same notes)
+    const existingItem = orderItems.find(item => areItemsIdentical(item, newItem));
 
     if (existingItem) {
       updateItemQuantity(existingItem.id!, existingItem.quantity + 1);
     } else {
-      const newItem: OrderItem = {
-        id: Date.now(), // Temporary ID for frontend tracking
-        product_id: product.id!,
-        product: product,
-        quantity: 1,
-        unit_price: product.price,
-        subtotal: product.price,
-        notes: '',
-      };
       setOrderItems([...orderItems, newItem]);
     }
 
@@ -330,8 +376,10 @@ const POS: React.FC = () => {
     // ID 117 = "No responsable" (R-99-PN) - Does NOT charge IVA
     // Other IDs (7, 9, 14, 112) are responsible for IVA
     const isIVAResponsible = companyLiabilityId !== null && companyLiabilityId !== 117;
-    const tax = isIVAResponsible ? subtotal * 0.19 : 0; // 19% IVA only if responsible
-    const total = subtotal + tax;
+    // Tax is calculated by the backend based on restaurant configuration
+    // Frontend shows 0 for preview, actual tax will be calculated in backend
+    const tax = 0; // Backend will calculate the correct tax based on configuration
+    const total = subtotal; // Total will be recalculated by backend with correct tax
 
     return {
       subtotal,
@@ -342,15 +390,34 @@ const POS: React.FC = () => {
     };
   }, [orderItems, companyLiabilityId]);
 
-  // Clear order
-  const clearOrder = useCallback(() => {
+  // Clear order (delete if exists and free table)
+  const clearOrder = useCallback(async () => {
+    try {
+      // If there's a saved order, delete it from database
+      if (currentOrder && currentOrder.id) {
+        await wailsOrderService.deleteOrder(currentOrder.id);
+
+        // Free the table if it was occupied
+        if (selectedTable && selectedTable.id) {
+          await wailsOrderService.updateTableStatus(selectedTable.id, 'available');
+        }
+
+        toast.success('Pedido eliminado y mesa liberada');
+      } else {
+        toast.info('Orden cancelada');
+      }
+    } catch (error: any) {
+      console.error('Error deleting order:', error);
+      toast.error('Error al eliminar pedido: ' + (error.message || 'Error desconocido'));
+    }
+
+    // Clear local state
     setOrderItems([]);
     setCurrentOrder(null);
     setSelectedTable(null);
     setSelectedCustomer(null);
     setNeedsElectronicInvoice(false);
-    toast.info('Orden cancelada');
-  }, []);
+  }, [currentOrder, selectedTable]);
 
   // Save order without payment (draft/pending)
   const saveOrder = useCallback(async () => {
@@ -450,6 +517,7 @@ const POS: React.FC = () => {
         cash_register_id: cashRegisterId!,
         needs_electronic_invoice: paymentData.needsInvoice || false,
         send_email_to_customer: paymentData.sendByEmail || false,
+        print_receipt: paymentData.printReceipt !== undefined ? paymentData.printReceipt : true, // Checkbox has priority over config
       });
 
       // Send to kitchen if dine-in
@@ -478,8 +546,8 @@ const POS: React.FC = () => {
       clearOrder();
       setPaymentDialogOpen(false);
 
-      // Note: Receipt printing is handled automatically by the backend
-      // based on the needs_electronic_invoice flag and printer configuration
+      // Note: Receipt printing is now controlled by the printReceipt checkbox
+      // The checkbox has priority over system configuration
 
     } catch (error: any) {
       toast.error(error.message || 'Error al procesar la venta');
@@ -487,6 +555,31 @@ const POS: React.FC = () => {
       setIsProcessingPayment(false);
     }
   }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, sendMessage, clearOrder, currentOrder]);
+
+  // Handle edit notes for an order item
+  const handleEditNotes = useCallback((item: OrderItem) => {
+    setSelectedItemForNotes(item);
+    setItemNotes(item.notes || '');
+    setNotesDialogOpen(true);
+  }, []);
+
+  // Save notes for the selected item
+  const handleSaveNotes = useCallback(() => {
+    if (selectedItemForNotes) {
+      setOrderItems(items =>
+        items.map(item => {
+          const currentItemId = item.id ?? Date.now();
+          const selectedItemId = selectedItemForNotes.id ?? Date.now();
+          return currentItemId === selectedItemId
+            ? { ...item, notes: itemNotes }
+            : item;
+        })
+      );
+    }
+    setNotesDialogOpen(false);
+    setSelectedItemForNotes(null);
+    setItemNotes('');
+  }, [selectedItemForNotes, itemNotes]);
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
@@ -675,9 +768,13 @@ const POS: React.FC = () => {
               items={orderItems}
               onUpdateQuantity={updateItemQuantity}
               onRemoveItem={removeItem}
+              onEditNotes={handleEditNotes}
               onEditItem={(item) => {
+                console.log('onEditItem called with item:', item);
                 const product = products.find(p => p.id === item.product_id);
+                console.log('Found product for editing:', product);
                 if (product) {
+                  setSelectedItemForModifierEdit(item);
                   setSelectedProductForModifier(product);
                   setModifierDialogOpen(true);
                 }
@@ -786,31 +883,91 @@ const POS: React.FC = () => {
           onClose={() => {
             setModifierDialogOpen(false);
             setSelectedProductForModifier(null);
+            setSelectedItemForModifierEdit(null);
           }}
           product={selectedProductForModifier}
+          initialModifiers={selectedItemForModifierEdit?.modifiers?.map(m => m.modifier!).filter(Boolean) || []}
           onConfirm={(modifiers) => {
-            // Add product with modifiers
-            const totalPrice = selectedProductForModifier.price + 
+            const totalPrice = selectedProductForModifier.price +
               modifiers.reduce((sum, mod) => sum + mod.price_change, 0);
-            
-            const newItem: OrderItem = {
-              product_id: selectedProductForModifier.id!,
-              product: selectedProductForModifier,
-              quantity: 1,
-              unit_price: totalPrice,
-              subtotal: totalPrice,
-              modifiers: modifiers.map(mod => ({
-                order_item_id: 0, // Will be set when order is created
-                modifier_id: mod.id!,
-                modifier: mod,
-                price_change: mod.price_change,
-              })),
-              notes: '',
-            };
-            
-            setOrderItems([...orderItems, newItem]);
+
+            if (selectedItemForModifierEdit) {
+              // Editing existing item - update it
+              console.log('Updating existing item with new modifiers');
+              const updatedItem: OrderItem = {
+                ...selectedItemForModifierEdit,
+                unit_price: totalPrice,
+                subtotal: totalPrice * selectedItemForModifierEdit.quantity,
+                modifiers: modifiers.map(mod => ({
+                  order_item_id: selectedItemForModifierEdit.id || 0,
+                  modifier_id: mod.id!,
+                  modifier: mod,
+                  price_change: mod.price_change,
+                })),
+              };
+
+              setOrderItems(orderItems.map(item =>
+                item.id === selectedItemForModifierEdit.id ? updatedItem : item
+              ));
+            } else {
+              // Adding new product with modifiers
+              console.log('Adding new product with modifiers');
+              const newItem: OrderItem = {
+                id: Date.now(),
+                product_id: selectedProductForModifier.id!,
+                product: selectedProductForModifier,
+                quantity: 1,
+                unit_price: totalPrice,
+                subtotal: totalPrice,
+                modifiers: modifiers.map(mod => ({
+                  order_item_id: 0, // Will be set when order is created
+                  modifier_id: mod.id!,
+                  modifier: mod,
+                  price_change: mod.price_change,
+                })),
+                notes: '',
+              };
+
+              setOrderItems([...orderItems, newItem]);
+            }
+
             setModifierDialogOpen(false);
             setSelectedProductForModifier(null);
+            setSelectedItemForModifierEdit(null);
+          }}
+        />
+      )}
+
+      {selectedProductForPrice && (
+        <PriceInputDialog
+          open={priceInputDialogOpen}
+          onClose={() => {
+            setPriceInputDialogOpen(false);
+            setSelectedProductForPrice(null);
+          }}
+          productName={selectedProductForPrice.name}
+          suggestedPrice={selectedProductForPrice.price}
+          onConfirm={(customPrice) => {
+            // Create item with custom price
+            const newItem: OrderItem = {
+              id: Date.now(),
+              product_id: selectedProductForPrice.id!,
+              product: selectedProductForPrice,
+              quantity: 1,
+              unit_price: customPrice,
+              subtotal: customPrice,
+              notes: '',
+              modifiers: [],
+            };
+
+            setOrderItems([...orderItems, newItem]);
+            setPriceInputDialogOpen(false);
+            setSelectedProductForPrice(null);
+
+            toast.success(`${selectedProductForPrice.name} añadido con precio $${customPrice.toLocaleString('es-CO')}`, {
+              position: 'bottom-center',
+              autoClose: 1500,
+            });
           }}
         />
       )}
@@ -822,6 +979,59 @@ const POS: React.FC = () => {
         selectedTable={selectedTable}
         onlyAvailable={!!(currentOrder && currentOrder.id && currentOrder.table_id)}
       />
+
+      {/* Notes Dialog */}
+      <Dialog
+        open={notesDialogOpen}
+        onClose={() => {
+          setNotesDialogOpen(false);
+          setSelectedItemForNotes(null);
+          setItemNotes('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Agregar Comentario
+        </DialogTitle>
+        <DialogContent>
+          {selectedItemForNotes && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                {selectedItemForNotes.product?.name}
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={3}
+            label="Comentario"
+            placeholder="Ej: Sin cebolla, sin tomate, etc."
+            value={itemNotes}
+            onChange={(e) => setItemNotes(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setNotesDialogOpen(false);
+              setSelectedItemForNotes(null);
+              setItemNotes('');
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveNotes}
+            variant="contained"
+            color="primary"
+          >
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

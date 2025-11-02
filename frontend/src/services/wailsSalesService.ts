@@ -141,10 +141,12 @@ function mapPaymentMethod(w: models.PaymentMethod): PaymentMethod {
   return {
     id: w.id as unknown as number,
     name: w.name || '',
-    type: w.type as 'cash' | 'digital' | 'card' | 'check',
+    type: w.type as 'cash' | 'digital' | 'card' | 'check' | 'other',
     icon: w.icon || '',
     requires_ref: w.requires_ref || false,
     requires_reference: w.requires_ref || false,
+    dian_payment_method_id: (w as any).dian_payment_method_id,
+    affects_cash_register: (w as any).affects_cash_register !== false, // Default to true
     code: (w as any).code || '',
     is_active: w.is_active || false,
     display_order: w.display_order || 0,
@@ -175,7 +177,8 @@ class WailsSalesService {
         saleData.needs_electronic_invoice || false, // Use the actual flag from saleData
         saleData.send_email_to_customer || false, // Send invoice PDF to customer email
         saleData.employee_id,
-        saleData.cash_register_id
+        saleData.cash_register_id,
+        saleData.print_receipt !== undefined ? saleData.print_receipt : true // Default to true if not provided
       );
       return mapSale(sale);
     } catch (error) {
@@ -253,31 +256,35 @@ class WailsSalesService {
     }
   }
 
-  async createPaymentMethod(method: Partial<PaymentMethod>): Promise<void> {
+  async CreatePaymentMethod(method: PaymentMethod): Promise<void> {
     try {
       await CreatePaymentMethod(method as any);
     } catch (error) {
       console.error('Error creating payment method:', error);
-      throw new Error('Error al crear método de pago');
+      throw error;
     }
   }
 
-  async updatePaymentMethod(id: number, method: Partial<PaymentMethod>): Promise<void> {
+  async UpdatePaymentMethod(method: PaymentMethod): Promise<void> {
     try {
       await UpdatePaymentMethod(method as any);
     } catch (error) {
       console.error('Error updating payment method:', error);
-      throw new Error('Error al actualizar método de pago');
+      throw error;
     }
   }
 
-  async deletePaymentMethod(id: number): Promise<void> {
+  async DeletePaymentMethod(id: number): Promise<void> {
     try {
       await DeletePaymentMethod(id);
     } catch (error) {
       console.error('Error deleting payment method:', error);
-      throw new Error('Error al eliminar método de pago');
+      throw error;
     }
+  }
+
+  async GetPaymentMethods(): Promise<PaymentMethod[]> {
+    return this.getPaymentMethods();
   }
 
   // Customers

@@ -32,6 +32,20 @@ enum class OrderStatus(val value: String) {
     @SerializedName("cancelled") CANCELLED("cancelled")
 }
 
+// Modifier
+data class Modifier(
+    val id: String,
+    val name: String,
+    @SerializedName("price_change") val priceChange: Double
+)
+
+// Order Item Modifier
+data class OrderItemModifier(
+    @SerializedName("modifier_id") val modifierId: String,
+    val modifier: Modifier?,
+    @SerializedName("price_change") val priceChange: Double
+)
+
 // Product
 data class Product(
     val id: String,
@@ -57,7 +71,8 @@ data class OrderItem(
     val quantity: Int,
     val price: Double,
     val subtotal: Double,
-    val notes: String? = null
+    val notes: String? = null,
+    val modifiers: List<OrderItemModifier>? = null
 ) {
     // Local metadata (not serialized)
     @Transient var changeStatus: ItemChangeStatus = ItemChangeStatus.UNCHANGED
@@ -70,6 +85,7 @@ data class Order(
     @SerializedName("order_number") val orderNumber: String,
     val type: String, // "dine-in", "takeout", "delivery"
     val status: String,
+    @SerializedName("takeout_number") val takeoutNumber: Int? = null,
     @SerializedName("table_id") val tableId: String? = null,
     val items: List<OrderItem>,
     val subtotal: Double,

@@ -145,14 +145,25 @@ fun OrderCard(order: OrderResponse) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
+                    // Show takeout number for takeout orders, otherwise show full order number
                     Text(
-                        text = order.orderNumber,
+                        text = if (order.type == "takeout" && order.takeoutNumber != null) {
+                            "#${order.takeoutNumber}"
+                        } else {
+                            order.orderNumber
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     if (order.tableNumber != null) {
                         Text(
                             text = "Mesa: ${order.tableNumber}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (order.type == "takeout") {
+                        Text(
+                            text = "Para Llevar",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

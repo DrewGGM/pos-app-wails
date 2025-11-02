@@ -199,11 +199,19 @@ const Orders: React.FC = () => {
       field: 'order_number',
       headerName: 'Número',
       width: 120,
-      renderCell: (params: GridRenderCellParams) => (
-        <Typography variant="body2" fontWeight="bold">
-          {params.value}
-        </Typography>
-      ),
+      renderCell: (params: GridRenderCellParams) => {
+        const order = params.row as Order;
+        // Show takeout number (#1, #2) for takeout orders, otherwise show full order number
+        const displayNumber = order.type === 'takeout' && order.takeout_number != null
+          ? `#${order.takeout_number}`
+          : params.value;
+
+        return (
+          <Typography variant="body2" fontWeight="bold">
+            {displayNumber}
+          </Typography>
+        );
+      },
     },
     {
       field: 'type',

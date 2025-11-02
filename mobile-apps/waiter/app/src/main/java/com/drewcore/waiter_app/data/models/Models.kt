@@ -2,6 +2,20 @@ package com.drewcore.waiter_app.data.models
 
 import com.google.gson.annotations.SerializedName
 
+// Modifier
+data class Modifier(
+    val id: Int,
+    val name: String,
+    @SerializedName("price_change") val priceChange: Double
+)
+
+// Order Item Modifier
+data class OrderItemModifier(
+    @SerializedName("modifier_id") val modifierId: Int,
+    val modifier: Modifier?,
+    @SerializedName("price_change") val priceChange: Double
+)
+
 // Product
 data class Product(
     val id: Int,
@@ -10,26 +24,38 @@ data class Product(
     val category: String? = null,
     @SerializedName("image_url") val imageUrl: String? = null,
     val stock: Int = 0,
-    val available: Boolean = true
+    val available: Boolean = true,
+    val modifiers: List<Modifier>? = null
 )
 
 // Cart Item (local state)
 data class CartItem(
     val product: Product,
-    var quantity: Int = 1,
-    var notes: String = ""
+    val quantity: Int = 1,
+    val notes: String = "",
+    val modifiers: List<Modifier> = emptyList()
 ) {
+    val unitPrice: Double
+        get() = product.price + modifiers.sumOf { it.priceChange }
+
     val subtotal: Double
-        get() = product.price * quantity
+        get() = unitPrice * quantity
 }
 
 // Order Item for sending to server
 data class OrderItemRequest(
     @SerializedName("product_id") val productId: Int,
     val quantity: Int,
-    val price: Double,
+    @SerializedName("unit_price") val unitPrice: Double,
     val subtotal: Double,
-    val notes: String? = null
+    val notes: String? = null,
+    val modifiers: List<OrderItemModifierRequest>? = null
+)
+
+// Order Item Modifier for sending to server
+data class OrderItemModifierRequest(
+    @SerializedName("modifier_id") val modifierId: Int,
+    @SerializedName("price_change") val priceChange: Double
 )
 
 // Order Request
@@ -78,6 +104,7 @@ data class OrderResponse(
     @SerializedName("order_number") val orderNumber: String,
     val type: String,
     val status: String,
+    @SerializedName("takeout_number") val takeoutNumber: Int? = null,
     @SerializedName("table_id") val tableId: Int?,
     @SerializedName("table_number") val tableNumber: String?,
     val items: List<OrderItemDetail>,
@@ -96,5 +123,6 @@ data class OrderItemDetail(
     @SerializedName("unit_price") val unitPrice: Double,
     val subtotal: Double,
     val notes: String?,
-    val status: String
+    val status: String,
+    val modifiers: List<OrderItemModifier>? = null
 )

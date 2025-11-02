@@ -6,18 +6,23 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 	"gorm.io/gorm"
 	"PosApp/app/models"
 )
 
 // RESTHandlers provides HTTP REST endpoints for mobile apps
 type RESTHandlers struct {
-	db *gorm.DB
+	db     *gorm.DB
+	server *Server
 }
 
 // NewRESTHandlers creates a new REST handlers instance
-func NewRESTHandlers(db *gorm.DB) *RESTHandlers {
-	return &RESTHandlers{db: db}
+func NewRESTHandlers(db *gorm.DB, server *Server) *RESTHandlers {
+	return &RESTHandlers{
+		db:     db,
+		server: server,
+	}
 }
 
 // HandleOrders routes between GET and POST for /api/orders
@@ -177,6 +182,17 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 		EmployeeID:  orderReq.EmployeeID,
 	}
 
+	// Assign takeout number if it's a takeout order
+	if order.Type == "takeout" {
+		nextNumber, err := h.getNextAvailableTakeoutNumber()
+		if err != nil {
+			log.Printf("REST API: Error getting next takeout number: %v", err)
+		} else {
+			order.TakeoutNumber = &nextNumber
+			log.Printf("REST API: Assigned takeout number %d to order", nextNumber)
+		}
+	}
+
 	// Add items
 	for _, itemReq := range orderReq.Items {
 		item := models.OrderItem{
@@ -203,6 +219,11 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 	if order.TableID != nil && order.Status == "pending" {
 		h.db.Model(&models.Table{}).Where("id = ?", *order.TableID).Update("status", "occupied")
 		log.Printf("REST API: Table %d marked as occupied", *order.TableID)
+	}
+
+	// Send order to kitchen via WebSocket
+	if h.server != nil && (order.Source == "waiter_app" || order.Source == "pos") {
+		go h.sendToKitchen(&order)
 	}
 
 	// Return success
@@ -579,4 +600,101 @@ func (h *RESTHandlers) HandleDeleteOrder(w http.ResponseWriter, r *http.Request,
 		"message": "Order deleted successfully",
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+// getNextAvailableTakeoutNumber finds the next available takeout number
+// It reuses freed numbers (when orders are completed) instead of continuing sequence
+func (h *RESTHandlers) getNextAvailableTakeoutNumber() (int, error) {
+	// Get all active takeout orders (not paid or cancelled)
+	var activeOrders []models.Order
+	err := h.db.Select("takeout_number").
+		Where("type = ? AND status IN ? AND takeout_number IS NOT NULL",
+			"takeout",
+			[]models.OrderStatus{models.OrderStatusPending, models.OrderStatusPreparing, models.OrderStatusReady}).
+		Order("takeout_number ASC").
+		Find(&activeOrders).Error
+
+	if err != nil {
+		return 0, err
+	}
+
+	// If no active orders, start from 1
+	if len(activeOrders) == 0 {
+		return 1, nil
+	}
+
+	// Build map of used numbers
+	usedNumbers := make(map[int]bool)
+	maxNumber := 0
+
+	for _, order := range activeOrders {
+		if order.TakeoutNumber != nil {
+			num := *order.TakeoutNumber
+			usedNumbers[num] = true
+			if num > maxNumber {
+				maxNumber = num
+			}
+		}
+	}
+
+	// Find first available number starting from 1
+	for i := 1; i <= maxNumber; i++ {
+		if !usedNumbers[i] {
+			return i, nil
+		}
+	}
+
+	// If all numbers 1 to maxNumber are used, return maxNumber + 1
+	return maxNumber + 1, nil
+}
+
+// sendToKitchen sends order to kitchen display via WebSocket
+func (h *RESTHandlers) sendToKitchen(order *models.Order) {
+	log.Printf("REST API: Sending order %s to kitchen", order.OrderNumber)
+
+	if h.server == nil {
+		log.Println("REST API: WebSocket server not initialized, skipping kitchen notification")
+		return
+	}
+
+	// Preload all relationships including modifiers
+	var fullOrder models.Order
+	if err := h.db.Preload("Items.Product").
+		Preload("Items.Modifiers.Modifier").
+		Preload("Table").
+		First(&fullOrder, order.ID).Error; err != nil {
+		log.Printf("REST API: Error loading order details: %v", err)
+		return
+	}
+
+	// Create WebSocket message
+	message := Message{
+		Type:      TypeKitchenOrder,
+		Timestamp: time.Now(),
+	}
+
+	// Serialize order data
+	orderData, err := json.Marshal(fullOrder)
+	if err != nil {
+		log.Printf("REST API: Error marshaling order: %v", err)
+		return
+	}
+	message.Data = orderData
+
+	// Broadcast to kitchen clients
+	h.server.BroadcastToKitchen(message)
+	log.Printf("REST API: Order %s sent to kitchen successfully", order.OrderNumber)
+
+	// Mark all items as sent to kitchen
+	now := time.Now()
+	for i := range fullOrder.Items {
+		if !fullOrder.Items[i].SentToKitchen {
+			fullOrder.Items[i].SentToKitchen = true
+			fullOrder.Items[i].SentToKitchenAt = &now
+			if err := h.db.Save(&fullOrder.Items[i]).Error; err != nil {
+				log.Printf("REST API: Error marking item %d as sent: %v", fullOrder.Items[i].ID, err)
+			}
+		}
+	}
+	log.Printf("REST API: Marked %d items as sent to kitchen", len(fullOrder.Items))
 }

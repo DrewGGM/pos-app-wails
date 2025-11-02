@@ -45,6 +45,16 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	order.Status = models.OrderStatusPending
 	order.IsSynced = false
 
+	// Assign takeout number if this is a takeout order
+	if order.Type == "takeout" {
+		nextNumber, err := s.getNextAvailableTakeoutNumber()
+		if err != nil {
+			log.Printf("Error getting next takeout number: %v", err)
+		} else {
+			order.TakeoutNumber = &nextNumber
+		}
+	}
+
 	// Calculate totals
 	if err := s.calculateOrderTotals(order); err != nil {
 		return nil, err
@@ -164,16 +174,11 @@ func (s *OrderService) UpdateOrder(order *models.Order) error {
 		return err
 	}
 
-	// Check if order has unsent items and send to kitchen
-	hasUnsentItems := false
-	for _, item := range order.Items {
-		if !item.SentToKitchen {
-			hasUnsentItems = true
-			break
-		}
-	}
-
-	if order.Status == models.OrderStatusPending && hasUnsentItems {
+	// Send to kitchen for any active order (pending, preparing, or ready)
+	// This ensures modifiers and other changes are reflected in kitchen display
+	if order.Status == models.OrderStatusPending ||
+	   order.Status == models.OrderStatusPreparing ||
+	   order.Status == models.OrderStatusReady {
 		go s.sendToKitchen(order)
 	}
 
@@ -479,19 +484,76 @@ func (s *OrderService) generateOrderNumber() string {
 	return fmt.Sprintf("ORD-%s", timestamp)
 }
 
+// getNextAvailableTakeoutNumber finds the next available takeout number
+// It reuses freed numbers (when orders are completed) instead of continuing sequence
+func (s *OrderService) getNextAvailableTakeoutNumber() (int, error) {
+	// Get all active takeout orders (not paid or cancelled)
+	var activeOrders []models.Order
+	err := s.db.Select("takeout_number").
+		Where("type = ? AND status IN ? AND takeout_number IS NOT NULL",
+			"takeout",
+			[]models.OrderStatus{models.OrderStatusPending, models.OrderStatusPreparing, models.OrderStatusReady}).
+		Order("takeout_number ASC").
+		Find(&activeOrders).Error
+
+	if err != nil {
+		return 0, err
+	}
+
+	// If no active orders, start from 1
+	if len(activeOrders) == 0 {
+		return 1, nil
+	}
+
+	// Build map of used numbers
+	usedNumbers := make(map[int]bool)
+	maxNumber := 0
+
+	for _, order := range activeOrders {
+		if order.TakeoutNumber != nil {
+			num := *order.TakeoutNumber
+			usedNumbers[num] = true
+			if num > maxNumber {
+				maxNumber = num
+			}
+		}
+	}
+
+	// Find first available number starting from 1
+	for i := 1; i <= maxNumber; i++ {
+		if !usedNumbers[i] {
+			return i, nil
+		}
+	}
+
+	// If all numbers 1 to maxNumber are used, return maxNumber + 1
+	return maxNumber + 1, nil
+}
+
 func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 	var subtotal float64
+	var totalTax float64
 
-	// Calculate items subtotal
+	// Get restaurant config to check if tax is included in price
+	var config models.RestaurantConfig
+	err := s.db.First(&config).Error
+	taxIncludedInPrice := false
+	if err == nil {
+		taxIncludedInPrice = config.TaxIncludedInPrice
+	}
+
+	// Calculate items subtotal and tax per product
 	for i := range order.Items {
 		item := &order.Items[i]
 
+		// Get product to determine tax type
+		var product models.Product
+		if err := s.db.First(&product, item.ProductID).Error; err != nil {
+			return err
+		}
+
 		// Get product price if not set
 		if item.UnitPrice == 0 {
-			var product models.Product
-			if err := s.db.First(&product, item.ProductID).Error; err != nil {
-				return err
-			}
 			item.UnitPrice = product.Price
 		}
 
@@ -504,29 +566,43 @@ func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 		}
 
 		subtotal += item.Subtotal
+
+		// Calculate tax based on product tax_type_id
+		// DIAN Tax Types: 1=IVA 19%, 5=IVA 0%, 6=IVA 5%
+		var itemTaxRate float64
+		switch product.TaxTypeID {
+		case 1: // IVA 19%
+			itemTaxRate = 19.0
+		case 5: // IVA 0%
+			itemTaxRate = 0.0
+		case 6: // IVA 5%
+			itemTaxRate = 5.0
+		default:
+			itemTaxRate = 0.0 // No tax by default
+		}
+
+		// Calculate item tax
+		if !taxIncludedInPrice {
+			// Tax not included: add tax on top
+			totalTax += item.Subtotal * (itemTaxRate / 100)
+		} else {
+			// Tax included: extract tax from price
+			if itemTaxRate > 0 {
+				totalTax += item.Subtotal - (item.Subtotal / (1 + itemTaxRate/100))
+			}
+		}
 	}
 
 	order.Subtotal = subtotal
-
-	// Calculate tax (if not included in price)
-	var config models.RestaurantConfig
-	err := s.db.First(&config).Error
-
-	// Use default tax rate if config doesn't exist
-	taxRate := config.DefaultTaxRate
-	if err != nil || taxRate == 0 {
-		taxRate = 19.0 // Default 19% tax rate for Colombia
-	}
-
-	if !config.TaxIncludedInPrice {
-		order.Tax = subtotal * (taxRate / 100)
-	} else {
-		// Tax is already included, calculate base
-		order.Tax = subtotal - (subtotal / (1 + taxRate/100))
-	}
+	order.Tax = totalTax
 
 	// Calculate total
-	order.Total = order.Subtotal + order.Tax - order.Discount
+	if !taxIncludedInPrice {
+		order.Total = order.Subtotal + order.Tax - order.Discount
+	} else {
+		// Tax already included in prices, so subtotal already contains tax
+		order.Total = order.Subtotal - order.Discount
+	}
 
 	return nil
 }
@@ -568,9 +644,12 @@ func (s *OrderService) sendToKitchen(order *models.Order) {
 
 	// Send to kitchen display via WebSocket
 	if s.wsServer != nil {
-		// Preload all relationships
+		// Preload all relationships including modifiers
 		var fullOrder models.Order
-		if err := s.db.Preload("Items.Product").Preload("Table").First(&fullOrder, order.ID).Error; err != nil {
+		if err := s.db.Preload("Items.Product").
+			Preload("Items.Modifiers.Modifier").
+			Preload("Table").
+			First(&fullOrder, order.ID).Error; err != nil {
 			log.Printf("OrderService: Error loading order details: %v", err)
 			return
 		}
@@ -812,12 +891,18 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 
 		tableID := order.TableID
 
-		// Delete order items first
+		// First, delete order item modifiers (they reference order_items)
+		if err := tx.Where("order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", orderID).
+			Delete(&models.OrderItemModifier{}).Error; err != nil {
+			return fmt.Errorf("failed to delete order item modifiers: %w", err)
+		}
+
+		// Then delete order items
 		if err := tx.Where("order_id = ?", orderID).Delete(&models.OrderItem{}).Error; err != nil {
 			return fmt.Errorf("failed to delete order items: %w", err)
 		}
 
-		// Delete the order
+		// Finally delete the order
 		if err := tx.Delete(&order).Error; err != nil {
 			return fmt.Errorf("failed to delete order: %w", err)
 		}

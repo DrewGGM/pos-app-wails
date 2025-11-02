@@ -39,6 +39,8 @@ import {
   Upload as UploadIcon,
   QrCode as QrCodeIcon,
   Refresh as RefreshIcon,
+  AddCircleOutline as ModifierIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '../../store';
@@ -59,6 +61,18 @@ import { Product, Category } from '../../types/models';
 import { toast } from 'react-toastify';
 import { compressImageToBase64, getBase64Size } from '../../utils/imageUtils';
 import { useAuth } from '../../hooks';
+import {
+  GetModifierGroups,
+  GetModifiers,
+  CreateModifierGroup,
+  UpdateModifierGroup,
+  DeleteModifierGroup,
+  CreateModifier,
+  UpdateModifier,
+  DeleteModifier,
+  AssignModifierToProduct,
+  RemoveModifierFromProduct
+} from '../../../wailsjs/go/services/ProductService';
 
 const Products: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -102,16 +116,43 @@ const Products: React.FC = () => {
     description: '',
   });
 
+  // Modifiers state
+  const [modifiersDialog, setModifiersDialog] = useState(false);
+  const [modifiersTab, setModifiersTab] = useState(0);
+  const [modifierGroups, setModifierGroups] = useState<any[]>([]);
+  const [modifiers, setModifiers] = useState<any[]>([]);
+  const [groupDialog, setGroupDialog] = useState(false);
+  const [modifierDialog, setModifierDialog] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<any | null>(null);
+  const [editingModifier, setEditingModifier] = useState<any | null>(null);
+  const [groupForm, setGroupForm] = useState({
+    name: '',
+    required: false,
+    multiple: false,
+    min_select: 0,
+    max_select: 1,
+  });
+  const [modifierForm, setModifierForm] = useState({
+    name: '',
+    type: 'add',
+    price_change: 0,
+    group_id: 0,
+  });
+  const [productModifiers, setProductModifiers] = useState<number[]>([]);
+
   useEffect(() => {
     dispatch(fetchProducts());
     dispatch(fetchCategories());
   }, [dispatch]);
 
-  const handleOpenProductDialog = (product?: Product) => {
+  const handleOpenProductDialog = async (product?: Product) => {
     if (product) {
       setSelectedProduct(product);
       setProductForm(product);
       setImagePreview(product.image || null);
+      // Get product modifiers
+      const productModifierIds = product.modifiers?.map((m: any) => m.id) || [];
+      setProductModifiers(productModifierIds);
     } else {
       setSelectedProduct(null);
       setProductForm({
@@ -124,10 +165,19 @@ const Products: React.FC = () => {
         min_stock: 5,
         barcode: '',
         active: true,
+        has_variable_price: false, // Variable price disabled by default
         tax_type_id: 1, // IVA 19% by default
         unit_measure_id: 796, // Porción by default
       });
       setImagePreview(null);
+      setProductModifiers([]);
+    }
+    // Load available modifiers
+    try {
+      const mods = await GetModifiers();
+      setModifiers(mods || []);
+    } catch (error) {
+      console.error('Error loading modifiers:', error);
     }
     setProductDialog(true);
   };
@@ -179,16 +229,47 @@ const Products: React.FC = () => {
 
   const handleSaveProduct = async () => {
     try {
+      let productId: number;
+
       if (selectedProduct) {
         await dispatch(updateProduct({
           id: selectedProduct.id!,
           product: productForm,
         })).unwrap();
+        productId = selectedProduct.id!;
         toast.success('Producto actualizado');
       } else {
-        await dispatch(createProduct(productForm)).unwrap();
+        const result = await dispatch(createProduct(productForm)).unwrap();
+        productId = result.id!;
         toast.success('Producto creado');
       }
+
+      // Update modifier assignments
+      const previousModifiers = selectedProduct?.modifiers?.map((m: any) => m.id) || [];
+      const currentModifiers = productModifiers;
+
+      // Find modifiers to add and remove
+      const toAdd = currentModifiers.filter(id => !previousModifiers.includes(id));
+      const toRemove = previousModifiers.filter((id: number) => !currentModifiers.includes(id));
+
+      // Assign new modifiers
+      for (const modifierId of toAdd) {
+        try {
+          await AssignModifierToProduct(productId, modifierId);
+        } catch (error) {
+          console.error('Error assigning modifier:', error);
+        }
+      }
+
+      // Remove old modifiers
+      for (const modifierId of toRemove) {
+        try {
+          await RemoveModifierFromProduct(productId, modifierId);
+        } catch (error) {
+          console.error('Error removing modifier:', error);
+        }
+      }
+
       handleCloseProductDialog();
       // Reload products to show changes
       dispatch(fetchProducts());
@@ -284,6 +365,146 @@ const Products: React.FC = () => {
         dispatch(fetchCategories());
       } catch (error) {
         toast.error('Error al eliminar categoría');
+      }
+    }
+  };
+
+  // Modifiers handlers
+  const loadModifiersData = async () => {
+    try {
+      const [groups, mods] = await Promise.all([
+        GetModifierGroups(),
+        GetModifiers()
+      ]);
+      setModifierGroups(groups || []);
+      setModifiers(mods || []);
+    } catch (error) {
+      console.error('Error loading modifiers:', error);
+      toast.error('Error al cargar modificadores');
+    }
+  };
+
+  const handleOpenModifiersDialog = () => {
+    setModifiersDialog(true);
+    loadModifiersData();
+  };
+
+  const handleOpenGroupDialog = (group?: any) => {
+    if (group) {
+      setEditingGroup(group);
+      setGroupForm({
+        name: group.name,
+        required: group.required,
+        multiple: group.multiple,
+        min_select: group.min_select,
+        max_select: group.max_select,
+      });
+    } else {
+      setEditingGroup(null);
+      setGroupForm({
+        name: '',
+        required: false,
+        multiple: false,
+        min_select: 0,
+        max_select: 1,
+      });
+    }
+    setGroupDialog(true);
+  };
+
+  const handleSaveGroup = async () => {
+    if (!groupForm.name) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+
+    try {
+      const payload = {
+        ...groupForm,
+        id: editingGroup?.id
+      };
+
+      if (editingGroup) {
+        await UpdateModifierGroup(payload as any);
+        toast.success('Grupo actualizado');
+      } else {
+        await CreateModifierGroup(payload as any);
+        toast.success('Grupo creado');
+      }
+      setGroupDialog(false);
+      loadModifiersData();
+    } catch (error) {
+      toast.error('Error al guardar grupo');
+    }
+  };
+
+  const handleDeleteGroup = async (id: number) => {
+    if (window.confirm('¿Está seguro de eliminar este grupo?')) {
+      try {
+        await DeleteModifierGroup(id);
+        toast.success('Grupo eliminado');
+        loadModifiersData();
+      } catch (error) {
+        toast.error('Error al eliminar grupo');
+      }
+    }
+  };
+
+  const handleOpenModifierDialog = (modifier?: any) => {
+    if (modifier) {
+      setEditingModifier(modifier);
+      setModifierForm({
+        name: modifier.name,
+        type: modifier.type || 'add',
+        price_change: modifier.price_change || 0,
+        group_id: modifier.group_id || 0,
+      });
+    } else {
+      setEditingModifier(null);
+      setModifierForm({
+        name: '',
+        type: 'add',
+        price_change: 0,
+        group_id: 0,
+      });
+    }
+    setModifierDialog(true);
+  };
+
+  const handleSaveModifier = async () => {
+    if (!modifierForm.name) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+
+    try {
+      const payload = {
+        ...modifierForm,
+        id: editingModifier?.id
+      };
+
+      if (editingModifier) {
+        await UpdateModifier(payload as any);
+        toast.success('Modificador actualizado');
+      } else {
+        await CreateModifier(payload as any);
+        toast.success('Modificador creado');
+      }
+      setModifierDialog(false);
+      loadModifiersData();
+    } catch (error) {
+      toast.error('Error al guardar modificador');
+    }
+  };
+
+  const handleDeleteModifier = async (id: number) => {
+    if (window.confirm('¿Está seguro de eliminar este modificador?')) {
+      try {
+        await DeleteModifier(id);
+        toast.success('Modificador eliminado');
+        loadModifiersData();
+      } catch (error) {
+        toast.error('Error al eliminar modificador');
       }
     }
   };
@@ -423,6 +644,13 @@ const Products: React.FC = () => {
             onClick={() => handleOpenCategoryDialog()}
           >
             Categorías
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<ModifierIcon />}
+            onClick={handleOpenModifiersDialog}
+          >
+            Modificadores
           </Button>
           <Button
             variant="outlined"
@@ -566,6 +794,17 @@ const Products: React.FC = () => {
                 label="Activo"
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={productForm.has_variable_price || false}
+                    onChange={(e) => setProductForm({ ...productForm, has_variable_price: e.target.checked })}
+                  />
+                }
+                label="Precio Variable (requiere digitar precio en venta)"
+              />
+            </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
@@ -683,6 +922,39 @@ const Products: React.FC = () => {
                 <Typography variant="caption" color="text.secondary" textAlign="center">
                   Formatos: JPG, PNG, WEBP (máx 10MB). La imagen será comprimida automáticamente.
                 </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" gutterBottom>
+                Modificadores
+              </Typography>
+              <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                Selecciona los modificadores disponibles para este producto (extras, ingredientes, etc.)
+              </Typography>
+              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {modifiers.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No hay modificadores disponibles. Créalos primero en la sección de Modificadores.
+                  </Typography>
+                ) : (
+                  modifiers.map((modifier) => (
+                    <Chip
+                      key={modifier.id}
+                      label={`${modifier.name} (${modifier.price_change >= 0 ? '+' : ''}$${modifier.price_change})`}
+                      onClick={() => {
+                        if (productModifiers.includes(modifier.id)) {
+                          setProductModifiers(productModifiers.filter(id => id !== modifier.id));
+                        } else {
+                          setProductModifiers([...productModifiers, modifier.id]);
+                        }
+                      }}
+                      color={productModifiers.includes(modifier.id) ? 'primary' : 'default'}
+                      variant={productModifiers.includes(modifier.id) ? 'filled' : 'outlined'}
+                      icon={productModifiers.includes(modifier.id) ? <CloseIcon /> : <AddIcon />}
+                    />
+                  ))
+                )}
               </Box>
             </Grid>
           </Grid>
@@ -808,6 +1080,225 @@ const Products: React.FC = () => {
           <Button onClick={() => setCategoryDialog(false)}>Cancelar</Button>
           <Button onClick={handleSaveCategory} variant="contained">
             {editingCategory ? 'Actualizar' : 'Crear'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modifiers Management Dialog */}
+      <Dialog open={modifiersDialog} onClose={() => setModifiersDialog(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          Gestión de Modificadores
+        </DialogTitle>
+        <DialogContent>
+          <Tabs value={modifiersTab} onChange={(_, v) => setModifiersTab(v)} sx={{ mb: 2 }}>
+            <Tab label="Grupos de Modificadores" />
+            <Tab label="Modificadores" />
+          </Tabs>
+
+          {/* Modifier Groups Tab */}
+          {modifiersTab === 0 && (
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => handleOpenGroupDialog()}
+                sx={{ mb: 2 }}
+              >
+                Nuevo Grupo
+              </Button>
+
+              <Grid container spacing={2}>
+                {modifierGroups.map((group) => (
+                  <Grid item xs={12} sm={6} key={group.id}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6">{group.name}</Typography>
+                        <Box sx={{ mt: 1 }}>
+                          <Chip
+                            label={group.required ? 'Requerido' : 'Opcional'}
+                            size="small"
+                            color={group.required ? 'primary' : 'default'}
+                            sx={{ mr: 1 }}
+                          />
+                          <Chip
+                            label={group.multiple ? 'Múltiple' : 'Único'}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          />
+                          {group.multiple && (
+                            <Chip
+                              label={`Min: ${group.min_select} Max: ${group.max_select}`}
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                      </CardContent>
+                      <CardActions>
+                        <IconButton size="small" onClick={() => handleOpenGroupDialog(group)}>
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteGroup(group.id)} color="error">
+                          <DeleteIcon />
+                        </IconButton>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Modifiers Tab */}
+          {modifiersTab === 1 && (
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => handleOpenModifierDialog()}
+                sx={{ mb: 2 }}
+              >
+                Nuevo Modificador
+              </Button>
+
+              <Grid container spacing={2}>
+                {modifiers.map((modifier) => (
+                  <Grid item xs={12} sm={6} md={4} key={modifier.id}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6">{modifier.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {modifier.modifier_group?.name || 'Sin grupo'}
+                        </Typography>
+                        <Typography variant="h6" color={modifier.price_change >= 0 ? 'primary' : 'error'} sx={{ mt: 1 }}>
+                          {modifier.price_change >= 0 ? '+' : ''}${modifier.price_change?.toLocaleString('es-CO')}
+                        </Typography>
+                      </CardContent>
+                      <CardActions>
+                        <IconButton size="small" onClick={() => handleOpenModifierDialog(modifier)}>
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteModifier(modifier.id)} color="error">
+                          <DeleteIcon />
+                        </IconButton>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModifiersDialog(false)}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modifier Group Dialog */}
+      <Dialog open={groupDialog} onClose={() => setGroupDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingGroup ? 'Editar Grupo' : 'Nuevo Grupo de Modificadores'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Nombre del Grupo"
+              value={groupForm.name}
+              onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+              required
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={groupForm.required}
+                  onChange={(e) => setGroupForm({ ...groupForm, required: e.target.checked })}
+                />
+              }
+              label="Requerido (el cliente debe seleccionar al menos uno)"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={groupForm.multiple}
+                  onChange={(e) => setGroupForm({ ...groupForm, multiple: e.target.checked })}
+                />
+              }
+              label="Selección múltiple (permitir seleccionar varios)"
+            />
+            {groupForm.multiple && (
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Mínimo a seleccionar"
+                  type="number"
+                  value={groupForm.min_select}
+                  onChange={(e) => setGroupForm({ ...groupForm, min_select: Number(e.target.value) })}
+                />
+                <TextField
+                  fullWidth
+                  label="Máximo a seleccionar"
+                  type="number"
+                  value={groupForm.max_select}
+                  onChange={(e) => setGroupForm({ ...groupForm, max_select: Number(e.target.value) })}
+                />
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGroupDialog(false)}>Cancelar</Button>
+          <Button onClick={handleSaveGroup} variant="contained">
+            {editingGroup ? 'Actualizar' : 'Crear'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modifier Dialog */}
+      <Dialog open={modifierDialog} onClose={() => setModifierDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingModifier ? 'Editar Modificador' : 'Nuevo Modificador'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Nombre"
+              value={modifierForm.name}
+              onChange={(e) => setModifierForm({ ...modifierForm, name: e.target.value })}
+              required
+            />
+            <FormControl fullWidth>
+              <InputLabel>Grupo</InputLabel>
+              <Select
+                value={modifierForm.group_id || ''}
+                onChange={(e) => setModifierForm({ ...modifierForm, group_id: Number(e.target.value) })}
+                label="Grupo"
+              >
+                <MenuItem value={0}>Sin grupo</MenuItem>
+                {modifierGroups.map(group => (
+                  <MenuItem key={group.id} value={group.id}>
+                    {group.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Cambio de Precio"
+              type="number"
+              value={modifierForm.price_change}
+              onChange={(e) => setModifierForm({ ...modifierForm, price_change: Number(e.target.value) })}
+              helperText="Use números positivos para agregar al precio, negativos para restar"
+              InputProps={{
+                startAdornment: <InputAdornment position="start">$</InputAdornment>,
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModifierDialog(false)}>Cancelar</Button>
+          <Button onClick={handleSaveModifier} variant="contained">
+            {editingModifier ? 'Actualizar' : 'Crear'}
           </Button>
         </DialogActions>
       </Dialog>

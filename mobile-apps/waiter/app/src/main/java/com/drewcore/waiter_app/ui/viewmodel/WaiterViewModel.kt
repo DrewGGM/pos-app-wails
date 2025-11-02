@@ -103,6 +103,38 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
+        // Listen for WebSocket messages and update data accordingly
+        viewModelScope.launch {
+            webSocketManager.messages.collect { message ->
+                message?.let {
+                    android.util.Log.d("WaiterViewModel", "Received WebSocket message: ${it.type}")
+                    when (it.type) {
+                        "table_update" -> {
+                            // Reload tables when there's a table update
+                            android.util.Log.d("WaiterViewModel", "Reloading tables due to table_update")
+                            refreshTables()
+                        }
+                        "order_new", "order_update", "order_ready", "order_cancelled" -> {
+                            // Reload orders and tables for any order change
+                            android.util.Log.d("WaiterViewModel", "Reloading data due to ${it.type}")
+                            refreshTables()
+                            refreshOrders()
+                        }
+                        "kitchen_order" -> {
+                            // Reload both tables and orders when order goes to kitchen
+                            android.util.Log.d("WaiterViewModel", "Reloading data due to kitchen_order")
+                            refreshTables()
+                            refreshOrders()
+                        }
+                        "notification" -> {
+                            // Handle general notifications
+                            android.util.Log.d("WaiterViewModel", "Notification received")
+                        }
+                    }
+                }
+            }
+        }
+
         discoverAndConnect()
     }
 
@@ -293,10 +325,10 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     fun addToCart(product: Product) {
         val currentCart = _cart.value.toMutableList()
-        val existing = currentCart.find { it.product.id == product.id }
+        val existingIndex = currentCart.indexOfFirst { it.product.id == product.id }
 
-        if (existing != null) {
-            existing.quantity++
+        if (existingIndex != -1) {
+            currentCart[existingIndex] = currentCart[existingIndex].copy(quantity = currentCart[existingIndex].quantity + 1)
         } else {
             currentCart.add(CartItem(product = product, quantity = 1))
         }
@@ -317,18 +349,18 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val currentCart = _cart.value.toMutableList()
-        val index = currentCart.indexOf(cartItem)
+        val index = currentCart.indexOfFirst { it.product.id == cartItem.product.id }
         if (index != -1) {
-            currentCart[index].quantity = quantity
+            currentCart[index] = currentCart[index].copy(quantity = quantity)
             _cart.value = currentCart
         }
     }
 
     fun updateNotes(cartItem: CartItem, notes: String) {
         val currentCart = _cart.value.toMutableList()
-        val index = currentCart.indexOf(cartItem)
+        val index = currentCart.indexOfFirst { it.product.id == cartItem.product.id }
         if (index != -1) {
-            currentCart[index].notes = notes
+            currentCart[index] = currentCart[index].copy(notes = notes)
             _cart.value = currentCart
         }
     }
@@ -356,9 +388,15 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 OrderItemRequest(
                     productId = cartItem.product.id,
                     quantity = cartItem.quantity,
-                    price = cartItem.product.price,
+                    unitPrice = cartItem.unitPrice,
                     subtotal = cartItem.subtotal,
-                    notes = cartItem.notes.takeIf { it.isNotBlank() }
+                    notes = cartItem.notes.takeIf { it.isNotBlank() },
+                    modifiers = cartItem.modifiers.takeIf { it.isNotEmpty() }?.map { modifier ->
+                        OrderItemModifierRequest(
+                            modifierId = modifier.id,
+                            priceChange = modifier.priceChange
+                        )
+                    }
                 )
             }
 
@@ -437,6 +475,47 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     fun clearError() {
         if (_uiState.value is UiState.Error) {
             _uiState.value = UiState.Ready
+        }
+    }
+
+    // Refresh functions for real-time updates via WebSocket
+    private fun refreshTables() {
+        viewModelScope.launch {
+            apiService?.getTables()?.onSuccess { tableList ->
+                android.util.Log.d("WaiterViewModel", "Tables refreshed: ${tableList.size} tables")
+                _tables.value = tableList
+
+                // If we have a selected table, update it with the new data
+                _selectedTable.value?.let { currentTable ->
+                    val updatedTable = tableList.find { it.id == currentTable.id }
+                    if (updatedTable != null) {
+                        _selectedTable.value = updatedTable
+                        android.util.Log.d("WaiterViewModel", "Updated selected table ${updatedTable.number}, status=${updatedTable.status}")
+                    }
+                }
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "Error refreshing tables: ${error.message}")
+            }
+        }
+    }
+
+    private fun refreshOrders() {
+        viewModelScope.launch {
+            // Reload pending orders
+            loadOrders()
+
+            // If we're currently editing an order, reload it
+            _currentOrderId.value?.let { orderId ->
+                apiService?.getOrders(status = "pending", tableId = _selectedTable.value?.id)?.onSuccess { orders ->
+                    val currentOrder = orders.find { it.id == orderId }
+                    if (currentOrder == null) {
+                        // Order was deleted or completed, clear cart
+                        android.util.Log.d("WaiterViewModel", "Current order no longer exists, clearing cart")
+                        _cart.value = emptyList()
+                        _currentOrderId.value = null
+                    }
+                }
+            }
         }
     }
 

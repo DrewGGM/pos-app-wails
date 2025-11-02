@@ -99,7 +99,7 @@ func NewServer(port string) *Server {
 // SetDB sets the database connection for REST API endpoints
 func (s *Server) SetDB(db *gorm.DB) {
 	s.db = db
-	s.restHandlers = NewRESTHandlers(db)
+	s.restHandlers = NewRESTHandlers(db, s)
 	log.Println("WebSocket server: Database connection set for REST API")
 }
 

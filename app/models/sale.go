@@ -61,15 +61,17 @@ type PaymentAllocation struct {
 
 // PaymentMethod represents available payment methods
 type PaymentMethod struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Name         string    `gorm:"not null;unique" json:"name"`
-	Type         string    `json:"type"` // "cash", "digital", "card", "check"
-	Icon         string    `json:"icon"`
-	RequiresRef  bool      `json:"requires_ref"` // Requires reference number
-	IsActive     bool      `gorm:"default:true" json:"is_active"`
-	DisplayOrder int       `json:"display_order"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                   uint      `gorm:"primaryKey" json:"id"`
+	Name                 string    `gorm:"not null;unique" json:"name"`
+	Type                 string    `json:"type"` // "cash", "digital", "card", "check", "other"
+	Icon                 string    `json:"icon"`
+	RequiresRef          bool      `json:"requires_ref"`            // Requires reference number
+	DIANPaymentMethodID  *int      `json:"dian_payment_method_id"`  // DIAN parametric payment method ID for electronic invoicing
+	AffectsCashRegister  bool      `gorm:"default:true" json:"affects_cash_register"` // Whether this payment type counts in cash register reconciliation
+	IsActive             bool      `gorm:"default:true" json:"is_active"`
+	DisplayOrder         int       `json:"display_order"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // Customer represents a customer

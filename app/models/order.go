@@ -34,28 +34,29 @@ func (s OrderStatus) Value() (driver.Value, error) {
 
 // Order represents a customer order
 type Order struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	OrderNumber string         `gorm:"unique;not null" json:"order_number"`
-	Type        string         `json:"type"` // "dine-in", "takeout", "delivery"
-	Status      OrderStatus    `json:"status"`
-	TableID     *uint          `json:"table_id,omitempty"`
-	Table       *Table         `json:"table,omitempty"`
-	CustomerID  *uint          `json:"customer_id,omitempty"`
-	Customer    *Customer      `json:"customer,omitempty"`
-	Items       []OrderItem    `json:"items"`
-	Subtotal    float64        `json:"subtotal"`
-	Tax         float64        `json:"tax"`
-	Discount    float64        `json:"discount"`
-	Total       float64        `json:"total"`
-	Notes       string         `json:"notes"`
-	EmployeeID  uint           `json:"employee_id"`
-	Employee    *Employee      `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
-	SaleID      *uint          `json:"sale_id,omitempty"`
-	Source      string         `json:"source"` // "pos", "waiter_app", "online"
-	IsSynced    bool           `gorm:"default:false" json:"is_synced"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ID           uint           `gorm:"primaryKey" json:"id"`
+	OrderNumber  string         `gorm:"unique;not null" json:"order_number"`
+	Type         string         `json:"type"` // "dine-in", "takeout", "delivery"
+	Status       OrderStatus    `json:"status"`
+	TakeoutNumber *int          `gorm:"default:null" json:"takeout_number,omitempty"` // Sequential number for takeout orders (1,2,3...), reuses freed numbers
+	TableID      *uint          `json:"table_id,omitempty"`
+	Table        *Table         `json:"table,omitempty"`
+	CustomerID   *uint          `json:"customer_id,omitempty"`
+	Customer     *Customer      `json:"customer,omitempty"`
+	Items        []OrderItem    `json:"items"`
+	Subtotal     float64        `json:"subtotal"`
+	Tax          float64        `json:"tax"`
+	Discount     float64        `json:"discount"`
+	Total        float64        `json:"total"`
+	Notes        string         `json:"notes"`
+	EmployeeID   uint           `json:"employee_id"`
+	Employee     *Employee      `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
+	SaleID       *uint          `json:"sale_id,omitempty"`
+	Source       string         `json:"source"` // "pos", "waiter_app", "online"
+	IsSynced     bool           `gorm:"default:false" json:"is_synced"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 // OrderItem represents an item in an order

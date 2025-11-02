@@ -27,9 +27,11 @@ fun CartScreen(
     onUpdateQuantity: (CartItem, Int) -> Unit,
     onUpdateNotes: (CartItem, String) -> Unit,
     onRemoveItem: (CartItem) -> Unit,
-    onSendOrder: () -> Unit
+    onSendOrder: () -> Unit,
+    onCancelOrder: (() -> Unit)? = null
 ) {
     var editingItem by remember { mutableStateOf<CartItem?>(null) }
+    var showCancelDialog by remember { mutableStateOf(false) }
 
     if (cartItems.isEmpty()) {
         Box(
@@ -96,6 +98,26 @@ fun CartScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    // Cancel order button (only if editing an existing order)
+                    if (isEditingOrder && onCancelOrder != null) {
+                        OutlinedButton(
+                            onClick = { showCancelDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "CANCELAR PEDIDO Y DESOCUPAR MESA",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     Button(
                         onClick = { onSendOrder() },
                         modifier = Modifier.fillMaxWidth(),
@@ -118,6 +140,38 @@ fun CartScreen(
                 }
             }
         }
+    }
+
+    // Cancel order confirmation dialog
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text("Cancelar Pedido") },
+            text = {
+                Text(
+                    "¿Estás seguro que deseas cancelar este pedido? " +
+                    if (selectedTable != null) "La mesa ${selectedTable.number} quedará disponible." else "Esta acción no se puede deshacer."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCancelDialog = false
+                        onCancelOrder?.invoke()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Cancelar Pedido")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) {
+                    Text("Volver")
+                }
+            }
+        )
     }
 
     // Edit notes dialog

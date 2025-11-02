@@ -62,8 +62,8 @@ export function PrintReceiptWithPrinter(arg1, arg2) {
   return window['go']['services']['SalesService']['PrintReceiptWithPrinter'](arg1, arg2);
 }
 
-export function ProcessSale(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['services']['SalesService']['ProcessSale'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function ProcessSale(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['services']['SalesService']['ProcessSale'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function RefundSale(arg1, arg2, arg3, arg4) {

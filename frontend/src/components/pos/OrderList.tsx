@@ -26,6 +26,7 @@ interface OrderListProps {
   onUpdateQuantity: (itemId: number, quantity: number) => void;
   onRemoveItem: (itemId: number) => void;
   onEditItem?: (item: OrderItem) => void;
+  onEditNotes?: (item: OrderItem) => void;
   editable?: boolean;
 }
 
@@ -34,6 +35,7 @@ const OrderList: React.FC<OrderListProps> = ({
   onUpdateQuantity,
   onRemoveItem,
   onEditItem,
+  onEditNotes,
   editable = true,
 }) => {
   const handleQuantityChange = (item: OrderItem, delta: number) => {
@@ -99,11 +101,24 @@ const OrderList: React.FC<OrderListProps> = ({
               {/* Action buttons */}
               {editable && (
                 <Box>
-                  {onEditItem && item.product?.has_modifiers && (
+                  {onEditNotes && (
+                    <IconButton
+                      size="small"
+                      onClick={() => onEditNotes(item)}
+                      sx={{ mr: 0.5 }}
+                      color={item.notes ? "primary" : "default"}
+                      title="Agregar nota"
+                    >
+                      <NoteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  {onEditItem && item.product?.modifiers && item.product.modifiers.length > 0 && (
                     <IconButton
                       size="small"
                       onClick={() => onEditItem(item)}
                       sx={{ mr: 0.5 }}
+                      color={item.modifiers && item.modifiers.length > 0 ? "primary" : "default"}
+                      title="Editar modificadores"
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
@@ -115,6 +130,7 @@ const OrderList: React.FC<OrderListProps> = ({
                       const itemId = item.id ?? Date.now();
                       onRemoveItem(itemId);
                     }}
+                    title="Eliminar"
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>

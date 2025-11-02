@@ -189,6 +189,7 @@ fun WaiterApp(
                                 onUpdateNotes = { item, notes -> viewModel.updateNotes(item, notes) },
                                 onRemoveItem = { viewModel.removeFromCart(it) },
                                 onSendOrder = { viewModel.sendOrder() },
+                                onCancelOrder = if (currentOrderId != null) { { viewModel.deleteCurrentOrder() } } else null,
                                 onReleaseTable = { viewModel.releaseTable() },
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
@@ -238,6 +239,7 @@ fun ProductSelectionWithCart(
     onUpdateNotes: (com.drewcore.waiter_app.data.models.CartItem, String) -> Unit,
     onRemoveItem: (com.drewcore.waiter_app.data.models.CartItem) -> Unit,
     onSendOrder: () -> Unit,
+    onCancelOrder: (() -> Unit)? = null,
     onReleaseTable: () -> Unit,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -331,7 +333,8 @@ fun ProductSelectionWithCart(
                     onUpdateQuantity = onUpdateQuantity,
                     onUpdateNotes = onUpdateNotes,
                     onRemoveItem = onRemoveItem,
-                    onSendOrder = onSendOrder
+                    onSendOrder = onSendOrder,
+                    onCancelOrder = onCancelOrder
                 )
             }
         }

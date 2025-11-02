@@ -50,6 +50,7 @@ type CashMovement struct {
 	Type           string        `json:"type"`   // "sale", "deposit", "withdrawal", "adjustment"
 	Amount         float64       `json:"amount"` // Positive for income, negative for expenses
 	Description    string        `json:"description"`
+	Reason         string        `json:"reason"` // Human-readable reason for the movement
 	Reference      string        `json:"reference"` // Sale ID, etc.
 	EmployeeID     uint          `json:"employee_id"`
 	Employee       *Employee     `json:"employee,omitempty"`
