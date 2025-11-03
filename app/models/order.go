@@ -62,7 +62,7 @@ type Order struct {
 	Table         *Table         `json:"table,omitempty"`
 	CustomerID   *uint          `json:"customer_id,omitempty"`
 	Customer     *Customer      `json:"customer,omitempty"`
-	Items        []OrderItem    `json:"items"`
+	Items        []OrderItem    `gorm:"foreignKey:OrderID" json:"items"`
 	Subtotal     float64        `json:"subtotal"`
 	Tax          float64        `json:"tax"`
 	Discount     float64        `json:"discount"`

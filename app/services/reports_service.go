@@ -410,12 +410,12 @@ func (s *ReportsService) getHourlySales(startDate, endDate time.Time) []HourlySa
 
 	query := `
 		SELECT
-			EXTRACT(HOUR FROM created_at)::integer as hour,
+			CAST(strftime('%H', created_at) AS INTEGER) as hour,
 			SUM(total) as sales,
 			COUNT(*) as orders
 		FROM sales
 		WHERE created_at BETWEEN ? AND ?
-		GROUP BY EXTRACT(HOUR FROM created_at)
+		GROUP BY CAST(strftime('%H', created_at) AS INTEGER)
 		ORDER BY hour
 	`
 
@@ -444,12 +444,12 @@ func (s *ReportsService) getDailySales(startDate, endDate time.Time) []DailySale
 
 	query := `
 		SELECT
-			created_at::date as date,
+			DATE(created_at) as date,
 			SUM(total) as sales,
 			COUNT(*) as orders
 		FROM sales
 		WHERE created_at BETWEEN ? AND ?
-		GROUP BY created_at::date
+		GROUP BY DATE(created_at)
 		ORDER BY date
 	`
 

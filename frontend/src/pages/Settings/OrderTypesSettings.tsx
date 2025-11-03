@@ -44,18 +44,9 @@ import {
   UpdateOrderType,
   DeleteOrderType,
 } from '../../../wailsjs/go/services/OrderTypeService';
+import { models } from '../../../wailsjs/go/models';
 
-interface OrderType {
-  id?: number;
-  code: string;
-  name: string;
-  requires_sequential_number: boolean;
-  sequence_prefix: string;
-  display_color: string;
-  icon: string;
-  is_active: boolean;
-  display_order: number;
-}
+type OrderType = models.OrderType;
 
 const OrderTypesSettings: React.FC = () => {
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
@@ -127,10 +118,21 @@ const OrderTypesSettings: React.FC = () => {
         return;
       }
 
-      const typeData: OrderType = {
-        ...formData,
-        id: editingType?.id,
-      } as OrderType;
+      // Create OrderType instance
+      const typeData = new models.OrderType({
+        id: editingType?.id || 0,
+        code: formData.code || '',
+        name: formData.name || '',
+        requires_sequential_number: formData.requires_sequential_number || false,
+        sequence_prefix: formData.sequence_prefix || '',
+        display_color: formData.display_color || '#3B82F6',
+        icon: formData.icon || 'shopping_bag',
+        is_active: formData.is_active !== undefined ? formData.is_active : true,
+        display_order: formData.display_order || 0,
+        created_at: editingType?.created_at || '',
+        updated_at: editingType?.updated_at || '',
+        deleted_at: editingType?.deleted_at,
+      });
 
       if (editingType) {
         await UpdateOrderType(typeData);
@@ -172,7 +174,7 @@ const OrderTypesSettings: React.FC = () => {
       case 'delivery_dining':
         return <DeliveryIcon />;
       default:
-        return <ShoppingBag />;
+        return <TakeoutIcon />;
     }
   };
 

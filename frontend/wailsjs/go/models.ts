@@ -1030,11 +1030,66 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class OrderType {
+	    id: number;
+	    code: string;
+	    name: string;
+	    requires_sequential_number: boolean;
+	    sequence_prefix: string;
+	    display_color: string;
+	    icon: string;
+	    is_active: boolean;
+	    display_order: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrderType(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.requires_sequential_number = source["requires_sequential_number"];
+	        this.sequence_prefix = source["sequence_prefix"];
+	        this.display_color = source["display_color"];
+	        this.icon = source["icon"];
+	        this.is_active = source["is_active"];
+	        this.display_order = source["display_order"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Order {
 	    id: number;
 	    order_number: string;
+	    order_type_id?: number;
+	    order_type?: OrderType;
 	    type: string;
 	    status: string;
+	    sequence_number?: number;
 	    takeout_number?: number;
 	    table_id?: number;
 	    table?: Table;
@@ -1063,8 +1118,11 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.order_number = source["order_number"];
+	        this.order_type_id = source["order_type_id"];
+	        this.order_type = this.convertValues(source["order_type"], OrderType);
 	        this.type = source["type"];
 	        this.status = source["status"];
+	        this.sequence_number = source["sequence_number"];
 	        this.takeout_number = source["takeout_number"];
 	        this.table_id = source["table_id"];
 	        this.table = this.convertValues(source["table"], Table);
@@ -1862,6 +1920,7 @@ export namespace models {
 		    return a;
 		}
 	}
+	
 	
 	
 	
@@ -2874,6 +2933,22 @@ export namespace services {
 	        this.growth_percent = source["growth_percent"];
 	    }
 	}
+	export class OrderTypeDetail {
+	    order_type: string;
+	    amount: number;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrderTypeDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.order_type = source["order_type"];
+	        this.amount = source["amount"];
+	        this.count = source["count"];
+	    }
+	}
 	export class PaymentData {
 	    payment_method_id: number;
 	    amount: number;
@@ -2888,6 +2963,22 @@ export namespace services {
 	        this.payment_method_id = source["payment_method_id"];
 	        this.amount = source["amount"];
 	        this.reference = source["reference"];
+	    }
+	}
+	export class PaymentMethodDetail {
+	    payment_method: string;
+	    amount: number;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaymentMethodDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.payment_method = source["payment_method"];
+	        this.amount = source["amount"];
+	        this.count = source["count"];
 	    }
 	}
 	export class ProductDetail {
@@ -2936,6 +3027,8 @@ export namespace services {
 	    productos_vendidos: number;
 	    ticket_promedio: number;
 	    detalle_productos: ProductDetail[];
+	    detalle_tipos_pago: PaymentMethodDetail[];
+	    detalle_tipos_pedido: OrderTypeDetail[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ReportData(source);
@@ -2951,6 +3044,8 @@ export namespace services {
 	        this.productos_vendidos = source["productos_vendidos"];
 	        this.ticket_promedio = source["ticket_promedio"];
 	        this.detalle_productos = this.convertValues(source["detalle_productos"], ProductDetail);
+	        this.detalle_tipos_pago = this.convertValues(source["detalle_tipos_pago"], PaymentMethodDetail);
+	        this.detalle_tipos_pedido = this.convertValues(source["detalle_tipos_pedido"], OrderTypeDetail);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

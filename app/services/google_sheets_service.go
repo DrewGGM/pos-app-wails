@@ -98,16 +98,32 @@ type ProductDetail struct {
 	Total       float64 `json:"total"`
 }
 
+// PaymentMethodDetail represents payment breakdown
+type PaymentMethodDetail struct {
+	PaymentMethod string  `json:"payment_method"`
+	Amount        float64 `json:"amount"`
+	Count         int     `json:"count"`
+}
+
+// OrderTypeDetail represents order type breakdown
+type OrderTypeDetail struct {
+	OrderType string  `json:"order_type"`
+	Amount    float64 `json:"amount"`
+	Count     int     `json:"count"`
+}
+
 // ReportData represents a daily report row
 type ReportData struct {
-	Fecha             string          `json:"fecha"`
-	VentasTotales     float64         `json:"ventas_totales"`
-	VentasDIAN        float64         `json:"ventas_dian"`
-	VentasNoDIAN      float64         `json:"ventas_no_dian"`
-	NumeroOrdenes     int             `json:"numero_ordenes"`
-	ProductosVendidos int             `json:"productos_vendidos"`
-	TicketPromedio    float64         `json:"ticket_promedio"`
-	DetalleProductos  []ProductDetail `json:"detalle_productos"`
+	Fecha                 string                 `json:"fecha"`
+	VentasTotales         float64                `json:"ventas_totales"`
+	VentasDIAN            float64                `json:"ventas_dian"`
+	VentasNoDIAN          float64                `json:"ventas_no_dian"`
+	NumeroOrdenes         int                    `json:"numero_ordenes"`
+	ProductosVendidos     int                    `json:"productos_vendidos"`
+	TicketPromedio        float64                `json:"ticket_promedio"`
+	DetalleProductos      []ProductDetail        `json:"detalle_productos"`
+	DetalleTiposPago      []PaymentMethodDetail  `json:"detalle_tipos_pago"`
+	DetalleTiposPedido    []OrderTypeDetail      `json:"detalle_tipos_pedido"`
 }
 
 // GenerateDailyReport generates report data for a specific date
@@ -190,6 +206,59 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		})
 	}
 
+	// Get payment method breakdown
+	type PaymentSummary struct {
+		PaymentMethodName string
+		Amount            float64
+		Count             int
+	}
+
+	var paymentSummaries []PaymentSummary
+	s.db.Table("payments").
+		Select("payment_methods.name as payment_method_name, SUM(payments.amount) as amount, COUNT(*) as count").
+		Joins("JOIN sales ON sales.id = payments.sale_id").
+		Joins("JOIN orders ON orders.id = sales.order_id").
+		Joins("JOIN payment_methods ON payment_methods.id = payments.payment_method_id").
+		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
+		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Group("payment_methods.id, payment_methods.name").
+		Order("SUM(payments.amount) DESC").
+		Scan(&paymentSummaries)
+
+	report.DetalleTiposPago = []PaymentMethodDetail{}
+	for _, pm := range paymentSummaries {
+		report.DetalleTiposPago = append(report.DetalleTiposPago, PaymentMethodDetail{
+			PaymentMethod: pm.PaymentMethodName,
+			Amount:        pm.Amount,
+			Count:         pm.Count,
+		})
+	}
+
+	// Get order type breakdown
+	type OrderTypeSummary struct {
+		OrderType string
+		Amount    float64
+		Count     int64
+	}
+
+	var orderTypeSummaries []OrderTypeSummary
+	s.db.Model(&models.Order{}).
+		Select("type as order_type, SUM(total) as amount, COUNT(*) as count").
+		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
+		Where("status IN ?", []string{"completed", "paid"}).
+		Group("type").
+		Order("SUM(total) DESC").
+		Scan(&orderTypeSummaries)
+
+	report.DetalleTiposPedido = []OrderTypeDetail{}
+	for _, ot := range orderTypeSummaries {
+		report.DetalleTiposPedido = append(report.DetalleTiposPedido, OrderTypeDetail{
+			OrderType: ot.OrderType,
+			Amount:    ot.Amount,
+			Count:     int(ot.Count),
+		})
+	}
+
 	return report, nil
 }
 
@@ -249,6 +318,18 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		return fmt.Errorf("failed to marshal products: %w", err)
 	}
 
+	// Convert payment method details to JSON string
+	paymentsJSON, err := json.Marshal(report.DetalleTiposPago)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payment methods: %w", err)
+	}
+
+	// Convert order type details to JSON string
+	orderTypesJSON, err := json.Marshal(report.DetalleTiposPedido)
+	if err != nil {
+		return fmt.Errorf("failed to marshal order types: %w", err)
+	}
+
 	// Prepare row data
 	row := []interface{}{
 		report.Fecha,
@@ -259,6 +340,8 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		report.ProductosVendidos,
 		report.TicketPromedio,
 		string(productsJSON),
+		string(paymentsJSON),
+		string(orderTypesJSON),
 	}
 
 	// Check if a row with this date already exists
@@ -273,7 +356,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 
 	if rowIndex > 0 {
 		// Update existing row
-		sheetRange := fmt.Sprintf("%s!A%d:H%d", config.SheetName, rowIndex, rowIndex)
+		sheetRange := fmt.Sprintf("%s!A%d:J%d", config.SheetName, rowIndex, rowIndex)
 		_, err = srv.Spreadsheets.Values.Update(config.SpreadsheetID, sheetRange, valueRange).
 			ValueInputOption("USER_ENTERED").
 			Do()
@@ -282,7 +365,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		}
 	} else {
 		// Append new row
-		sheetRange := fmt.Sprintf("%s!A:H", config.SheetName)
+		sheetRange := fmt.Sprintf("%s!A:J", config.SheetName)
 		_, err = srv.Spreadsheets.Values.Append(config.SpreadsheetID, sheetRange, valueRange).
 			ValueInputOption("USER_ENTERED").
 			Do()
@@ -305,14 +388,14 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 // ensureHeaders ensures the spreadsheet has the correct headers
 func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.GoogleSheetsConfig) error {
 	// Read first row
-	sheetRange := fmt.Sprintf("%s!A1:H1", config.SheetName)
+	sheetRange := fmt.Sprintf("%s!A1:J1", config.SheetName)
 	resp, err := srv.Spreadsheets.Values.Get(config.SpreadsheetID, sheetRange).Do()
 	if err != nil {
 		return err
 	}
 
 	// If no data or headers are missing, add them
-	if len(resp.Values) == 0 || len(resp.Values[0]) < 8 {
+	if len(resp.Values) == 0 || len(resp.Values[0]) < 10 {
 		headers := []interface{}{
 			"fecha",
 			"ventas_totales",
@@ -322,6 +405,8 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"productos_vendidos",
 			"ticket_promedio",
 			"detalle_productos",
+			"detalle_tipos_pago",
+			"detalle_tipos_pedido",
 		}
 
 		valueRange := &sheets.ValueRange{

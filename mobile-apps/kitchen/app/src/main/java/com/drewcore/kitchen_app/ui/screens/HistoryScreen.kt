@@ -16,27 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drewcore.kitchen_app.data.models.Order
 
-// Helper function to get order title based on order type
-fun getOrderTitle(order: Order): String {
-    // Use new orderType if available
-    return when {
-        order.orderType != null -> {
-            when {
-                // For table-based orders (dine-in), show table number
-                order.orderType.code == "dine-in" && order.table != null ->
-                    "Mesa ${order.table.number}"
-                // For orders with sequential numbering, show prefix + number
-                order.orderType.requiresSequentialNumber && order.sequenceNumber != null ->
-                    "${order.orderType.sequencePrefix ?: ""}${order.sequenceNumber}"
-                // Otherwise show order type name
-                else -> order.orderType.name
-            }
-        }
-        // Fallback to old type field for backward compatibility
-        else -> if (order.table != null) "Mesa ${order.table.number}" else "Orden #${order.orderNumber}"
-    }
-}
-
 @Composable
 fun HistoryScreen(
     completedOrders: List<Order>,

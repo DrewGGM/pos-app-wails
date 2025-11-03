@@ -51,6 +51,7 @@ import {
   Edit as EditIcon,
   Fastfood as FastfoodIcon,
   Save as SaveIcon,
+  DeliveryDining as DeliveryIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 
@@ -89,6 +90,7 @@ const POS: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeout' | 'delivery'>('takeout');
 
   // Dialogs
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -97,6 +99,7 @@ const POS: React.FC = () => {
   const [priceInputDialogOpen, setPriceInputDialogOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [orderTypeDialogOpen, setOrderTypeDialogOpen] = useState(false);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
   const [selectedProductForPrice, setSelectedProductForPrice] = useState<Product | null>(null);
   const [selectedItemForModifierEdit, setSelectedItemForModifierEdit] = useState<OrderItem | null>(null);
@@ -156,6 +159,15 @@ const POS: React.FC = () => {
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  // Update order type when table is selected/deselected
+  useEffect(() => {
+    if (selectedTable && orderType !== 'dine_in') {
+      setOrderType('dine_in');
+    } else if (!selectedTable && orderType === 'dine_in') {
+      setOrderType('takeout');
+    }
+  }, [selectedTable]);
 
   // Load order/table from query parameters (when coming from Tables page)
   useEffect(() => {
@@ -429,7 +441,7 @@ const POS: React.FC = () => {
     setIsSavingOrder(true);
     try {
       const orderData: CreateOrderData = {
-        type: selectedTable ? 'dine_in' : 'takeout',
+        type: orderType,
         table_id: selectedTable?.id,
         customer_id: selectedCustomer?.id,
         employee_id: user?.id,
@@ -499,7 +511,7 @@ const POS: React.FC = () => {
       } else {
         // Create new order
         const orderData: CreateOrderData = {
-          type: selectedTable ? 'dine_in' : 'takeout',
+          type: orderType,
           table_id: selectedTable?.id,
           customer_id: selectedCustomer?.id,
           employee_id: user?.id,
@@ -739,6 +751,21 @@ const POS: React.FC = () => {
             variant="outlined"
           >
             Descuento
+          </Button>
+          <Button
+            startIcon={
+              orderType === 'dine_in' ? <RestaurantIcon /> :
+              orderType === 'delivery' ? <DeliveryIcon /> :
+              <FastfoodIcon />
+            }
+            onClick={() => setOrderTypeDialogOpen(true)}
+            variant="contained"
+            size="small"
+            color={orderType === 'dine_in' ? 'info' : orderType === 'delivery' ? 'warning' : 'success'}
+          >
+            {orderType === 'dine_in' ? 'Mesa' :
+             orderType === 'delivery' ? 'Domicilio' :
+             'Para Llevar'}
           </Button>
         </Box>
 
@@ -1024,6 +1051,64 @@ const POS: React.FC = () => {
             color="primary"
           >
             Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Order Type Selection Dialog */}
+      <Dialog
+        open={orderTypeDialogOpen}
+        onClose={() => setOrderTypeDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Seleccionar Tipo de Pedido</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+            <Button
+              variant={orderType === 'takeout' ? 'contained' : 'outlined'}
+              color="success"
+              size="large"
+              startIcon={<FastfoodIcon />}
+              onClick={() => {
+                setOrderType('takeout');
+                setOrderTypeDialogOpen(false);
+              }}
+              sx={{ justifyContent: 'flex-start', py: 2 }}
+            >
+              Para Llevar
+            </Button>
+            <Button
+              variant={orderType === 'dine_in' ? 'contained' : 'outlined'}
+              color="info"
+              size="large"
+              startIcon={<RestaurantIcon />}
+              onClick={() => {
+                setOrderType('dine_in');
+                setOrderTypeDialogOpen(false);
+              }}
+              sx={{ justifyContent: 'flex-start', py: 2 }}
+            >
+              Mesa / Para Comer Aquí
+            </Button>
+            <Button
+              variant={orderType === 'delivery' ? 'contained' : 'outlined'}
+              color="warning"
+              size="large"
+              startIcon={<DeliveryIcon />}
+              onClick={() => {
+                setOrderType('delivery');
+                setOrderTypeDialogOpen(false);
+              }}
+              sx={{ justifyContent: 'flex-start', py: 2 }}
+            >
+              Domicilio
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOrderTypeDialogOpen(false)}>
+            Cancelar
           </Button>
         </DialogActions>
       </Dialog>

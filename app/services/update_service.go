@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	CurrentVersion = "1.1.0"
+	CurrentVersion = "1.1.1"
 	GitHubAPIURL   = "https://api.github.com/repos/DrewGGM/wails-posapp-releases/releases/latest"
 )
 

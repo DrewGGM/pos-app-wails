@@ -183,13 +183,34 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             // Check if this order was previously marked as ready
             val readyItems = readyOrderItems[order.id]
             if (readyItems != null && readyItems.isNotEmpty()) {
-                // Order was marked ready before, filter out ready items
-                val newItems = order.items.filter { item ->
+                // Order was marked ready before, filter out ready items and show only additional quantities
+                val newItems = order.items.mapNotNull { item ->
                     val key = "${item.productId}-${item.notes}"
-                    key !in readyItems
-                }.map { item ->
-                    item.changeStatus = ItemChangeStatus.ADDED
-                    item
+                    val readyQuantity = readyItems[key]
+
+                    when {
+                        readyQuantity == null -> {
+                            // Item wasn't in the ready order - it's completely new
+                            item.changeStatus = ItemChangeStatus.ADDED
+                            item
+                        }
+                        item.quantity > readyQuantity -> {
+                            // Item quantity increased - show only additional units
+                            val additionalQuantity = item.quantity - readyQuantity
+                            val newSubtotal = (item.subtotal / item.quantity) * additionalQuantity
+                            item.copy(
+                                quantity = additionalQuantity,
+                                subtotal = newSubtotal
+                            ).apply {
+                                changeStatus = ItemChangeStatus.ADDED
+                                previousQuantity = 0
+                            }
+                        }
+                        else -> {
+                            // Item quantity is same or less - don't show
+                            null
+                        }
+                    }
                 }
 
                 if (newItems.isNotEmpty()) {
@@ -239,11 +260,14 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     if (additionalQuantity > 0) {
                         // There are additional units - show only those
                         android.util.Log.d("KitchenViewModel", "Item $key had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
+                        val newSubtotal = (newItem.subtotal / newItem.quantity) * additionalQuantity
                         newItem.copy(
                             quantity = additionalQuantity,
-                            changeStatus = ItemChangeStatus.ADDED,
+                            subtotal = newSubtotal
+                        ).apply {
+                            changeStatus = ItemChangeStatus.ADDED
                             previousQuantity = 0
-                        )
+                        }
                     } else {
                         // No additional units or fewer units than before - don't show
                         android.util.Log.d("KitchenViewModel", "Filtering out item $key: no additional units (ready: $readyQuantity, current: ${newItem.quantity})")
