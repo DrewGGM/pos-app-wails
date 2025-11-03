@@ -35,9 +35,9 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private val _updatedOrderIds = MutableStateFlow<Set<String>>(emptySet())
     val updatedOrderIds: StateFlow<Set<String>> = _updatedOrderIds
 
-    // Track orders marked as ready and their items at that moment
-    // Map: orderId -> set of item keys ("productId-notes") that were ready
-    private val readyOrderItems = mutableMapOf<String, Set<String>>()
+    // Track orders marked as ready and their items with quantities at that moment
+    // Map: orderId -> Map of item keys ("productId-notes") to quantity that were ready
+    private val readyOrderItems = mutableMapOf<String, Map<String, Int>>()
 
     private var serverIp: String? = null
 
@@ -220,8 +220,8 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val oldItemsMap = oldOrder.items.associateBy { "${it.productId}-${it.notes}" }
         val newItemsMap = newOrder.items.associateBy { "${it.productId}-${it.notes}" }
 
-        // Get items that were marked as ready (if order was previously ready)
-        val readyItems = readyOrderItems[newOrder.id] ?: emptySet()
+        // Get items that were marked as ready with their quantities (if order was previously ready)
+        val readyItems = readyOrderItems[newOrder.id] ?: emptyMap()
 
         if (readyItems.isNotEmpty()) {
             android.util.Log.d("KitchenViewModel", "Order ${newOrder.id} was previously marked ready. Ready items: $readyItems")
@@ -230,12 +230,25 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val updatedItems = newOrder.items.mapNotNull { newItem ->
             val key = "${newItem.productId}-${newItem.notes}"
             val oldItem = oldItemsMap[key]
+            val readyQuantity = readyItems[key]
 
             when {
-                key in readyItems -> {
-                    // Item was already marked as ready - don't show it
-                    android.util.Log.d("KitchenViewModel", "Filtering out ready item: $key")
-                    null
+                readyQuantity != null -> {
+                    // Item was already marked as ready - check if there are additional units
+                    val additionalQuantity = newItem.quantity - readyQuantity
+                    if (additionalQuantity > 0) {
+                        // There are additional units - show only those
+                        android.util.Log.d("KitchenViewModel", "Item $key had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
+                        newItem.copy(
+                            quantity = additionalQuantity,
+                            changeStatus = ItemChangeStatus.ADDED,
+                            previousQuantity = 0
+                        )
+                    } else {
+                        // No additional units or fewer units than before - don't show
+                        android.util.Log.d("KitchenViewModel", "Filtering out item $key: no additional units (ready: $readyQuantity, current: ${newItem.quantity})")
+                        null
+                    }
                 }
                 oldItem == null -> {
                     // New item added
@@ -258,7 +271,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         }.toMutableList()
 
         // Find removed items (only from non-ready items)
-        val removedItems = oldItemsMap.filterKeys { !newItemsMap.containsKey(it) && it !in readyItems }
+        val removedItems = oldItemsMap.filterKeys { !newItemsMap.containsKey(it) && !readyItems.containsKey(it) }
             .values.map { oldItem ->
                 oldItem.changeStatus = ItemChangeStatus.REMOVED
                 oldItem
@@ -277,8 +290,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markOrderAsReady(order: Order) {
-        // Save which items were ready
-        readyOrderItems[order.id] = order.items.map { "${it.productId}-${it.notes}" }.toSet()
+        // Save which items were ready with their quantities
+        readyOrderItems[order.id] = order.items.associate {
+            "${it.productId}-${it.notes}" to it.quantity
+        }
         android.util.Log.d("KitchenViewModel", "Saved ready items for order ${order.id}: ${readyOrderItems[order.id]}")
 
         // Remove from active orders

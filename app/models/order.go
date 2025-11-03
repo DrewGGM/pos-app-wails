@@ -32,15 +32,34 @@ func (s OrderStatus) Value() (driver.Value, error) {
 	return string(s), nil
 }
 
+// OrderType represents a configurable order type
+type OrderType struct {
+	ID                      uint           `gorm:"primaryKey" json:"id"`
+	Code                    string         `gorm:"unique;not null" json:"code"` // "dine-in", "takeout", "delivery", etc.
+	Name                    string         `gorm:"not null" json:"name"`
+	RequiresSequentialNumber bool          `gorm:"default:false" json:"requires_sequential_number"`
+	SequencePrefix          string         `json:"sequence_prefix"` // Optional prefix for sequential numbers (e.g., "D-" for delivery)
+	DisplayColor            string         `json:"display_color"`   // Hex color for UI
+	Icon                    string         `json:"icon"`            // Icon identifier
+	IsActive                bool           `gorm:"default:true" json:"is_active"`
+	DisplayOrder            int            `gorm:"default:0" json:"display_order"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               time.Time      `json:"updated_at"`
+	DeletedAt               gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+}
+
 // Order represents a customer order
 type Order struct {
-	ID           uint           `gorm:"primaryKey" json:"id"`
-	OrderNumber  string         `gorm:"unique;not null" json:"order_number"`
-	Type         string         `json:"type"` // "dine-in", "takeout", "delivery"
-	Status       OrderStatus    `json:"status"`
-	TakeoutNumber *int          `gorm:"default:null" json:"takeout_number,omitempty"` // Sequential number for takeout orders (1,2,3...), reuses freed numbers
-	TableID      *uint          `json:"table_id,omitempty"`
-	Table        *Table         `json:"table,omitempty"`
+	ID            uint           `gorm:"primaryKey" json:"id"`
+	OrderNumber   string         `gorm:"unique;not null" json:"order_number"`
+	OrderTypeID   *uint          `json:"order_type_id,omitempty"`
+	OrderType     *OrderType     `gorm:"foreignKey:OrderTypeID" json:"order_type,omitempty"`
+	Type          string         `json:"type"` // Deprecated: kept for backward compatibility, use OrderType instead
+	Status        OrderStatus    `json:"status"`
+	SequenceNumber *int          `gorm:"default:null" json:"sequence_number,omitempty"` // Sequential number for order types that require it (1,2,3...), reuses freed numbers
+	TakeoutNumber *int           `gorm:"default:null" json:"takeout_number,omitempty"` // Deprecated: use SequenceNumber instead
+	TableID       *uint          `json:"table_id,omitempty"`
+	Table         *Table         `json:"table,omitempty"`
 	CustomerID   *uint          `json:"customer_id,omitempty"`
 	Customer     *Customer      `json:"customer,omitempty"`
 	Items        []OrderItem    `json:"items"`

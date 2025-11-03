@@ -5,7 +5,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,8 +17,10 @@ import com.drewcore.kitchen_app.data.models.Order
 import com.drewcore.kitchen_app.data.models.OrderItem
 import com.drewcore.kitchen_app.data.models.OrderDisplayState
 import com.drewcore.kitchen_app.data.preferences.KitchenPreferences
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 // Data class to represent a display card (can be original order or continuation)
 data class OrderCardData(
@@ -28,6 +30,89 @@ data class OrderCardData(
     val totalCards: Int,
     val uniqueKey: String
 )
+
+// Helper function to get order title based on order type
+fun getOrderTitle(order: Order): String {
+    // Use new orderType if available
+    return when {
+        order.orderType != null -> {
+            when {
+                // For table-based orders (dine-in), show table number
+                order.orderType.code == "dine-in" && order.table != null ->
+                    "Mesa ${order.table.number}"
+                // For orders with sequential numbering, show prefix + number
+                order.orderType.requiresSequentialNumber && order.sequenceNumber != null ->
+                    "${order.orderType.sequencePrefix ?: ""}${order.sequenceNumber}"
+                // Otherwise show order type name
+                else -> order.orderType.name
+            }
+        }
+        // Fallback to old type field for backward compatibility
+        else -> when (order.type) {
+            "dine_in", "dine-in" -> if (order.table != null) "Mesa ${order.table.number}" else "Mesa ${order.tableId ?: "?"}"
+            "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
+            "delivery" -> "Domicilio"
+            else -> "Pedido"
+        }
+    }
+}
+
+// Calculate elapsed time in minutes
+fun calculateElapsedMinutes(timestamp: String): Long {
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+        val orderDate = sdf.parse(timestamp.split(".")[0])
+        val now = Date()
+        val diffMs = abs(now.time - (orderDate?.time ?: 0))
+        diffMs / (60 * 1000) // Convert to minutes
+    } catch (e: Exception) {
+        0
+    }
+}
+
+// Composable for elapsed time timer with color coding
+@Composable
+fun OrderTimer(createdAt: String) {
+    var elapsedMinutes by remember { mutableStateOf(calculateElapsedMinutes(createdAt)) }
+
+    // Update every 30 seconds
+    LaunchedEffect(createdAt) {
+        while (true) {
+            delay(30000) // 30 seconds
+            elapsedMinutes = calculateElapsedMinutes(createdAt)
+        }
+    }
+
+    // Determine color based on elapsed time
+    val (backgroundColor, textColor) = when {
+        elapsedMinutes < 5 -> Color(0xFF4CAF50) to Color.White // Green
+        elapsedMinutes < 10 -> Color(0xFFFFC107) to Color.Black // Yellow
+        else -> Color(0xFFE53935) to Color.White // Red
+    }
+
+    // Format time display
+    val timeText = when {
+        elapsedMinutes < 60 -> "${elapsedMinutes}m"
+        else -> {
+            val hours = elapsedMinutes / 60
+            val mins = elapsedMinutes % 60
+            "${hours}h ${mins}m"
+        }
+    }
+
+    Surface(
+        color = backgroundColor,
+        shape = MaterialTheme.shapes.extraSmall
+    ) {
+        Text(
+            text = timeText,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = textColor
+        )
+    }
+}
 
 // Split an order into multiple cards if needed
 fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int): List<OrderCardData> {
@@ -148,12 +233,7 @@ fun OrderCardDisplay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = when (order.type) {
-                            "dine_in", "dine-in" -> if (order.table != null) "Mesa ${order.table.number}" else "Mesa ${order.tableId ?: "?"}"
-                            "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
-                            "delivery" -> "Domicilio"
-                            else -> "Pedido"
-                        },
+                        text = getOrderTitle(order),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = preferences.headerFontSize.sp,
@@ -162,19 +242,8 @@ fun OrderCardDisplay(
                     )
 
                     Column(horizontalAlignment = Alignment.End) {
-                        // Time badge
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = MaterialTheme.shapes.extraSmall
-                        ) {
-                            Text(
-                                text = formatTime(order.createdAt),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
+                        // Elapsed time timer with color coding
+                        OrderTimer(createdAt = order.createdAt)
 
                         // Modified badge
                         if (isUpdated) {
@@ -207,12 +276,7 @@ fun OrderCardDisplay(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = when (order.type) {
-                                "dine_in", "dine-in" -> "Mesa ${order.tableId ?: "?"}"
-                                "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
-                                "delivery" -> "Domicilio"
-                                else -> "Pedido"
-                            },
+                            text = getOrderTitle(order),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             fontSize = (preferences.headerFontSize - 4).sp,

@@ -16,6 +16,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drewcore.kitchen_app.data.models.Order
 
+// Helper function to get order title based on order type
+fun getOrderTitle(order: Order): String {
+    // Use new orderType if available
+    return when {
+        order.orderType != null -> {
+            when {
+                // For table-based orders (dine-in), show table number
+                order.orderType.code == "dine-in" && order.table != null ->
+                    "Mesa ${order.table.number}"
+                // For orders with sequential numbering, show prefix + number
+                order.orderType.requiresSequentialNumber && order.sequenceNumber != null ->
+                    "${order.orderType.sequencePrefix ?: ""}${order.sequenceNumber}"
+                // Otherwise show order type name
+                else -> order.orderType.name
+            }
+        }
+        // Fallback to old type field for backward compatibility
+        else -> if (order.table != null) "Mesa ${order.table.number}" else "Orden #${order.orderNumber}"
+    }
+}
+
 @Composable
 fun HistoryScreen(
     completedOrders: List<Order>,
@@ -81,25 +102,22 @@ fun CompletedOrderCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "✓",
+                        fontSize = 20.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
                         Text(
-                            text = "✓",
-                            fontSize = 20.sp,
-                            color = Color(0xFF4CAF50)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (order.table != null) "Mesa ${order.table.number}" else "Orden #${order.orderNumber}",
+                            text = getOrderTitle(order),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OrderTimer(createdAt = order.createdAt)
                     }
-                    Text(
-                        text = formatTime(order.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 

@@ -216,6 +216,20 @@ fun WaiterApp(
                                 },
                                 onRefresh = {
                                     viewModel.loadOrders()
+                                },
+                                onViewInCart = { order ->
+                                    viewModel.loadOrderToCart(order)
+                                },
+                                onDeleteOrder = { order ->
+                                    viewModel.deleteOrder(
+                                        orderId = order.id,
+                                        onSuccess = {
+                                            // Optionally show a toast or snackbar
+                                        },
+                                        onError = { error ->
+                                            // Optionally show error message
+                                        }
+                                    )
                                 }
                             )
                         }

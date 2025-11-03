@@ -169,6 +169,7 @@ func RunMigrations() error {
 		// Order models
 		&models.TableArea{},
 		&models.Table{},
+		&models.OrderType{},
 		&models.Order{},
 		&models.OrderItem{},
 		&models.OrderItemModifier{},
@@ -228,7 +229,55 @@ func runAdditionalMigrations() error {
 		return fmt.Errorf("failed to add dian_response column: %w", err)
 	}
 
+	// Add order_type_id and sequence_number columns to orders if they don't exist
+	if err := db.Exec(`
+		ALTER TABLE orders
+		ADD COLUMN IF NOT EXISTS order_type_id INTEGER REFERENCES order_types(id),
+		ADD COLUMN IF NOT EXISTS sequence_number INTEGER
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add order type columns: %w", err)
+	}
+
+	// Migrate existing orders to use order types
+	if err := migrateExistingOrderTypes(); err != nil {
+		log.Printf("Warning: Failed to migrate existing order types: %v", err)
+	}
+
 	log.Println("✅ Additional migrations completed successfully")
+	return nil
+}
+
+// migrateExistingOrderTypes migrates existing orders to use the new order_types table
+func migrateExistingOrderTypes() error {
+	// Update existing orders to link to the appropriate order type
+	migrations := []struct {
+		OldType     string
+		NewTypeCode string
+	}{
+		{"dine-in", "dine-in"},
+		{"takeout", "takeout"},
+		{"delivery", "delivery"},
+	}
+
+	for _, m := range migrations {
+		if err := db.Exec(`
+			UPDATE orders
+			SET order_type_id = (SELECT id FROM order_types WHERE code = ? LIMIT 1)
+			WHERE type = ? AND order_type_id IS NULL
+		`, m.NewTypeCode, m.OldType).Error; err != nil {
+			log.Printf("Warning: Failed to migrate orders with type '%s': %v", m.OldType, err)
+		}
+	}
+
+	// Copy takeout_number to sequence_number for orders that have it
+	if err := db.Exec(`
+		UPDATE orders
+		SET sequence_number = takeout_number
+		WHERE takeout_number IS NOT NULL AND sequence_number IS NULL
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to migrate takeout numbers: %v", err)
+	}
+
 	return nil
 }
 
@@ -317,6 +366,48 @@ func SeedInitialData() error {
 		db.Model(&models.TableArea{}).Where("name = ?", area.Name).Count(&count)
 		if count == 0 {
 			db.Create(&area)
+		}
+	}
+
+	// Create default order types
+	orderTypes := []models.OrderType{
+		{
+			Code:                    "dine-in",
+			Name:                    "Para Comer Aquí",
+			RequiresSequentialNumber: false,
+			SequencePrefix:          "",
+			DisplayColor:            "#3B82F6",
+			Icon:                    "restaurant",
+			IsActive:                true,
+			DisplayOrder:            1,
+		},
+		{
+			Code:                    "takeout",
+			Name:                    "Para Llevar",
+			RequiresSequentialNumber: true,
+			SequencePrefix:          "",
+			DisplayColor:            "#10B981",
+			Icon:                    "shopping_bag",
+			IsActive:                true,
+			DisplayOrder:            2,
+		},
+		{
+			Code:                    "delivery",
+			Name:                    "Domicilio",
+			RequiresSequentialNumber: true,
+			SequencePrefix:          "D-",
+			DisplayColor:            "#F59E0B",
+			Icon:                    "delivery_dining",
+			IsActive:                true,
+			DisplayOrder:            3,
+		},
+	}
+
+	for _, ot := range orderTypes {
+		var count int64
+		db.Model(&models.OrderType{}).Where("code = ?", ot.Code).Count(&count)
+		if count == 0 {
+			db.Create(&ot)
 		}
 	}
 

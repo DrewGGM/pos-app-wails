@@ -556,6 +556,72 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         return "W$timestamp-${orderCounter.toString().padStart(3, '0')}"
     }
 
+    // Load an order from orders list into cart for editing
+    fun loadOrderToCart(order: OrderResponse) {
+        viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Loading order ${order.orderNumber} (ID: ${order.id}) into cart")
+
+            // Set the table if the order has one
+            if (order.tableId != null) {
+                val table = _tables.value.find { it.id == order.tableId }
+                _selectedTable.value = table
+            } else {
+                _selectedTable.value = null
+            }
+
+            // Set the current order ID
+            _currentOrderId.value = order.id
+
+            // Convert order items to cart items
+            val cartItems = order.items.mapNotNull { orderItem ->
+                // Find the product from our products list
+                _products.value.find { it.id == orderItem.productId }?.let { product ->
+                    // Convert order item modifiers to cart modifiers
+                    val modifiers = orderItem.modifiers?.mapNotNull { orderModifier ->
+                        orderModifier.modifier
+                    } ?: emptyList()
+
+                    CartItem(
+                        product = product,
+                        quantity = orderItem.quantity,
+                        notes = orderItem.notes ?: "",
+                        modifiers = modifiers
+                    )
+                }
+            }
+
+            android.util.Log.d("WaiterViewModel", "Loaded ${cartItems.size} items into cart")
+            _cart.value = cartItems
+
+            // Navigate to product selection screen (where cart is visible)
+            navigateToScreen(Screen.ProductSelection)
+        }
+    }
+
+    // Delete a specific order by ID
+    fun deleteOrder(orderId: Int, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Deleting order ID: $orderId")
+
+            apiService?.deleteOrder(orderId)?.onSuccess {
+                android.util.Log.d("WaiterViewModel", "Order deleted successfully")
+
+                // Refresh orders list
+                loadOrders()
+
+                // Refresh tables to get updated status
+                apiService?.getTables()?.onSuccess { tableList ->
+                    _tables.value = tableList
+                }
+
+                onSuccess()
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "Error deleting order: ${error.message}")
+                onError(error.message ?: "Error eliminando pedido")
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         webSocketManager.disconnect()

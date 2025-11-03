@@ -62,6 +62,7 @@ import {
   Close as CloseIcon,
   CloudSync as CloudSyncIcon,
   Payment as PaymentIcon,
+  Category as CategoryIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
@@ -81,6 +82,7 @@ import {
 import { compressImageToBase64, validateImageFile } from '../../utils/imageUtils';
 import GoogleSheetsSettings from './GoogleSheetsSettings';
 import PaymentMethodsSettings from './PaymentMethodsSettings';
+import OrderTypesSettings from './OrderTypesSettings';
 
 interface Department {
   id: number;
@@ -1199,6 +1201,7 @@ const Settings: React.FC = () => {
           <Tab icon={<BusinessIcon />} label="Empresa" />
           <Tab icon={<ReceiptIcon />} label="Facturación" />
           <Tab icon={<PaymentIcon />} label="Métodos de Pago" />
+          <Tab icon={<CategoryIcon />} label="Tipos de Pedido" />
           <Tab icon={<PrintIcon />} label="Impresión" />
           <Tab icon={<SyncIcon />} label="Sincronización" />
           <Tab icon={<CloudSyncIcon />} label="Google Sheets" />
@@ -2374,6 +2377,11 @@ const Settings: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={selectedTab} index={3}>
+          {/* Order Types Settings */}
+          <OrderTypesSettings />
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={4}>
           {/* Print Settings */}
           <Alert severity="info" sx={{ mb: 3 }}>
             Configuración de impresoras térmicas (USB/Red, formato 58/80mm)
@@ -2597,7 +2605,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={4}>
+        <TabPanel value={selectedTab} index={5}>
           {/* Sync Settings */}
           <Alert severity="info" sx={{ mb: 3 }}>
             Configuración de sincronización offline y cola de reintentos
@@ -2733,12 +2741,12 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={5}>
+        <TabPanel value={selectedTab} index={6}>
           {/* Google Sheets Settings */}
           <GoogleSheetsSettings />
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={6}>
+        <TabPanel value={selectedTab} index={7}>
           {/* Notification Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2868,7 +2876,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={7}>
+        <TabPanel value={selectedTab} index={8}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -3034,7 +3042,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={8}>
+        <TabPanel value={selectedTab} index={9}>
           {/* WebSocket Management */}
           <Grid container spacing={3}>
             {/* Server Status */}

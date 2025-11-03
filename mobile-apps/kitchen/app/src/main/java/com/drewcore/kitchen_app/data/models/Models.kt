@@ -62,6 +62,18 @@ data class Table(
     val status: String
 )
 
+// Order Type
+data class OrderType(
+    val id: Int,
+    val code: String,
+    val name: String,
+    @SerializedName("requires_sequential_number") val requiresSequentialNumber: Boolean,
+    @SerializedName("sequence_prefix") val sequencePrefix: String?,
+    @SerializedName("display_color") val displayColor: String,
+    val icon: String,
+    @SerializedName("is_active") val isActive: Boolean
+)
+
 // Order Item Change Status
 enum class ItemChangeStatus {
     UNCHANGED,  // Item existed before
@@ -90,9 +102,11 @@ data class OrderItem(
 data class Order(
     val id: String,
     @SerializedName("order_number") val orderNumber: String,
-    val type: String, // "dine_in", "takeout", "delivery"
+    @SerializedName("order_type") val orderType: OrderType? = null,
+    val type: String, // "dine_in", "takeout", "delivery" - Deprecated: use orderType
     val status: String,
-    @SerializedName("takeout_number") val takeoutNumber: Int? = null,
+    @SerializedName("sequence_number") val sequenceNumber: Int? = null,
+    @SerializedName("takeout_number") val takeoutNumber: Int? = null, // Deprecated: use sequenceNumber
     @SerializedName("table_id") val tableId: String? = null,
     val table: Table? = null,
     val items: List<OrderItem>,

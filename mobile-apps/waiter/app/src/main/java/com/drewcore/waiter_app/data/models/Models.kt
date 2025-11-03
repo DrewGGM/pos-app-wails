@@ -61,7 +61,8 @@ data class OrderItemModifierRequest(
 // Order Request
 data class OrderRequest(
     @SerializedName("order_number") val orderNumber: String,
-    val type: String, // "dine-in", "takeout"
+    @SerializedName("order_type_id") val orderTypeId: Int? = null,
+    val type: String, // "dine-in", "takeout" - Deprecated: use orderTypeId
     val status: String = "pending",
     @SerializedName("table_id") val tableId: Int? = null,
     val items: List<OrderItemRequest>,
@@ -98,15 +99,31 @@ data class Table(
     val zone: String
 )
 
+// Order Type
+data class OrderType(
+    val id: Int,
+    val code: String,
+    val name: String,
+    @SerializedName("requires_sequential_number") val requiresSequentialNumber: Boolean,
+    @SerializedName("sequence_prefix") val sequencePrefix: String?,
+    @SerializedName("display_color") val displayColor: String,
+    val icon: String,
+    @SerializedName("is_active") val isActive: Boolean,
+    @SerializedName("display_order") val displayOrder: Int
+)
+
 // Order (for viewing)
 data class OrderResponse(
     val id: Int,
     @SerializedName("order_number") val orderNumber: String,
-    val type: String,
+    @SerializedName("order_type") val orderType: OrderType? = null,
+    val type: String, // Deprecated: kept for backward compatibility
     val status: String,
-    @SerializedName("takeout_number") val takeoutNumber: Int? = null,
+    @SerializedName("sequence_number") val sequenceNumber: Int? = null,
+    @SerializedName("takeout_number") val takeoutNumber: Int? = null, // Deprecated
     @SerializedName("table_id") val tableId: Int?,
     @SerializedName("table_number") val tableNumber: String?,
+    @SerializedName("table") val table: Table? = null,
     val items: List<OrderItemDetail>,
     val subtotal: Double,
     val tax: Double,

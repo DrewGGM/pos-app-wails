@@ -5,6 +5,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,12 +19,58 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
+// Helper function to get order title based on order type
+fun getOrderTitle(order: OrderResponse): String {
+    // Use new orderType if available
+    return when {
+        order.orderType != null -> {
+            when {
+                // For table-based orders (dine-in), show table number
+                order.orderType.code == "dine-in" && order.table != null ->
+                    "Mesa ${order.table.number}"
+                // For orders with sequential numbering, show prefix + number
+                order.orderType.requiresSequentialNumber && order.sequenceNumber != null ->
+                    "${order.orderType.sequencePrefix ?: ""}${order.sequenceNumber}"
+                // Otherwise show order type name
+                else -> order.orderType.name
+            }
+        }
+        // Fallback to old type field for backward compatibility
+        else -> when (order.type) {
+            "dine_in", "dine-in" -> if (order.tableNumber != null) "Mesa ${order.tableNumber}" else order.orderNumber
+            "takeout" -> if (order.takeoutNumber != null) "#${order.takeoutNumber}" else "Para Llevar"
+            "delivery" -> "Domicilio"
+            else -> order.orderNumber
+        }
+    }
+}
+
+fun getOrderSubtitle(order: OrderResponse): String? {
+    return when {
+        order.orderType != null -> {
+            when {
+                order.orderType.code == "dine-in" && order.table != null -> null
+                order.orderType.requiresSequentialNumber -> order.orderType.name
+                else -> null
+            }
+        }
+        else -> when (order.type) {
+            "dine_in", "dine-in" -> if (order.tableNumber != null) null else "En Mesa"
+            "takeout" -> "Para Llevar"
+            "delivery" -> null
+            else -> null
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersListScreen(
     orders: List<OrderResponse>,
     onBack: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onViewInCart: (OrderResponse) -> Unit = {},
+    onDeleteOrder: (OrderResponse) -> Unit = {}
 ) {
     var selectedFilter by remember { mutableStateOf("all") }
 
@@ -99,7 +147,11 @@ fun OrdersListScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filteredOrders) { order ->
-                        OrderCard(order = order)
+                        OrderCard(
+                            order = order,
+                            onViewInCart = { onViewInCart(order) },
+                            onDelete = { onDeleteOrder(order) }
+                        )
                     }
                 }
             }
@@ -108,9 +160,14 @@ fun OrdersListScreen(
 }
 
 @Composable
-fun OrderCard(order: OrderResponse) {
+fun OrderCard(
+    order: OrderResponse,
+    onViewInCart: () -> Unit = {},
+    onDelete: () -> Unit = {}
+) {
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("es", "CO")) }
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val statusColor = when (order.status) {
         "pending" -> MaterialTheme.colorScheme.error
@@ -145,25 +202,15 @@ fun OrderCard(order: OrderResponse) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    // Show takeout number for takeout orders, otherwise show full order number
                     Text(
-                        text = if (order.type == "takeout" && order.takeoutNumber != null) {
-                            "#${order.takeoutNumber}"
-                        } else {
-                            order.orderNumber
-                        },
+                        text = getOrderTitle(order),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    if (order.tableNumber != null) {
+                    val subtitle = getOrderSubtitle(order)
+                    if (subtitle != null) {
                         Text(
-                            text = "Mesa: ${order.tableNumber}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (order.type == "takeout") {
-                        Text(
-                            text = "Para Llevar",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,6 +301,58 @@ fun OrderCard(order: OrderResponse) {
                     )
                 }
             }
+
+            // Action Buttons
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onViewInCart,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Ver en carrito", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Ver/Editar")
+                }
+
+                OutlinedButton(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Eliminar")
+                }
+            }
         }
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Eliminar orden") },
+            text = { Text("¿Estás seguro de que deseas eliminar esta orden?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    }
+                ) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
