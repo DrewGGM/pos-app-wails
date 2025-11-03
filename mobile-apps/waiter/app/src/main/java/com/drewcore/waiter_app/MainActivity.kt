@@ -25,19 +25,25 @@ import com.drewcore.waiter_app.ui.screens.CartScreen
 import com.drewcore.waiter_app.ui.screens.ProductsScreen
 import com.drewcore.waiter_app.ui.screens.TableSelectionScreen
 import com.drewcore.waiter_app.ui.screens.OrdersListScreen
+import com.drewcore.waiter_app.ui.screens.SettingsScreen
 import com.drewcore.waiter_app.ui.theme.WaiterappTheme
 import com.drewcore.waiter_app.ui.viewmodel.WaiterViewModel
 import com.drewcore.waiter_app.update.UpdateManager
 import com.drewcore.waiter_app.update.UpdateInfo
+import com.drewcore.waiter_app.data.preferences.WaiterPreferences
 
 class MainActivity : ComponentActivity() {
     private val viewModel: WaiterViewModel by viewModels()
     private lateinit var updateManager: UpdateManager
+    private lateinit var preferences: WaiterPreferences
     private var updateInfo by mutableStateOf<UpdateInfo?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize preferences
+        preferences = WaiterPreferences(this)
 
         // Initialize update manager and check for updates
         updateManager = UpdateManager(this)
@@ -47,6 +53,7 @@ class MainActivity : ComponentActivity() {
             WaiterappTheme {
                 WaiterApp(
                     viewModel = viewModel,
+                    preferences = preferences,
                     updateInfo = updateInfo,
                     onUpdateAccepted = { info ->
                         updateManager.downloadUpdate(info)
@@ -84,10 +91,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun WaiterApp(
     viewModel: WaiterViewModel,
+    preferences: WaiterPreferences,
     updateInfo: UpdateInfo? = null,
     onUpdateAccepted: (UpdateInfo) -> Unit = {},
     onUpdateDismissed: () -> Unit = {}
 ) {
+    var gridColumns by remember { mutableStateOf(preferences.gridColumns) }
     val uiState by viewModel.uiState.collectAsState()
     val currentScreen by viewModel.currentScreen.collectAsState()
     val products by viewModel.products.collectAsState()
@@ -184,7 +193,7 @@ fun WaiterApp(
                                 cartItemCount = viewModel.cartItemCount,
                                 isEditingOrder = currentOrderId != null,
                                 onCategorySelected = { viewModel.selectCategory(it) },
-                                onAddToCart = { viewModel.addToCart(it) },
+                                onAddToCart = { product, modifiers, notes -> viewModel.addToCart(product, modifiers, notes) },
                                 onUpdateQuantity = { item, qty -> viewModel.updateQuantity(item, qty) },
                                 onUpdateNotes = { item, notes -> viewModel.updateNotes(item, notes) },
                                 onRemoveItem = { viewModel.removeFromCart(it) },
@@ -193,8 +202,10 @@ fun WaiterApp(
                                 onReleaseTable = { viewModel.releaseTable() },
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
-                                availableTables = viewModel.availableTables,
-                                onChangeTable = { table -> viewModel.changeTable(table) }
+                                availableTables = viewModel.getTablesForSwitching(selectedTable?.id),
+                                onChangeTable = { table -> viewModel.changeTable(table) },
+                                gridColumns = gridColumns,
+                                onOpenSettings = { viewModel.navigateToScreen(WaiterViewModel.Screen.Settings) }
                             )
                         }
                         is WaiterViewModel.Screen.OrdersList -> {
@@ -205,6 +216,16 @@ fun WaiterApp(
                                 },
                                 onRefresh = {
                                     viewModel.loadOrders()
+                                }
+                            )
+                        }
+                        is WaiterViewModel.Screen.Settings -> {
+                            SettingsScreen(
+                                preferences = preferences,
+                                onBack = {
+                                    // Reload grid columns after settings change
+                                    gridColumns = preferences.gridColumns
+                                    viewModel.navigateToScreen(WaiterViewModel.Screen.TableSelection)
                                 }
                             )
                         }
@@ -234,7 +255,7 @@ fun ProductSelectionWithCart(
     cartItemCount: Int,
     isEditingOrder: Boolean = false,
     onCategorySelected: (String?) -> Unit,
-    onAddToCart: (com.drewcore.waiter_app.data.models.Product) -> Unit,
+    onAddToCart: (com.drewcore.waiter_app.data.models.Product, List<com.drewcore.waiter_app.data.models.Modifier>, String) -> Unit,
     onUpdateQuantity: (com.drewcore.waiter_app.data.models.CartItem, Int) -> Unit,
     onUpdateNotes: (com.drewcore.waiter_app.data.models.CartItem, String) -> Unit,
     onRemoveItem: (com.drewcore.waiter_app.data.models.CartItem) -> Unit,
@@ -244,7 +265,9 @@ fun ProductSelectionWithCart(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     availableTables: List<com.drewcore.waiter_app.data.models.Table>,
-    onChangeTable: (com.drewcore.waiter_app.data.models.Table) -> Unit
+    onChangeTable: (com.drewcore.waiter_app.data.models.Table) -> Unit,
+    gridColumns: Int = 2,
+    onOpenSettings: () -> Unit = {}
 ) {
     var showChangeTableDialog by remember { mutableStateOf(false) }
 
@@ -281,6 +304,9 @@ fun ProductSelectionWithCart(
                         IconButton(onClick = { showChangeTableDialog = true }) {
                             Icon(Icons.Default.Edit, "Cambiar mesa")
                         }
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, "Configuración")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -323,7 +349,8 @@ fun ProductSelectionWithCart(
                     categories = categories,
                     selectedCategory = selectedCategory,
                     onCategorySelected = onCategorySelected,
-                    onAddToCart = onAddToCart
+                    onAddToCart = onAddToCart,
+                    gridColumns = gridColumns
                 )
                 1 -> CartScreen(
                     cartItems = cart,

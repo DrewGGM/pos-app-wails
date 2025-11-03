@@ -468,13 +468,18 @@ const POS: React.FC = () => {
         }
       }
 
-      clearOrder();
+      // Clear local state only (don't delete the order from DB)
+      setOrderItems([]);
+      setCurrentOrder(null);
+      setSelectedTable(null);
+      setSelectedCustomer(null);
+      setNeedsElectronicInvoice(false);
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar la orden');
     } finally {
       setIsSavingOrder(false);
     }
-  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, clearOrder, currentOrder]);
+  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder]);
 
   // Process payment
   const processPayment = useCallback(async (paymentData: any) => {
@@ -520,18 +525,8 @@ const POS: React.FC = () => {
         print_receipt: paymentData.printReceipt !== undefined ? paymentData.printReceipt : true, // Checkbox has priority over config
       });
 
-      // Send to kitchen if dine-in
+      // Update table status to available after payment
       if (selectedTable) {
-        sendMessage({
-          type: 'kitchen_order',
-          timestamp: new Date().toISOString(),
-          data: {
-            order: orderToProcess,
-            table: selectedTable,
-          },
-        });
-
-        // Update table status to available after payment
         try {
           await wailsOrderService.updateTableStatus(selectedTable.id!, 'available');
         } catch (error) {
@@ -554,7 +549,7 @@ const POS: React.FC = () => {
     } finally {
       setIsProcessingPayment(false);
     }
-  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, sendMessage, clearOrder, currentOrder]);
+  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, clearOrder, currentOrder]);
 
   // Handle edit notes for an order item
   const handleEditNotes = useCallback((item: OrderItem) => {

@@ -149,9 +149,10 @@ fun OrderCardDisplay(
                 ) {
                     Text(
                         text = when (order.type) {
-                            "dine-in" -> "Mesa ${order.tableId ?: "?"}"
+                            "dine_in", "dine-in" -> if (order.table != null) "Mesa ${order.table.number}" else "Mesa ${order.tableId ?: "?"}"
                             "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
-                            else -> "Domicilio"
+                            "delivery" -> "Domicilio"
+                            else -> "Pedido"
                         },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
@@ -207,9 +208,10 @@ fun OrderCardDisplay(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = when (order.type) {
-                                "dine-in" -> "Mesa ${order.tableId ?: "?"}"
+                                "dine_in", "dine-in" -> "Mesa ${order.tableId ?: "?"}"
                                 "takeout" -> if (order.takeoutNumber != null) "Pedido #${order.takeoutNumber}" else "Para Llevar"
-                                else -> "Domicilio"
+                                "delivery" -> "Domicilio"
+                                else -> "Pedido"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,

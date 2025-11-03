@@ -350,10 +350,13 @@ func (s *GoogleSheetsService) SyncNow() error {
 	}
 
 	// Generate report for today
-	report, err := s.GenerateDailyReport(time.Now())
+	today := time.Now()
+	report, err := s.GenerateDailyReport(today)
 	if err != nil {
 		config.LastSyncStatus = "error"
 		config.LastSyncError = err.Error()
+		now := time.Now()
+		config.LastSyncAt = &now
 		s.db.Save(config)
 		return fmt.Errorf("failed to generate report: %w", err)
 	}
@@ -362,6 +365,8 @@ func (s *GoogleSheetsService) SyncNow() error {
 	if err := s.SendReport(config, report); err != nil {
 		config.LastSyncStatus = "error"
 		config.LastSyncError = err.Error()
+		now := time.Now()
+		config.LastSyncAt = &now
 		s.db.Save(config)
 		return fmt.Errorf("failed to send report: %w", err)
 	}

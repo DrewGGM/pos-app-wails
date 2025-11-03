@@ -26,7 +26,7 @@ import {
   LocalBar as BarIcon,
 } from '@mui/icons-material';
 import { Table } from '../../types/models';
-import { orderService } from '../../services/orderService';
+import { wailsOrderService } from '../../services/wailsOrderService';
 import { toast } from 'react-toastify';
 
 interface TableSelectorProps {
@@ -58,7 +58,7 @@ const TableSelector: React.FC<TableSelectorProps> = ({
   const loadTables = async () => {
     setLoading(true);
     try {
-      const data = await orderService.getTables();
+      const data = await wailsOrderService.getTables();
       setTables(data);
       
       // Extract unique zones

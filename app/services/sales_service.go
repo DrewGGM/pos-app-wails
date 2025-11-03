@@ -149,10 +149,9 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 			return fmt.Errorf("failed to update order: %w", err)
 		}
 
-		// Update cash register movements
-		if err := s.recordCashMovement(tx, cashRegisterID, sale.Total, "sale", sale.SaleNumber, employeeID); err != nil {
-			return fmt.Errorf("failed to record cash movement: %w", err)
-		}
+		// NOTE: Sales are NOT recorded as cash movements
+		// Cash movements are only for manual deposits and withdrawals
+		// Sales are automatically counted in the cash register report
 
 		return nil
 	})
@@ -164,6 +163,14 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 	// Process electronic invoice and print if needed
 	if needsElectronicInvoice {
 		go func() {
+			// Recover from any panics to prevent crashing the application
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("❌ PANIC recovered in electronic invoice goroutine for sale #%s: %v\n", sale.SaleNumber, r)
+					fmt.Printf("⚠️  Please check logs and report this error.\n")
+				}
+			}()
+
 			fmt.Printf("🧾 Sending electronic invoice for sale #%s...\n", sale.SaleNumber)
 			invoice, err := s.invoiceSvc.SendInvoice(sale, sendEmailToCustomer)
 			if err != nil {
@@ -197,6 +204,14 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		// Print simple receipt asynchronously ONLY if printReceipt is true
 		if printReceipt {
 			go func() {
+				// Recover from any panics to prevent crashing the application
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("❌ PANIC recovered in print receipt goroutine for sale #%s: %v\n", sale.SaleNumber, r)
+						fmt.Printf("⚠️  Please check printer configuration and logs.\n")
+					}
+				}()
+
 				if err := s.printerSvc.PrintReceipt(sale, false); err != nil {
 					// Log error but don't fail the sale
 					fmt.Printf("Failed to print simple receipt for sale #%s: %v\n", sale.SaleNumber, err)

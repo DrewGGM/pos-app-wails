@@ -97,28 +97,33 @@ Los archivos se generarán en `dist/` listos para deploy.
 
 ## 📊 Estructura de Google Sheets
 
-### Columnas obligatorias:
+### Columnas que el sistema POS genera automáticamente:
 
-| Nombre   | Tipo   | Descripción           |
-|----------|--------|-----------------------|
-| fecha    | Texto  | Fecha del reporte (YYYY-MM-DD) |
+| Nombre               | Tipo   | Descripción                                          |
+|----------------------|--------|------------------------------------------------------|
+| fecha                | Texto  | Fecha del reporte (YYYY-MM-DD) - **OBLIGATORIA**   |
+| ventas_totales       | Número | Total de ventas del día                              |
+| ventas_dian          | Número | Ventas con factura electrónica                       |
+| ventas_no_dian       | Número | Ventas sin factura electrónica                       |
+| ordenes              | Número | Número total de órdenes                              |
+| productos_vendidos   | Número | Total de productos vendidos                          |
+| ticket_promedio      | Número | Ticket promedio (ventas/órdenes)                     |
+| detalle_productos    | JSON   | Detalle de productos vendidos (nombre, cantidad, total) |
 
-### Columnas recomendadas:
+### Ejemplo de hoja compatible con el sistema POS:
 
-| Nombre    | Tipo   | Descripción                    |
-|-----------|--------|--------------------------------|
-| ventas    | Número | Total de ventas del día        |
-| ordenes   | Número | Cantidad de órdenes            |
-| productos | Número | Cantidad de productos vendidos |
+Primera fila (headers):
+```
+fecha | ventas_totales | ventas_dian | ventas_no_dian | ordenes | productos_vendidos | ticket_promedio | detalle_productos
+```
 
-### Ejemplo de hoja:
+Datos de ejemplo:
+```
+2025-01-29 | 1250000 | 800000 | 450000 | 45 | 120 | 27777.78 | [{"product_name":"Producto A","quantity":50,"total":500000}...]
+2025-01-28 | 980000  | 650000 | 330000 | 38 | 95  | 25789.47 | [{"product_name":"Producto B","quantity":40,"total":400000}...]
+```
 
-| fecha       | ventas  | ordenes | productos |
-|-------------|---------|---------|-----------|
-| 2025-01-29  | 1250000 | 45      | 120       |
-| 2025-01-28  | 980000  | 38      | 95        |
-
-**Puedes agregar más columnas** y se mostrarán automáticamente en la app.
+**Nota**: Si el sistema POS no ha enviado datos aún, puedes agregar datos manualmente siguiendo esta estructura para probar la PWA.
 
 ## 📱 Instalación como PWA
 

@@ -110,29 +110,58 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 }
 
 // UpdateOrder updates an existing order
-func (s *OrderService) UpdateOrder(order *models.Order) error {
+func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
+	log.Printf("UpdateOrder: Received order ID=%d with %d items", order.ID, len(order.Items))
+	for i, item := range order.Items {
+		log.Printf("  Item %d: ProductID=%d, Quantity=%d, UnitPrice=%.2f, Modifiers=%d",
+			i, item.ProductID, item.Quantity, item.UnitPrice, len(item.Modifiers))
+	}
+
 	// Recalculate totals
 	if err := s.calculateOrderTotals(order); err != nil {
-		return err
+		return nil, err
 	}
 
 	if s.localDB.IsOfflineMode() {
-		return s.localDB.SaveOrder(order)
+		if err := s.localDB.SaveOrder(order); err != nil {
+			return nil, err
+		}
+		return order, nil
 	}
 
 	// Get existing order to preserve order_number and other fields
 	var existingOrder models.Order
 	if err := s.db.Preload("Items").First(&existingOrder, order.ID).Error; err != nil {
-		return fmt.Errorf("order not found: %w", err)
+		return nil, fmt.Errorf("order not found: %w", err)
 	}
+
+	log.Printf("UpdateOrder: Existing order has %d items", len(existingOrder.Items))
 
 	// Preserve critical fields
 	order.OrderNumber = existingOrder.OrderNumber
 	order.CreatedAt = existingOrder.CreatedAt
+	// Preserve status if incoming status is empty (frontend doesn't send status on update)
+	if order.Status == "" {
+		order.Status = existingOrder.Status
+		log.Printf("UpdateOrder: Preserving existing status: %s", existingOrder.Status)
+	}
 
 	// Use transaction to update order and items
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// Delete existing items
+		// First, get all existing order item IDs
+		var existingItemIDs []uint
+		if err := tx.Model(&models.OrderItem{}).Where("order_id = ?", order.ID).Pluck("id", &existingItemIDs).Error; err != nil {
+			return fmt.Errorf("failed to get existing item IDs: %w", err)
+		}
+
+		// Delete order_item_modifiers first (to avoid foreign key constraint)
+		if len(existingItemIDs) > 0 {
+			if err := tx.Where("order_item_id IN ?", existingItemIDs).Delete(&models.OrderItemModifier{}).Error; err != nil {
+				return fmt.Errorf("failed to delete existing item modifiers: %w", err)
+			}
+		}
+
+		// Now delete existing items
 		if err := tx.Where("order_id = ?", order.ID).Delete(&models.OrderItem{}).Error; err != nil {
 			return fmt.Errorf("failed to delete existing items: %w", err)
 		}
@@ -171,18 +200,25 @@ func (s *OrderService) UpdateOrder(order *models.Order) error {
 	})
 
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	// Reload the order with all relationships to return complete data
+	updatedOrder, err := s.GetOrder(order.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload order: %w", err)
 	}
 
 	// Send to kitchen for any active order (pending, preparing, or ready)
 	// This ensures modifiers and other changes are reflected in kitchen display
-	if order.Status == models.OrderStatusPending ||
-	   order.Status == models.OrderStatusPreparing ||
-	   order.Status == models.OrderStatusReady {
-		go s.sendToKitchen(order)
+	if updatedOrder.Status == models.OrderStatusPending ||
+	   updatedOrder.Status == models.OrderStatusPreparing ||
+	   updatedOrder.Status == models.OrderStatusReady {
+		go s.sendToKitchen(updatedOrder)
 	}
 
-	return nil
+	log.Printf("✅ UpdateOrder completed successfully for order ID=%d with %d items", updatedOrder.ID, len(updatedOrder.Items))
+	return updatedOrder, nil
 }
 
 // GetOrder gets an order by ID
@@ -223,6 +259,7 @@ func (s *OrderService) GetPendingOrders() ([]models.Order, error) {
 	}
 
 	err := s.db.Preload("Items.Product").
+		Preload("Items.Modifiers.Modifier").
 		Preload("Table").
 		Preload("Customer").
 		Where("status IN ?", []models.OrderStatus{
@@ -260,7 +297,10 @@ func (s *OrderService) GetOrdersByStatus(status models.OrderStatus) ([]models.Or
 	var orders []models.Order
 
 	err := s.db.Preload("Items.Product").
+		Preload("Items.Modifiers.Modifier").
 		Preload("Table").
+		Preload("Customer").
+		Preload("Employee").
 		Where("status = ?", status).
 		Order("created_at ASC").
 		Find(&orders).Error
@@ -834,8 +874,10 @@ func (s *OrderService) GetTodayOrders() ([]models.Order, error) {
 	today := time.Now().Format("2006-01-02")
 
 	err := s.db.Preload("Items.Product").
+		Preload("Items.Modifiers.Modifier").
 		Preload("Customer").
 		Preload("Table").
+		Preload("Employee").
 		Where("DATE(created_at) = ? AND status != ?", today, models.OrderStatusPaid).
 		Order("created_at DESC").
 		Find(&orders).Error
@@ -882,6 +924,9 @@ func (s *OrderService) DeleteTableArea(id uint) error {
 
 // DeleteOrder permanently deletes an order and updates table status
 func (s *OrderService) DeleteOrder(orderID uint) error {
+	log.Printf("⚠️ DeleteOrder called for order ID=%d", orderID)
+	log.Printf("⚠️ THIS SHOULD NOT BE CALLED DURING UPDATE!")
+
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Get order to check table ID
 		var order models.Order

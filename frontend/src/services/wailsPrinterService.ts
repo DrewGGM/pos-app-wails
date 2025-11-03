@@ -61,6 +61,13 @@ export const wailsPrinterService = {
     await svc.PrintKitchenOrder(order);
   },
 
+  async printOrder(order: any): Promise<void> {
+    const svc = getPrinterService();
+    if (!svc) throw new Error('Service not ready');
+    // Use order receipt format with prices and totals
+    await svc.PrintOrder(order);
+  },
+
   async printCashRegisterReport(report: any): Promise<void> {
     const svc = getPrinterService();
     if (!svc) throw new Error('Service not ready');

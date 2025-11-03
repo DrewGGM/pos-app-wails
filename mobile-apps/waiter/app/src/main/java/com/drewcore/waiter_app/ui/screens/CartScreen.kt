@@ -59,7 +59,16 @@ fun CartScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(cartItems, key = { it.product.id }) { item ->
+                items(
+                    count = cartItems.size,
+                    key = { index ->
+                        // Use a unique key combining product id, modifiers, and notes
+                        // This ensures each cart item has a unique key even if same product
+                        val item = cartItems[index]
+                        "${item.product.id}-${item.modifiers.hashCode()}-${item.notes.hashCode()}"
+                    }
+                ) { index ->
+                    val item = cartItems[index]
                     CartItemCard(
                         item = item,
                         onUpdateQuantity = onUpdateQuantity,
@@ -220,6 +229,18 @@ fun CartItemCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // Display modifiers if any
+                    if (item.modifiers.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        item.modifiers.forEach { modifier ->
+                            Text(
+                                text = "  + ${modifier.name}${if (modifier.priceChange != 0.0) " ($${String.format("%.2f", modifier.priceChange)})" else ""}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
                 }
 
                 IconButton(

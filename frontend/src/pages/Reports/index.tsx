@@ -49,15 +49,16 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { format, startOfMonth, endOfMonth, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 'date-fns';
 import { wailsReportsService } from '../../services/wailsReportsService';
 import { toast } from 'react-toastify';
+import { ArrowBack as ArrowBackIcon, ArrowForward as ArrowForwardIcon } from '@mui/icons-material';
 
 const Reports: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [dateRange, setDateRange] = useState({
-    start: startOfMonth(new Date()),
-    end: endOfMonth(new Date()),
+    start: startOfDay(new Date()),
+    end: endOfDay(new Date()),
   });
   const [reportType, setReportType] = useState('sales');
   const [loading, setLoading] = useState(false);
@@ -150,6 +151,58 @@ const Reports: React.FC = () => {
       toast.error('Error al cargar reportes');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Date navigation helpers
+  const setQuickDateRange = (type: 'today' | 'yesterday' | 'last7days' | 'last30days' | 'currentMonth') => {
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+
+    switch (type) {
+      case 'today':
+        start = startOfDay(now);
+        end = endOfDay(now);
+        break;
+      case 'yesterday':
+        const yesterday = subDays(now, 1);
+        start = startOfDay(yesterday);
+        end = endOfDay(yesterday);
+        break;
+      case 'last7days':
+        start = startOfDay(subDays(now, 6));
+        end = endOfDay(now);
+        break;
+      case 'last30days':
+        start = startOfDay(subDays(now, 29));
+        end = endOfDay(now);
+        break;
+      case 'currentMonth':
+        start = startOfMonth(now);
+        end = endOfMonth(now);
+        break;
+      default:
+        start = startOfDay(now);
+        end = endOfDay(now);
+    }
+
+    setDateRange({ start, end });
+  };
+
+  const navigateDateRange = (direction: 'prev' | 'next') => {
+    const daysDiff = Math.ceil((dateRange.end.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (direction === 'prev') {
+      setDateRange({
+        start: subDays(dateRange.start, daysDiff + 1),
+        end: subDays(dateRange.end, daysDiff + 1),
+      });
+    } else {
+      setDateRange({
+        start: new Date(dateRange.start.getTime() + (daysDiff + 1) * 24 * 60 * 60 * 1000),
+        end: new Date(dateRange.end.getTime() + (daysDiff + 1) * 24 * 60 * 60 * 1000),
+      });
     }
   };
 
@@ -247,6 +300,7 @@ const Reports: React.FC = () => {
       {/* Filters */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Grid container spacing={2} alignItems="center">
+          {/* Report Type */}
           <Grid item xs={12} sm={4}>
             <FormControl fullWidth>
               <InputLabel>Tipo de Reporte</InputLabel>
@@ -263,29 +317,82 @@ const Reports: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={4}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Fecha Inicio"
-                value={dateRange.start}
-                onChange={(date) => date && setDateRange({ ...dateRange, start: date })}
-                slotProps={{
-                  textField: { fullWidth: true },
-                }}
-              />
-            </LocalizationProvider>
+
+          {/* Quick Date Buttons */}
+          <Grid item xs={12} sm={8}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange('today')}
+              >
+                Hoy
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange('yesterday')}
+              >
+                Ayer
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange('last7days')}
+              >
+                Últimos 7 días
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange('last30days')}
+              >
+                Últimos 30 días
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange('currentMonth')}
+              >
+                Mes Actual
+              </Button>
+            </Box>
           </Grid>
-          <Grid item xs={12} sm={4}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Fecha Fin"
-                value={dateRange.end}
-                onChange={(date) => date && setDateRange({ ...dateRange, end: date })}
-                slotProps={{
-                  textField: { fullWidth: true },
-                }}
-              />
-            </LocalizationProvider>
+
+          {/* Date Navigation */}
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <IconButton onClick={() => navigateDateRange('prev')} size="small">
+                <ArrowBackIcon />
+              </IconButton>
+
+              <Box sx={{ display: 'flex', gap: 2, flex: 1 }}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Fecha Inicio"
+                    value={dateRange.start}
+                    onChange={(date) => date && setDateRange({ ...dateRange, start: date })}
+                    slotProps={{
+                      textField: { fullWidth: true, size: 'small' },
+                    }}
+                  />
+                </LocalizationProvider>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Fecha Fin"
+                    value={dateRange.end}
+                    onChange={(date) => date && setDateRange({ ...dateRange, end: date })}
+                    slotProps={{
+                      textField: { fullWidth: true, size: 'small' },
+                    }}
+                  />
+                </LocalizationProvider>
+              </Box>
+
+              <IconButton onClick={() => navigateDateRange('next')} size="small">
+                <ArrowForwardIcon />
+              </IconButton>
+            </Box>
           </Grid>
         </Grid>
       </Paper>

@@ -159,6 +159,17 @@ class WailsSalesService {
   // Sales
   async processSale(saleData: ProcessSaleData): Promise<Sale> {
     try {
+      // Validate required fields
+      if (!saleData.order_id) {
+        throw new Error('Order ID is required');
+      }
+      if (!saleData.employee_id) {
+        throw new Error('Employee ID is required');
+      }
+      if (!saleData.payment_methods || saleData.payment_methods.length === 0) {
+        throw new Error('At least one payment method is required');
+      }
+
       // Get customer data if customer_id is provided
       let customerData = null;
       if (saleData.customer_id) {
@@ -177,13 +188,14 @@ class WailsSalesService {
         saleData.needs_electronic_invoice || false, // Use the actual flag from saleData
         saleData.send_email_to_customer || false, // Send invoice PDF to customer email
         saleData.employee_id,
-        saleData.cash_register_id,
+        saleData.cash_register_id || 0, // Pass 0 if no cash register (will skip cash movement recording)
         saleData.print_receipt !== undefined ? saleData.print_receipt : true // Default to true if not provided
       );
       return mapSale(sale);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing sale:', error);
-      throw new Error('Error al procesar venta');
+      const errorMessage = error?.message || 'Error al procesar venta';
+      throw new Error(errorMessage);
     }
   }
 

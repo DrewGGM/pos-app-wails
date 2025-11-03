@@ -90,7 +90,7 @@ fun CompletedOrderCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Orden #${order.orderNumber}",
+                            text = if (order.table != null) "Mesa ${order.table.number}" else "Orden #${order.orderNumber}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )

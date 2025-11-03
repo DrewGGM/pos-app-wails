@@ -36,24 +36,40 @@ func (h *RESTHandlers) HandleOrders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ModifierResponse represents a modifier for mobile apps
+type ModifierResponse struct {
+	ID          uint    `json:"id"`
+	Name        string  `json:"name"`
+	PriceChange float64 `json:"price_change"`
+}
+
 // ProductResponse represents the product data for mobile apps
 type ProductResponse struct {
-	ID        uint    `json:"id"`
-	Name      string  `json:"name"`
-	Price     float64 `json:"price"`
-	Category  string  `json:"category"`
-	ImageURL  string  `json:"image_url,omitempty"`
-	Stock     float64 `json:"stock"`
-	Available bool    `json:"available"`
+	ID        uint               `json:"id"`
+	Name      string             `json:"name"`
+	Price     float64            `json:"price"`
+	Category  string             `json:"category"`
+	ImageURL  string             `json:"image_url,omitempty"`
+	Stock     float64            `json:"stock"`
+	Available bool               `json:"available"`
+	Modifiers []ModifierResponse `json:"modifiers,omitempty"`
+}
+
+// OrderItemModifierRequest represents a modifier for an order item from mobile app
+type OrderItemModifierRequest struct {
+	ModifierID  uint    `json:"modifier_id"`
+	PriceChange float64 `json:"price_change"`
 }
 
 // OrderItemRequest represents an order item from mobile app
 type OrderItemRequest struct {
-	ProductID uint    `json:"product_id"`
-	Quantity  int     `json:"quantity"`
-	Price     float64 `json:"price"`
-	Subtotal  float64 `json:"subtotal"`
-	Notes     string  `json:"notes,omitempty"`
+	ProductID uint                       `json:"product_id"`
+	Quantity  int                        `json:"quantity"`
+	Price     float64                    `json:"price"`
+	UnitPrice float64                    `json:"unit_price"`
+	Subtotal  float64                    `json:"subtotal"`
+	Notes     string                     `json:"notes,omitempty"`
+	Modifiers []OrderItemModifierRequest `json:"modifiers,omitempty"`
 }
 
 // OrderRequest represents an order from mobile app
@@ -92,7 +108,7 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 	log.Println("REST API: Fetching products")
 
 	var products []models.Product
-	if err := h.db.Preload("Category").Where("is_active = ?", true).Find(&products).Error; err != nil {
+	if err := h.db.Preload("Category").Preload("Modifiers").Where("is_active = ?", true).Find(&products).Error; err != nil {
 		log.Printf("REST API: Error fetching products: %v", err)
 		http.Error(w, "Error fetching products", http.StatusInternalServerError)
 		return
@@ -124,6 +140,16 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 			log.Printf("REST API: Added data URL prefix for product '%s'", p.Name)
 		}
 
+		// Map modifiers
+		modifiers := make([]ModifierResponse, len(p.Modifiers))
+		for j, m := range p.Modifiers {
+			modifiers[j] = ModifierResponse{
+				ID:          m.ID,
+				Name:        m.Name,
+				PriceChange: m.PriceChange,
+			}
+		}
+
 		response[i] = ProductResponse{
 			ID:        p.ID,
 			Name:      p.Name,
@@ -132,6 +158,7 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 			ImageURL:  imageURL,
 			Stock:     float64(p.Stock),
 			Available: p.IsActive && p.Stock > 0,
+			Modifiers: modifiers,
 		}
 	}
 
@@ -195,14 +222,30 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 
 	// Add items
 	for _, itemReq := range orderReq.Items {
+		// Use UnitPrice if provided, otherwise fall back to Price
+		unitPrice := itemReq.UnitPrice
+		if unitPrice == 0 {
+			unitPrice = itemReq.Price
+		}
+
 		item := models.OrderItem{
 			ProductID: itemReq.ProductID,
 			Quantity:  itemReq.Quantity,
-			UnitPrice: itemReq.Price,
+			UnitPrice: unitPrice,
 			Subtotal:  itemReq.Subtotal,
 			Notes:     itemReq.Notes,
 			Status:    "pending",
 		}
+
+		// Add modifiers for this item
+		for _, modReq := range itemReq.Modifiers {
+			modifier := models.OrderItemModifier{
+				ModifierID:  modReq.ModifierID,
+				PriceChange: modReq.PriceChange,
+			}
+			item.Modifiers = append(item.Modifiers, modifier)
+		}
+
 		order.Items = append(order.Items, item)
 	}
 
@@ -353,14 +396,22 @@ type OrderResponse struct {
 	CreatedAt   string                  `json:"created_at"`
 }
 
+// OrderItemModifierResponse represents a modifier on an order item
+type OrderItemModifierResponse struct {
+	ModifierID  uint             `json:"modifier_id"`
+	Modifier    *ModifierResponse `json:"modifier,omitempty"`
+	PriceChange float64          `json:"price_change"`
+}
+
 type OrderItemResponse struct {
-	ProductID   uint    `json:"product_id"`
-	ProductName string  `json:"product_name"`
-	Quantity    int     `json:"quantity"`
-	UnitPrice   float64 `json:"unit_price"`
-	Subtotal    float64 `json:"subtotal"`
-	Notes       string  `json:"notes,omitempty"`
-	Status      string  `json:"status"`
+	ProductID   uint                         `json:"product_id"`
+	ProductName string                       `json:"product_name"`
+	Quantity    int                          `json:"quantity"`
+	UnitPrice   float64                      `json:"unit_price"`
+	Subtotal    float64                      `json:"subtotal"`
+	Notes       string                       `json:"notes,omitempty"`
+	Status      string                       `json:"status"`
+	Modifiers   []OrderItemModifierResponse  `json:"modifiers,omitempty"`
 }
 
 // HandleGetOrders returns orders (optionally filtered)
@@ -387,7 +438,7 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	tableID := r.URL.Query().Get("table_id")
 
-	query := h.db.Preload("Items.Product").Preload("Table")
+	query := h.db.Preload("Items.Product").Preload("Items.Modifiers.Modifier").Preload("Table")
 
 	// Apply filters
 	if status != "" {
@@ -433,6 +484,23 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 				productName = item.Product.Name
 			}
 
+			// Map modifiers
+			modifiers := make([]OrderItemModifierResponse, len(item.Modifiers))
+			for k, mod := range item.Modifiers {
+				modResp := OrderItemModifierResponse{
+					ModifierID:  mod.ModifierID,
+					PriceChange: mod.PriceChange,
+				}
+				if mod.Modifier != nil {
+					modResp.Modifier = &ModifierResponse{
+						ID:          mod.Modifier.ID,
+						Name:        mod.Modifier.Name,
+						PriceChange: mod.Modifier.PriceChange,
+					}
+				}
+				modifiers[k] = modResp
+			}
+
 			items[j] = OrderItemResponse{
 				ProductID:   item.ProductID,
 				ProductName: productName,
@@ -441,6 +509,7 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 				Subtotal:    item.Subtotal,
 				Notes:       item.Notes,
 				Status:      item.Status,
+				Modifiers:   modifiers,
 			}
 		}
 		orderResp.Items = items
@@ -545,6 +614,11 @@ func (h *RESTHandlers) HandleUpdateOrder(w http.ResponseWriter, r *http.Request,
 
 	log.Printf("REST API: Order updated successfully: %s (ID: %d)", existingOrder.OrderNumber, existingOrder.ID)
 
+	// Broadcast update to kitchen via WebSocket
+	if h.server != nil {
+		go h.broadcastOrderUpdate(&existingOrder)
+	}
+
 	response := map[string]interface{}{
 		"success":      true,
 		"order_id":     existingOrder.ID,
@@ -594,6 +668,11 @@ func (h *RESTHandlers) HandleDeleteOrder(w http.ResponseWriter, r *http.Request,
 	}
 
 	log.Printf("REST API: Order deleted successfully: %d", orderID)
+
+	// Broadcast cancellation to kitchen via WebSocket
+	if h.server != nil {
+		go h.broadcastOrderCancelled(orderID)
+	}
 
 	response := map[string]interface{}{
 		"success": true,
@@ -697,4 +776,73 @@ func (h *RESTHandlers) sendToKitchen(order *models.Order) {
 		}
 	}
 	log.Printf("REST API: Marked %d items as sent to kitchen", len(fullOrder.Items))
+}
+
+// broadcastOrderUpdate broadcasts an order update to kitchen clients
+func (h *RESTHandlers) broadcastOrderUpdate(order *models.Order) {
+	log.Printf("REST API: Broadcasting order update %s to kitchen", order.OrderNumber)
+
+	if h.server == nil {
+		log.Println("REST API: WebSocket server not initialized, skipping kitchen notification")
+		return
+	}
+
+	// Preload all relationships including modifiers
+	var fullOrder models.Order
+	if err := h.db.Preload("Items.Product").
+		Preload("Items.Modifiers.Modifier").
+		Preload("Table").
+		First(&fullOrder, order.ID).Error; err != nil {
+		log.Printf("REST API: Error loading order details: %v", err)
+		return
+	}
+
+	// Create WebSocket message with order_update type
+	message := Message{
+		Type:      "order_update",
+		Timestamp: time.Now(),
+	}
+
+	// Serialize order data
+	orderData, err := json.Marshal(fullOrder)
+	if err != nil {
+		log.Printf("REST API: Error marshaling order: %v", err)
+		return
+	}
+	message.Data = orderData
+
+	// Broadcast to kitchen clients
+	h.server.BroadcastToKitchen(message)
+	log.Printf("REST API: Order update %s broadcasted to kitchen successfully", order.OrderNumber)
+}
+
+// broadcastOrderCancelled broadcasts an order cancellation to kitchen clients
+func (h *RESTHandlers) broadcastOrderCancelled(orderID uint) {
+	log.Printf("REST API: Broadcasting order cancellation for order ID %d to kitchen", orderID)
+
+	if h.server == nil {
+		log.Println("REST API: WebSocket server not initialized, skipping kitchen notification")
+		return
+	}
+
+	// Create WebSocket message with order_cancelled type
+	message := Message{
+		Type:      "order_cancelled",
+		Timestamp: time.Now(),
+	}
+
+	// Send order ID
+	cancelData := map[string]interface{}{
+		"id": orderID,
+	}
+	data, err := json.Marshal(cancelData)
+	if err != nil {
+		log.Printf("REST API: Error marshaling cancel data: %v", err)
+		return
+	}
+	message.Data = data
+
+	// Broadcast to kitchen clients
+	h.server.BroadcastToKitchen(message)
+	log.Printf("REST API: Order cancellation for ID %d broadcasted to kitchen successfully", orderID)
 }

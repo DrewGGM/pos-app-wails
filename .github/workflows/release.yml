@@ -16,6 +16,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Get version from tag
+        id: get_version
+        run: |
+          $version = "${{ github.ref }}" -replace 'refs/tags/v', ''
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "Building version: $version"
+        shell: pwsh
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -41,7 +49,7 @@ jobs:
       - name: Create release archive
         run: |
           cd build/bin
-          Compress-Archive -Path RestaurantPOS.exe -DestinationPath ../../RestaurantPOS-Windows-x64.zip
+          Compress-Archive -Path RestaurantPOS.exe -DestinationPath ../../RestaurantPOS-Windows-x64-${{ steps.get_version.outputs.VERSION }}.zip
           cd ../..
         shell: pwsh
 
@@ -51,7 +59,7 @@ jobs:
       - name: Build Windows Installer
         run: |
           cd installer
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ steps.get_version.outputs.VERSION }}" setup.iss
           cd ..
         shell: pwsh
 
@@ -60,7 +68,7 @@ jobs:
         with:
           name: windows-build
           path: |
-            RestaurantPOS-Windows-x64.zip
+            RestaurantPOS-Windows-x64-*.zip
             build/installer/RestaurantPOS-Setup-*.exe
 
   build-android:
@@ -174,8 +182,8 @@ jobs:
 
             **Windows (Aplicación Principal)**
 
-            1. Descargar e instalar `RestaurantPOS-Setup-*.exe` (recomendado)
-            2. O descargar `RestaurantPOS-Windows-x64.zip` para versión portable
+            1. Descargar e instalar `RestaurantPOS-Setup-${{ steps.get_version.outputs.VERSION }}.exe` (recomendado)
+            2. O descargar `RestaurantPOS-Windows-x64-${{ steps.get_version.outputs.VERSION }}.zip` para versión portable
 
             **Android (Apps Móviles)**
 
@@ -206,7 +214,7 @@ jobs:
             - Contraseña: `admin`
             - ⚠️ Cambiar inmediatamente después del primer login
           files: |
-            RestaurantPOS-Windows-x64.zip
+            RestaurantPOS-Windows-x64-*.zip
             build/installer/RestaurantPOS-Setup-*.exe
             kitchen-app-*.apk
             waiter-app-*.apk

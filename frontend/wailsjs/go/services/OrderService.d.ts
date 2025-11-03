@@ -48,7 +48,7 @@ export function SendToKitchen(arg1:number):Promise<void>;
 
 export function SetWebSocketServer(arg1:websocket.Server):Promise<void>;
 
-export function UpdateOrder(arg1:models.Order):Promise<void>;
+export function UpdateOrder(arg1:models.Order):Promise<models.Order>;
 
 export function UpdateOrderStatus(arg1:number,arg2:models.OrderStatus):Promise<void>;
 

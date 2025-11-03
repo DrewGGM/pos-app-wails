@@ -35,6 +35,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private val _updatedOrderIds = MutableStateFlow<Set<String>>(emptySet())
     val updatedOrderIds: StateFlow<Set<String>> = _updatedOrderIds
 
+    // Track orders marked as ready and their items at that moment
+    // Map: orderId -> set of item keys ("productId-notes") that were ready
+    private val readyOrderItems = mutableMapOf<String, Set<String>>()
+
     private var serverIp: String? = null
 
     sealed class UiState {
@@ -86,6 +90,15 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             webSocketManager.orderUpdate.collect { update ->
                 update?.let {
                     updateOrderStatus(it.orderId, it.status)
+                }
+            }
+        }
+
+        // Observe order cancellations
+        viewModelScope.launch {
+            webSocketManager.orderCancelled.collect { orderId ->
+                orderId?.let {
+                    removeOrderById(it)
                 }
             }
         }
@@ -167,10 +180,39 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 android.util.Log.d("KitchenViewModel", "Received duplicate order without changes: ${order.orderNumber}")
             }
         } else {
-            // New order, add to beginning of list
-            current.add(0, OrderDisplayState(order = order, isCancelled = false))
-            _activeOrders.value = current
-            android.util.Log.d("KitchenViewModel", "Added new order: ${order.orderNumber}")
+            // Check if this order was previously marked as ready
+            val readyItems = readyOrderItems[order.id]
+            if (readyItems != null && readyItems.isNotEmpty()) {
+                // Order was marked ready before, filter out ready items
+                val newItems = order.items.filter { item ->
+                    val key = "${item.productId}-${item.notes}"
+                    key !in readyItems
+                }.map { item ->
+                    item.changeStatus = ItemChangeStatus.ADDED
+                    item
+                }
+
+                if (newItems.isNotEmpty()) {
+                    // Only show new items that weren't ready
+                    val filteredOrder = order.copy(items = newItems)
+                    current.add(OrderDisplayState(order = filteredOrder, isCancelled = false))
+                    _activeOrders.value = current
+
+                    // Mark as updated for visual indication
+                    val updated = _updatedOrderIds.value.toMutableSet()
+                    updated.add(order.id)
+                    _updatedOrderIds.value = updated
+
+                    android.util.Log.d("KitchenViewModel", "Previously ready order received new items: ${order.orderNumber}, showing ${newItems.size} new items")
+                } else {
+                    android.util.Log.d("KitchenViewModel", "Previously ready order received update but no new items to show: ${order.orderNumber}")
+                }
+            } else {
+                // Truly new order, add to end of list (oldest first)
+                current.add(OrderDisplayState(order = order, isCancelled = false))
+                _activeOrders.value = current
+                android.util.Log.d("KitchenViewModel", "Added new order: ${order.orderNumber}")
+            }
         }
     }
 
@@ -178,14 +220,27 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val oldItemsMap = oldOrder.items.associateBy { "${it.productId}-${it.notes}" }
         val newItemsMap = newOrder.items.associateBy { "${it.productId}-${it.notes}" }
 
-        val updatedItems = newOrder.items.map { newItem ->
+        // Get items that were marked as ready (if order was previously ready)
+        val readyItems = readyOrderItems[newOrder.id] ?: emptySet()
+
+        if (readyItems.isNotEmpty()) {
+            android.util.Log.d("KitchenViewModel", "Order ${newOrder.id} was previously marked ready. Ready items: $readyItems")
+        }
+
+        val updatedItems = newOrder.items.mapNotNull { newItem ->
             val key = "${newItem.productId}-${newItem.notes}"
             val oldItem = oldItemsMap[key]
 
             when {
+                key in readyItems -> {
+                    // Item was already marked as ready - don't show it
+                    android.util.Log.d("KitchenViewModel", "Filtering out ready item: $key")
+                    null
+                }
                 oldItem == null -> {
                     // New item added
                     newItem.changeStatus = ItemChangeStatus.ADDED
+                    android.util.Log.d("KitchenViewModel", "New item added: $key")
                     newItem
                 }
                 oldItem.quantity != newItem.quantity -> {
@@ -202,11 +257,12 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             }
         }.toMutableList()
 
-        // Find removed items
-        val removedItems = oldItemsMap.filterKeys { !newItemsMap.containsKey(it) }.values.map { oldItem ->
-            oldItem.changeStatus = ItemChangeStatus.REMOVED
-            oldItem
-        }
+        // Find removed items (only from non-ready items)
+        val removedItems = oldItemsMap.filterKeys { !newItemsMap.containsKey(it) && it !in readyItems }
+            .values.map { oldItem ->
+                oldItem.changeStatus = ItemChangeStatus.REMOVED
+                oldItem
+            }
 
         // Add removed items to the list (they will be shown with strikethrough)
         updatedItems.addAll(removedItems)
@@ -221,6 +277,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markOrderAsReady(order: Order) {
+        // Save which items were ready
+        readyOrderItems[order.id] = order.items.map { "${it.productId}-${it.notes}" }.toSet()
+        android.util.Log.d("KitchenViewModel", "Saved ready items for order ${order.id}: ${readyOrderItems[order.id]}")
+
         // Remove from active orders
         val active = _activeOrders.value.toMutableList()
         active.removeAll { it.order.id == order.id }
@@ -246,6 +306,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val completed = _completedOrders.value.toMutableList()
         completed.remove(order)
         _completedOrders.value = completed
+
+        // Clear ready items tracking (order is no longer ready)
+        readyOrderItems.remove(order.id)
+        android.util.Log.d("KitchenViewModel", "Cleared ready items for order ${order.id} after undo")
 
         // Add back to active
         val active = _activeOrders.value.toMutableList()
@@ -306,6 +370,24 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         active.removeAll { it.order.id == orderId && it.isCancelled }
         _activeOrders.value = active
         android.util.Log.d("KitchenViewModel", "Manually removed cancelled order: $orderId")
+    }
+
+    private fun removeOrderById(orderId: String) {
+        // Remove order from active list (called when order_cancelled message received)
+        val active = _activeOrders.value.toMutableList()
+        val removed = active.removeAll { it.order.id == orderId }
+        if (removed) {
+            _activeOrders.value = active
+            android.util.Log.d("KitchenViewModel", "Order removed via WebSocket cancellation: $orderId")
+        }
+
+        // Also remove from completed list if present
+        val completed = _completedOrders.value.toMutableList()
+        completed.removeAll { it.id == orderId }
+        _completedOrders.value = completed
+
+        // Clean up ready items tracking
+        readyOrderItems.remove(orderId)
     }
 
     private fun playNotificationSound() {

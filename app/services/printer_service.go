@@ -645,7 +645,10 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	if sale.Discount > 0 {
 		s.write(fmt.Sprintf("Descuento: -$%s\n", s.formatMoney(sale.Discount)))
 	}
-	s.write(fmt.Sprintf("IVA (N/A): $%s\n", s.formatMoney(sale.Tax)))
+	// Only show IVA if company is VAT responsible (tax > 0)
+	if sale.Tax > 0 {
+		s.write(fmt.Sprintf("IVA: $%s\n", s.formatMoney(sale.Tax)))
+	}
 	s.setEmphasize(true)
 	s.setSize(1, 2)
 	s.write(fmt.Sprintf("TOTAL: $%s\n", s.formatMoney(sale.Total)))
@@ -787,7 +790,10 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	if sale.Discount > 0 {
 		s.write(fmt.Sprintf("Descuento: -$%s\n", s.formatMoney(sale.Discount)))
 	}
-	s.write(fmt.Sprintf("IVA: $%s\n", s.formatMoney(sale.Tax)))
+	// Only show IVA if company is VAT responsible (tax > 0)
+	if sale.Tax > 0 {
+		s.write(fmt.Sprintf("IVA: $%s\n", s.formatMoney(sale.Tax)))
+	}
 	s.setEmphasize(true)
 	s.write(fmt.Sprintf("TOTAL: $%s\n", s.formatMoney(sale.Total)))
 	s.setEmphasize(false)
@@ -906,6 +912,153 @@ func (s *PrinterService) PrintKitchenOrder(order *models.Order) error {
 	s.write(fmt.Sprintf("Hora: %s\n", time.Now().Format("15:04:05")))
 
 	// Cut paper
+	if config.AutoCut {
+		s.cut()
+	} else {
+		s.lineFeed()
+		s.lineFeed()
+		s.lineFeed()
+	}
+
+	return s.print()
+}
+
+// PrintOrder prints an order as a simple receipt (with prices and totals)
+func (s *PrinterService) PrintOrder(order *models.Order) error {
+	// Get default printer
+	config, err := s.getDefaultPrinterConfig()
+	if err != nil {
+		return fmt.Errorf("no default printer configured: %w", err)
+	}
+
+	// Connect to printer
+	if err := s.connectPrinter(config); err != nil {
+		return fmt.Errorf("failed to connect to printer: %w", err)
+	}
+	defer s.closePrinter()
+
+	// Initialize printer
+	s.init()
+	s.setAlign("center")
+
+	// Get restaurant config
+	var restaurant models.RestaurantConfig
+	s.db.First(&restaurant)
+
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
+	// Print header
+	s.setEmphasize(true)
+	s.setSize(2, 2)
+	s.write(fmt.Sprintf("%s\n", restaurant.Name))
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("%s\n", restaurant.Address))
+	s.write(fmt.Sprintf("Tel: %s\n", restaurant.Phone))
+	s.lineFeed()
+
+	// Print order info
+	s.setAlign("left")
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write(fmt.Sprintf("Orden #: %s\n", order.OrderNumber))
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("Fecha: %s\n", order.CreatedAt.Format("2006-01-02 15:04:05")))
+
+	// Print table if applicable
+	if order.Table != nil {
+		s.write(fmt.Sprintf("Mesa: %s\n", order.Table.Number))
+	}
+
+	// Print takeout number if applicable
+	if order.TakeoutNumber != nil {
+		s.write(fmt.Sprintf("Para Llevar #: %d\n", *order.TakeoutNumber))
+	}
+
+	// Print customer if available
+	if order.Customer != nil {
+		s.write(fmt.Sprintf("Cliente: %s\n", order.Customer.Name))
+	}
+
+	// Print items
+	s.write(s.printSeparator())
+	s.db.Preload("Items.Product").Preload("Items.Modifiers.Modifier").First(order, order.ID)
+
+	for _, item := range order.Items {
+		s.write(fmt.Sprintf("%d x %s\n", item.Quantity, item.Product.Name))
+
+		// Print modifiers
+		modifiersTotal := 0.0
+		for _, mod := range item.Modifiers {
+			s.write(fmt.Sprintf("  + %s", mod.Modifier.Name))
+			if mod.PriceChange != 0 {
+				s.write(fmt.Sprintf(" ($%s)", s.formatMoney(mod.PriceChange)))
+				modifiersTotal += mod.PriceChange
+			}
+			s.write("\n")
+		}
+
+		// Print unit price and subtotal
+		unitPriceWithModifiers := item.UnitPrice + modifiersTotal
+		s.write(fmt.Sprintf("  $%s c/u = $%s\n",
+			s.formatMoney(unitPriceWithModifiers),
+			s.formatMoney(item.Subtotal)))
+
+		// Print notes if any
+		if item.Notes != "" {
+			s.write(fmt.Sprintf("  Nota: %s\n", item.Notes))
+		}
+	}
+
+	// Print totals
+	s.write(s.printSeparator())
+	s.setAlign("right")
+	s.write(fmt.Sprintf("Subtotal: $%s\n", s.formatMoney(order.Subtotal)))
+	if order.Discount > 0 {
+		s.write(fmt.Sprintf("Descuento: -$%s\n", s.formatMoney(order.Discount)))
+	}
+	// Only show IVA if there is tax
+	if order.Tax > 0 {
+		s.write(fmt.Sprintf("IVA: $%s\n", s.formatMoney(order.Tax)))
+	}
+	s.setEmphasize(true)
+	s.setSize(1, 2)
+	s.write(fmt.Sprintf("TOTAL: $%s\n", s.formatMoney(order.Total)))
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.setAlign("left")
+
+	// Print general notes if any
+	if order.Notes != "" {
+		s.write(s.printSeparator())
+		s.write("Notas:\n")
+		s.write(order.Notes + "\n")
+	}
+
+	// Print employee if available
+	if order.Employee != nil {
+		s.lineFeed()
+		s.write(s.printSeparator())
+		s.write(fmt.Sprintf("Atendió: %s\n", order.Employee.Name))
+	}
+
+	// Footer
+	s.lineFeed()
+	s.setAlign("center")
+	s.write("¡Gracias por su preferencia!\n")
+	if restaurant.Website != "" {
+		s.write(restaurant.Website + "\n")
+	}
+
+	// Cut paper if enabled
 	if config.AutoCut {
 		s.cut()
 	} else {

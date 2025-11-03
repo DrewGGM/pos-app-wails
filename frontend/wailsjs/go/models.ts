@@ -202,6 +202,7 @@ export namespace models {
 	    type: string;
 	    amount: number;
 	    description: string;
+	    reason: string;
 	    reference: string;
 	    employee_id: number;
 	    employee?: Employee;
@@ -218,6 +219,7 @@ export namespace models {
 	        this.type = source["type"];
 	        this.amount = source["amount"];
 	        this.description = source["description"];
+	        this.reason = source["reason"];
 	        this.reference = source["reference"];
 	        this.employee_id = source["employee_id"];
 	        this.employee = this.convertValues(source["employee"], Employee);

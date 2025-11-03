@@ -18,6 +18,10 @@ export function PrintKitchenOrder(arg1) {
   return window['go']['services']['PrinterService']['PrintKitchenOrder'](arg1);
 }
 
+export function PrintOrder(arg1) {
+  return window['go']['services']['PrinterService']['PrintOrder'](arg1);
+}
+
 export function PrintReceipt(arg1, arg2) {
   return window['go']['services']['PrinterService']['PrintReceipt'](arg1, arg2);
 }

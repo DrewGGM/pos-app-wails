@@ -1,0 +1,37 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# PowerShell scripts should have CRLF line endings on all platforms
+*.ps1 text eol=crlf
+
+# Shell scripts should have LF line endings on all platforms
+*.sh text eol=lf
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.go text
+*.js text
+*.ts text
+*.tsx text
+*.json text
+*.md text
+*.toml text
+*.yaml text
+*.yml text
+*.sql text
+
+# Denote all files that are truly binary and should not be modified.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.apk binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary

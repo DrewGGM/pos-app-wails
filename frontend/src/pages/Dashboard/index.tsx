@@ -34,11 +34,18 @@ import {
   Print as PrintIcon,
   Refresh as RefreshIcon,
   PointOfSale as POSIcon,
+  WifiTethering as ServerIcon,
+  PhoneAndroid as MobileIcon,
+  Kitchen as KitchenIcon,
+  RestaurantMenu as WaiterIcon,
+  PowerSettingsNew as ResetIcon,
+  Router as RouterIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { wailsDashboardService } from '../../services/wailsDashboardService';
+import { wailsWebSocketService, WebSocketStatus } from '../../services/wailsWebSocketService';
 import { format } from 'date-fns';
 import {
   LineChart,
@@ -86,10 +93,26 @@ const Dashboard: React.FC = () => {
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
   const [hourlySales, setHourlySales] = useState<any[]>([]);
+  const [wsStatus, setWsStatus] = useState<WebSocketStatus | null>(null);
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  const handleRestartServer = async () => {
+    if (confirm('¿Estás seguro de que quieres reiniciar el servidor? Todas las conexiones de apps móviles se desconectarán temporalmente.')) {
+      try {
+        // Quit the application - user will need to manually restart it
+        const w = (window as any);
+        if (w.runtime && w.runtime.Quit) {
+          w.runtime.Quit();
+        }
+      } catch (error) {
+        console.error('Error restarting server:', error);
+        alert('Error al reiniciar el servidor');
+      }
+    }
+  };
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -111,6 +134,10 @@ const Dashboard: React.FC = () => {
       // Get sales chart data (last 7 days)
       const salesData = await wailsDashboardService.getSalesChartData(7);
       setHourlySales(salesData || []);
+
+      // Get WebSocket server status
+      const status = await wailsWebSocketService.getStatus();
+      setWsStatus(status);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -369,46 +396,97 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
 
-        {/* Recent Orders */}
+        {/* System Status */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">
-                Órdenes Recientes
-              </Typography>
-              <Button size="small" onClick={() => navigate('/orders')}>
-                Ver Todas
-              </Button>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ServerIcon color="primary" />
+                <Typography variant="h6">
+                  Estado del Sistema
+                </Typography>
+              </Box>
+              <IconButton onClick={loadDashboardData} size="small">
+                <RefreshIcon />
+              </IconButton>
             </Box>
-            <List>
-              {recentOrders.map((order: any) => (
-                <ListItem key={order.id}>
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: getStatusColor(order.status) }}>
-                      <RestaurantIcon />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={`Orden #${order.order_number}`}
-                    secondary={
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        {order.table && (
-                          <Chip label={`Mesa ${order.table.number}`} size="small" />
-                        )}
-                        <Typography variant="caption">
-                          ${order.total.toLocaleString('es-CO')}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <Chip
-                    label={getStatusLabel(order.status)}
-                    size="small"
-                    color={getStatusChipColor(order.status)}
-                  />
-                </ListItem>
-              ))}
+
+            {/* WebSocket Server Status */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Servidor WebSocket
+                </Typography>
+                <Chip
+                  label={wsStatus?.running ? 'Activo' : 'Inactivo'}
+                  size="small"
+                  color={wsStatus?.running ? 'success' : 'error'}
+                  icon={wsStatus?.running ? <CheckIcon /> : <WarningIcon />}
+                />
+              </Box>
+              {wsStatus?.running && (
+                <Typography variant="body2" color="textSecondary">
+                  Puerto: {wsStatus.port} • IP: {wsStatus.local_ips?.[0] || 'N/A'}
+                </Typography>
+              )}
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Connected Apps */}
+            <Typography variant="subtitle2" gutterBottom sx={{ mb: 2 }}>
+              Apps Móviles Conectadas
+            </Typography>
+
+            <List dense>
+              <ListItem>
+                <ListItemAvatar>
+                  <Avatar sx={{ bgcolor: wsStatus?.kitchen_clients ? 'success.light' : 'grey.300' }}>
+                    <KitchenIcon />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary="App Kitchen"
+                  secondary={`${wsStatus?.kitchen_clients || 0} ${wsStatus?.kitchen_clients === 1 ? 'dispositivo' : 'dispositivos'} conectado(s)`}
+                />
+                <Chip
+                  label={wsStatus?.kitchen_clients ? 'Conectada' : 'Desconectada'}
+                  size="small"
+                  color={wsStatus?.kitchen_clients ? 'success' : 'default'}
+                />
+              </ListItem>
+
+              <ListItem>
+                <ListItemAvatar>
+                  <Avatar sx={{ bgcolor: wsStatus?.waiter_clients ? 'success.light' : 'grey.300' }}>
+                    <WaiterIcon />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary="App Waiter"
+                  secondary={`${wsStatus?.waiter_clients || 0} ${wsStatus?.waiter_clients === 1 ? 'dispositivo' : 'dispositivos'} conectado(s)`}
+                />
+                <Chip
+                  label={wsStatus?.waiter_clients ? 'Conectada' : 'Desconectada'}
+                  size="small"
+                  color={wsStatus?.waiter_clients ? 'success' : 'default'}
+                />
+              </ListItem>
             </List>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Restart Server Button */}
+            <Button
+              fullWidth
+              variant="outlined"
+              color="warning"
+              startIcon={<ResetIcon />}
+              onClick={handleRestartServer}
+              sx={{ mt: 1 }}
+            >
+              Reiniciar Servidor
+            </Button>
           </Paper>
         </Grid>
 

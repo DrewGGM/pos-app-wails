@@ -2,7 +2,11 @@
 ; https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Restaurant POS System"
-#define MyAppVersion "1.0.0"
+; MyAppVersion can be passed from command line using /DMyAppVersion=x.x.x
+; If not provided, use default version
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "Andrew Garcia Mosquera"
 #define MyAppURL "https://github.com/DrewGGM/pos-app-wails"
 #define MyAppExeName "RestaurantPOS.exe"

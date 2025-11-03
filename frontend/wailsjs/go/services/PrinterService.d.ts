@@ -11,6 +11,8 @@ export function PrintCashRegisterReport(arg1:models.CashRegisterReport):Promise<
 
 export function PrintKitchenOrder(arg1:models.Order):Promise<void>;
 
+export function PrintOrder(arg1:models.Order):Promise<void>;
+
 export function PrintReceipt(arg1:models.Sale,arg2:boolean):Promise<void>;
 
 export function PrintReceiptWithPrinter(arg1:models.Sale,arg2:boolean,arg3:number):Promise<void>;

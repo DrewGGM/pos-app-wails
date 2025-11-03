@@ -40,6 +40,7 @@ import {
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
 import { wailsOrderService } from '../../services/wailsOrderService';
+import { wailsPrinterService } from '../../services/wailsPrinterService';
 import { Order } from '../../types/models';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -122,11 +123,13 @@ const Orders: React.FC = () => {
   const handlePrintOrder = async (order: Order) => {
     try {
       if (order.id) {
-        // Print order - to be implemented
-        toast.info('Imprimir orden - pendiente');
+        // Print order with all details (modifiers, notes, etc.)
+        await wailsPrinterService.printOrder(order);
+        toast.success(`Orden #${order.order_number} enviada a impresora`);
       }
-    } catch (error) {
-      toast.error('Error al imprimir orden');
+    } catch (error: any) {
+      console.error('Error printing order:', error);
+      toast.error(`Error al imprimir orden: ${error.message || 'Error desconocido'}`);
     }
     handleMenuClose();
   };
@@ -517,8 +520,27 @@ const Orders: React.FC = () => {
                             <Typography variant="body2">
                               {item.product?.name || 'Producto'}
                             </Typography>
+                            {item.modifiers && item.modifiers.length > 0 && (
+                              <Box sx={{ mt: 0.5 }}>
+                                {item.modifiers.map((mod, modIndex) => (
+                                  <Typography
+                                    key={modIndex}
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: 'block', fontStyle: 'italic' }}
+                                  >
+                                    + {mod.modifier?.name}
+                                    {mod.price_change !== 0 && (
+                                      <span style={{ marginLeft: '4px' }}>
+                                        ({mod.price_change > 0 ? '+' : ''}${mod.price_change.toLocaleString('es-CO')})
+                                      </span>
+                                    )}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            )}
                             {item.notes && (
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                                 Nota: {item.notes}
                               </Typography>
                             )}

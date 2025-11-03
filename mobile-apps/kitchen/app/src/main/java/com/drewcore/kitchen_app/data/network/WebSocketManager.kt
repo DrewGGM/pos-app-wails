@@ -31,6 +31,9 @@ class WebSocketManager {
     private val _orderUpdate = MutableStateFlow<OrderUpdate?>(null)
     val orderUpdate: StateFlow<OrderUpdate?> = _orderUpdate
 
+    private val _orderCancelled = MutableStateFlow<String?>(null)
+    val orderCancelled: StateFlow<String?> = _orderCancelled
+
     private var clientId: String? = null
 
     companion object {
@@ -115,12 +118,31 @@ class WebSocketManager {
                 }
 
                 "order_update" -> {
-                    val orderId = message.data["order_id"]?.toString()
-                    val status = message.data["status"] as? String
+                    // Try to parse as full order first (from REST API broadcasts)
+                    try {
+                        val orderJson = gson.toJson(message.data)
+                        val order = gson.fromJson(orderJson, Order::class.java)
+                        val cleanedOrder = cleanOrderIds(order)
+                        _newOrder.value = cleanedOrder
+                        Log.d(TAG, "Order update received (full order): ${cleanedOrder.orderNumber}")
+                    } catch (e: Exception) {
+                        // Fallback to status update only
+                        val orderId = message.data["order_id"]?.toString()
+                        val status = message.data["status"] as? String
 
-                    if (orderId != null && status != null) {
-                        _orderUpdate.value = OrderUpdate(orderId, status)
-                        Log.d(TAG, "Order update: $orderId -> $status")
+                        if (orderId != null && status != null) {
+                            _orderUpdate.value = OrderUpdate(orderId, status)
+                            Log.d(TAG, "Order update (status only): $orderId -> $status")
+                        }
+                    }
+                }
+
+                "order_cancelled" -> {
+                    // Parse cancelled order ID
+                    val orderId = message.data["id"]?.toString()
+                    if (orderId != null) {
+                        _orderCancelled.value = orderId
+                        Log.d(TAG, "Order cancelled: $orderId")
                     }
                 }
 

@@ -55,6 +55,13 @@ data class Product(
     @SerializedName("image_url") val imageUrl: String? = null
 )
 
+// Table
+data class Table(
+    val id: String,
+    val number: Int,
+    val status: String
+)
+
 // Order Item Change Status
 enum class ItemChangeStatus {
     UNCHANGED,  // Item existed before
@@ -83,10 +90,11 @@ data class OrderItem(
 data class Order(
     val id: String,
     @SerializedName("order_number") val orderNumber: String,
-    val type: String, // "dine-in", "takeout", "delivery"
+    val type: String, // "dine_in", "takeout", "delivery"
     val status: String,
     @SerializedName("takeout_number") val takeoutNumber: Int? = null,
     @SerializedName("table_id") val tableId: String? = null,
+    val table: Table? = null,
     val items: List<OrderItem>,
     val subtotal: Double,
     val tax: Double,

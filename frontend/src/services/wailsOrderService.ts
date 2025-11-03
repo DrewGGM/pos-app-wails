@@ -26,7 +26,10 @@ import { Order, Table, OrderItem, CreateOrderData } from '../types/models';
 export type { CreateOrderData };
 
 // Adapters: Map Wails models -> Frontend models
-function mapOrder(w: models.Order): Order {
+function mapOrder(w: models.Order | null): Order {
+  if (!w) {
+    throw new Error('Order is null or undefined');
+  }
   return {
     id: w.id as unknown as number,
     order_number: w.order_number || '',
@@ -64,6 +67,17 @@ function mapOrder(w: models.Order): Order {
       price: item.unit_price || 0,
       subtotal: item.subtotal || 0,
       notes: item.notes || '',
+      modifiers: (item.modifiers || []).map((mod) => ({
+        id: mod.id as unknown as number,
+        order_item_id: mod.order_item_id as unknown as number,
+        modifier_id: mod.modifier_id as unknown as number,
+        modifier: mod.modifier ? {
+          id: mod.modifier.id as unknown as number,
+          name: mod.modifier.name || '',
+          price_change: mod.modifier.price_change || 0,
+        } : undefined,
+        price_change: mod.price_change || 0,
+      })),
       status: item.status as 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled',
       created_at: item.created_at || new Date().toISOString(),
       updated_at: item.updated_at || new Date().toISOString(),

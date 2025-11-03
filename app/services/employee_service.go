@@ -237,7 +237,9 @@ func (s *EmployeeService) GetOpenCashRegister(employeeID uint) (*models.CashRegi
 	}
 	var register models.CashRegister
 
+	// Only load manual movements (deposit/withdrawal), not sales
 	err := s.db.Preload("Employee").
+		Preload("Movements", "type IN ?", []string{"deposit", "withdrawal", "adjustment"}).
 		Preload("Movements.Employee").
 		Where("employee_id = ? AND status = ?", employeeID, "open").
 		First(&register).Error
@@ -279,8 +281,11 @@ func (s *EmployeeService) CloseCashRegister(registerID uint, closingAmount float
 	}
 	var register models.CashRegister
 
-	// Get register with all related data
-	if err := s.db.Preload("Movements").Preload("Employee").First(&register, registerID).Error; err != nil {
+	// Get register with all related data (only manual movements)
+	if err := s.db.Preload("Employee").
+		Preload("Movements", "type IN ?", []string{"deposit", "withdrawal", "adjustment"}).
+		Preload("Movements.Employee").
+		First(&register, registerID).Error; err != nil {
 		return nil, fmt.Errorf("cash register not found")
 	}
 
@@ -335,8 +340,11 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 	}
 	var register models.CashRegister
 
-	// Get register with all related data
-	if err := s.db.Preload("Movements").Preload("Employee").First(&register, registerID).Error; err != nil {
+	// Get register with all related data (only manual movements)
+	if err := s.db.Preload("Employee").
+		Preload("Movements", "type IN ?", []string{"deposit", "withdrawal", "adjustment"}).
+		Preload("Movements.Employee").
+		First(&register, registerID).Error; err != nil {
 		return fmt.Errorf("cash register not found")
 	}
 
@@ -413,10 +421,11 @@ func (s *EmployeeService) PrintLastCashRegisterReport(employeeID uint) error {
 	if s.db == nil {
 		return fmt.Errorf("database not initialized")
 	}
-	// Find the last closed cash register for this employee
+	// Find the last closed cash register for this employee (only manual movements)
 	var register models.CashRegister
-	err := s.db.Preload("Movements").
-		Preload("Employee").
+	err := s.db.Preload("Employee").
+		Preload("Movements", "type IN ?", []string{"deposit", "withdrawal", "adjustment"}).
+		Preload("Movements.Employee").
 		Where("employee_id = ? AND status = ?", employeeID, "closed").
 		Order("closed_at DESC").
 		First(&register).Error
@@ -513,14 +522,15 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) float64 {
 	expected := register.OpeningAmount
 
-	// Add all cash movements (excluding opening movement to avoid double counting)
+	// Add manual cash movements only (sales are NOT movements, they're tracked via payments)
+	// Note: Movements should already be filtered to exclude "sale" type
 	for _, movement := range register.Movements {
 		// Skip opening movement since it's already included in OpeningAmount
 		if movement.Reference == "OPENING" {
 			continue
 		}
 
-		if movement.Type == "sale" || movement.Type == "deposit" {
+		if movement.Type == "deposit" {
 			expected += movement.Amount
 		} else if movement.Type == "withdrawal" || movement.Type == "refund" {
 			expected -= movement.Amount

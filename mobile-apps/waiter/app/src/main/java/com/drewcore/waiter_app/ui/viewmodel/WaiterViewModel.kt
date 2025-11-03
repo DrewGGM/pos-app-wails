@@ -62,6 +62,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         object TableSelection : Screen()
         object ProductSelection : Screen()
         object OrdersList : Screen()
+        object Settings : Screen()
     }
 
     val cartTotal: Double
@@ -75,6 +76,11 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     val availableTables: List<Table>
         get() = _tables.value.filter { it.status == "available" }
+
+    // For table switching: show all tables except the current one
+    fun getTablesForSwitching(currentTableId: Int?): List<Table> {
+        return _tables.value.filter { it.id != currentTableId }
+    }
 
     init {
         viewModelScope.launch {
@@ -291,6 +297,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     fun releaseTable() {
         viewModelScope.launch {
+            // Navigate first to avoid intermediate re-render with null table (which shows as takeout)
+            navigateToScreen(Screen.TableSelection)
+            // Then clear state
             _selectedTable.value = null
             _cart.value = emptyList()
             _currentOrderId.value = null
@@ -298,7 +307,6 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             apiService?.getTables()?.onSuccess { tableList ->
                 _tables.value = tableList
             }
-            navigateToScreen(Screen.TableSelection)
         }
     }
 
@@ -323,14 +331,26 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         navigateToScreen(Screen.ProductSelection)
     }
 
-    fun addToCart(product: Product) {
+    fun addToCart(product: Product, modifiers: List<Modifier> = emptyList(), notes: String = "") {
         val currentCart = _cart.value.toMutableList()
-        val existingIndex = currentCart.indexOfFirst { it.product.id == product.id }
+        // Items should only stack if they have the same product, modifiers, AND notes
+        val existingIndex = currentCart.indexOfFirst {
+            it.product.id == product.id &&
+            it.modifiers == modifiers &&
+            it.notes == notes
+        }
 
         if (existingIndex != -1) {
+            // Same product with same modifiers and notes - increase quantity
             currentCart[existingIndex] = currentCart[existingIndex].copy(quantity = currentCart[existingIndex].quantity + 1)
         } else {
-            currentCart.add(CartItem(product = product, quantity = 1))
+            // New item or different modifiers/notes - add as new cart item
+            currentCart.add(CartItem(
+                product = product,
+                quantity = 1,
+                modifiers = modifiers,
+                notes = notes
+            ))
         }
 
         _cart.value = currentCart
@@ -349,7 +369,12 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val currentCart = _cart.value.toMutableList()
-        val index = currentCart.indexOfFirst { it.product.id == cartItem.product.id }
+        // Find the exact cart item by product, modifiers, AND notes
+        val index = currentCart.indexOfFirst {
+            it.product.id == cartItem.product.id &&
+            it.modifiers == cartItem.modifiers &&
+            it.notes == cartItem.notes
+        }
         if (index != -1) {
             currentCart[index] = currentCart[index].copy(quantity = quantity)
             _cart.value = currentCart
@@ -358,7 +383,12 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateNotes(cartItem: CartItem, notes: String) {
         val currentCart = _cart.value.toMutableList()
-        val index = currentCart.indexOfFirst { it.product.id == cartItem.product.id }
+        // Find the exact cart item by product, modifiers, AND notes
+        val index = currentCart.indexOfFirst {
+            it.product.id == cartItem.product.id &&
+            it.modifiers == cartItem.modifiers &&
+            it.notes == cartItem.notes
+        }
         if (index != -1) {
             currentCart[index] = currentCart[index].copy(notes = notes)
             _cart.value = currentCart
@@ -420,8 +450,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             result?.onSuccess {
-                // Send via WebSocket for real-time notification
-                webSocketManager.sendNewOrder(order)
+                // Backend REST handler will broadcast to kitchen via WebSocket
+                // No need to send WebSocket message here - REST handlers handle it
+
 
                 // Clear cart and order ID
                 _cart.value = emptyList()
