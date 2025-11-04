@@ -84,8 +84,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone (not UTC) to avoid timezone offset issues
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0); // Start of day in local time
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999); // End of day in local time
+
     return await svc.GetSalesReport(start, end);
   },
 
@@ -93,7 +98,9 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const reportDate = new Date(date);
+    // Parse date in local timezone
+    const [year, month, day] = date.split('-').map(Number);
+    const reportDate = new Date(year, month - 1, day, 0, 0, 0, 0);
     return await svc.GetDailySalesReport(reportDate);
   },
 
@@ -113,8 +120,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetSalesByPaymentMethod(start, end);
   },
 
@@ -123,8 +135,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetCustomerStats(start, end);
   },
 
@@ -133,8 +150,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return [];
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetSalesByCategory(start, end);
   },
 
@@ -143,8 +165,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return [];
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetKeyMetricsComparison(start, end);
   },
 
@@ -166,8 +193,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetEmployeePerformanceReport(start, end);
   },
 
@@ -175,8 +207,13 @@ export const wailsReportsService = {
     const svc = getReportsService();
     if (!svc) return null;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // Parse dates in local timezone
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+
     return await svc.GetEmployeeSalesReport(employeeId, start, end);
   },
 

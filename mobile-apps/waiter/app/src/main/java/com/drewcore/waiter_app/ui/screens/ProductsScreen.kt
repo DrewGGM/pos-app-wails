@@ -42,13 +42,15 @@ fun ProductsScreen(
     categories: List<String>,
     selectedCategory: String?,
     onCategorySelected: (String?) -> Unit,
-    onAddToCart: (Product, List<ProductModifier>, String) -> Unit,
+    onAddToCart: (Product, List<ProductModifier>, String, Double?) -> Unit,
     gridColumns: Int = 2
 ) {
     var showModifierDialog by remember { mutableStateOf(false) }
+    var showPriceDialog by remember { mutableStateOf(false) }
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var selectedModifiers by remember { mutableStateOf<List<ProductModifier>>(emptyList()) }
     var productNotes by remember { mutableStateOf("") }
+    var customPrice by remember { mutableStateOf<Double?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Category filter
@@ -90,14 +92,20 @@ fun ProductsScreen(
                     ProductCard(
                         product = product,
                         onClick = {
+                            selectedProduct = product
+                            selectedModifiers = emptyList()
+                            productNotes = ""
+                            customPrice = null
+
+                            // Check if product has variable price
+                            if (product.hasVariablePrice) {
+                                showPriceDialog = true
+                            }
                             // Check if product has modifiers
-                            if (!product.modifiers.isNullOrEmpty()) {
-                                selectedProduct = product
-                                selectedModifiers = emptyList()
-                                productNotes = ""
+                            else if (!product.modifiers.isNullOrEmpty()) {
                                 showModifierDialog = true
                             } else {
-                                onAddToCart(product, emptyList(), "")
+                                onAddToCart(product, emptyList(), "", null)
                             }
                         }
                     )
@@ -106,12 +114,37 @@ fun ProductsScreen(
         }
     }
 
+    // Price dialog for variable price products
+    if (showPriceDialog && selectedProduct != null) {
+        VariablePriceDialog(
+            product = selectedProduct!!,
+            onDismiss = {
+                showPriceDialog = false
+                selectedProduct = null
+                customPrice = null
+            },
+            onConfirm = { price ->
+                customPrice = price
+                showPriceDialog = false
+                // After getting price, check if product has modifiers
+                if (!selectedProduct!!.modifiers.isNullOrEmpty()) {
+                    showModifierDialog = true
+                } else {
+                    onAddToCart(selectedProduct!!, emptyList(), "", customPrice)
+                    selectedProduct = null
+                    customPrice = null
+                }
+            }
+        )
+    }
+
     // Modifier dialog
     if (showModifierDialog && selectedProduct != null) {
         ModifierDialog(
             product = selectedProduct!!,
             selectedModifiers = selectedModifiers,
             notes = productNotes,
+            customPrice = customPrice,
             onModifiersChanged = { selectedModifiers = it },
             onNotesChanged = { productNotes = it },
             onDismiss = {
@@ -119,14 +152,16 @@ fun ProductsScreen(
                 selectedProduct = null
                 selectedModifiers = emptyList()
                 productNotes = ""
+                customPrice = null
             },
             onConfirm = {
                 // Add product with selected modifiers and notes
-                onAddToCart(selectedProduct!!, selectedModifiers, productNotes)
+                onAddToCart(selectedProduct!!, selectedModifiers, productNotes, customPrice)
                 showModifierDialog = false
                 selectedProduct = null
                 selectedModifiers = emptyList()
                 productNotes = ""
+                customPrice = null
             }
         )
     }
@@ -154,7 +189,7 @@ fun CategoryFilter(
         }
 
         // Category chips
-        items(categories) { category ->
+        items(categories, key = { it }) { category ->
             FilterChip(
                 selected = selectedCategory == category,
                 onClick = { onCategorySelected(category) },
@@ -364,6 +399,7 @@ fun ModifierDialog(
     product: Product,
     selectedModifiers: List<ProductModifier>,
     notes: String,
+    customPrice: Double? = null,
     onModifiersChanged: (List<ProductModifier>) -> Unit,
     onNotesChanged: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -448,35 +484,38 @@ fun ModifierDialog(
                 )
 
                 // Price summary
+                val basePrice = customPrice ?: product.price
                 val totalModifierPrice = selectedModifiers.sumOf { it.priceChange }
-                if (totalModifierPrice != 0.0) {
+                if (customPrice != null || totalModifierPrice != 0.0) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Precio base:",
+                            text = if (customPrice != null) "Precio personalizado:" else "Precio base:",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
-                            text = "$${String.format("%.2f", product.price)}",
+                            text = "$${String.format("%.2f", basePrice)}",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Modificadores:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "${if (totalModifierPrice > 0) "+" else ""}$${String.format("%.2f", totalModifierPrice)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (totalModifierPrice > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                        )
+                    if (totalModifierPrice != 0.0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Modificadores:",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "${if (totalModifierPrice > 0) "+" else ""}$${String.format("%.2f", totalModifierPrice)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (totalModifierPrice > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                     Divider(modifier = Modifier.padding(vertical = 4.dp))
                     Row(
@@ -489,7 +528,7 @@ fun ModifierDialog(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "$${String.format("%.2f", product.price + totalModifierPrice)}",
+                            text = "$${String.format("%.2f", basePrice + totalModifierPrice)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -501,6 +540,90 @@ fun ModifierDialog(
         confirmButton = {
             Button(onClick = onConfirm) {
                 Text("Agregar al carrito")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun VariablePriceDialog(
+    product: Product,
+    onDismiss: () -> Unit,
+    onConfirm: (Double) -> Unit
+) {
+    var priceText by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Precio Variable",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = product.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                Text(
+                    text = "Ingresa el precio para este producto:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                TextField(
+                    value = priceText,
+                    onValueChange = {
+                        priceText = it
+                        isError = false
+                    },
+                    label = { Text("Precio") },
+                    placeholder = { Text("0.00") },
+                    prefix = { Text("$") },
+                    isError = isError,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                    )
+                )
+
+                if (isError) {
+                    Text(
+                        text = "Por favor ingresa un precio válido",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val price = priceText.toDoubleOrNull()
+                    if (price != null && price > 0) {
+                        onConfirm(price)
+                    } else {
+                        isError = true
+                    }
+                }
+            ) {
+                Text("Continuar")
             }
         },
         dismissButton = {

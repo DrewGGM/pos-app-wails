@@ -115,35 +115,41 @@ func (s *OrderTypeService) GetNextSequenceNumber(orderTypeID uint) (int, error) 
 	}
 
 	// Find the smallest unused number (to reuse freed numbers)
+	// Only consider ACTIVE orders (pending, preparing, ready, delivered)
+	// Freed numbers from paid/cancelled orders will be reused
 	var result struct {
 		NextNumber int
 	}
 
 	// Query to find gaps in sequence or next number
+	// Only considers pending orders (preparing/ready/delivered/paid/cancelled free up their numbers)
 	err = s.db.Raw(`
-		WITH numbers AS (
-			SELECT COALESCE(MAX(sequence_number), 0) + 1 as max_num
+		WITH active_orders AS (
+			SELECT sequence_number
 			FROM orders
-			WHERE order_type_id = ? AND sequence_number IS NOT NULL
+			WHERE order_type_id = ?
+				AND sequence_number IS NOT NULL
+				AND status = 'pending'
+		),
+		numbers AS (
+			SELECT COALESCE(MAX(sequence_number), 0) + 1 as max_num
+			FROM active_orders
 		),
 		gaps AS (
 			SELECT t1.sequence_number + 1 as gap_start
-			FROM orders t1
-			WHERE order_type_id = ?
-				AND sequence_number IS NOT NULL
-				AND NOT EXISTS (
-					SELECT 1 FROM orders t2
-					WHERE t2.order_type_id = ?
-						AND t2.sequence_number = t1.sequence_number + 1
-				)
+			FROM active_orders t1
+			WHERE NOT EXISTS (
+				SELECT 1 FROM active_orders t2
+				WHERE t2.sequence_number = t1.sequence_number + 1
+			)
 			ORDER BY t1.sequence_number
 			LIMIT 1
 		)
 		SELECT COALESCE(
-			(SELECT gap_start FROM gaps),
+			(SELECT gap_start FROM gaps WHERE gap_start < (SELECT max_num FROM numbers)),
 			(SELECT max_num FROM numbers)
 		) as next_number
-	`, orderTypeID, orderTypeID, orderTypeID).Scan(&result).Error
+	`, orderTypeID).Scan(&result).Error
 
 	if err != nil {
 		return 0, err

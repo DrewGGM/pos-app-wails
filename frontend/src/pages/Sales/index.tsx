@@ -397,6 +397,7 @@ const Sales: React.FC = () => {
                 <TableCell>Factura</TableCell>
                 <TableCell>Fecha</TableCell>
                 <TableCell>Cliente</TableCell>
+                <TableCell>Tipo</TableCell>
                 <TableCell>Items</TableCell>
                 <TableCell>Total</TableCell>
                 <TableCell>Método</TableCell>
@@ -419,6 +420,26 @@ const Sales: React.FC = () => {
                       {sale.created_at ? format(new Date(sale.created_at), 'dd/MM/yyyy HH:mm') : '-'}
                     </TableCell>
                     <TableCell>{sale.customer?.name || 'Consumidor Final'}</TableCell>
+                    <TableCell>
+                      {sale.order?.order_type ? (
+                        <Chip
+                          size="small"
+                          label={sale.order.order_type.name}
+                          color={
+                            sale.order.order_type.code === 'dine-in'
+                              ? 'primary'
+                              : sale.order.order_type.code === 'delivery'
+                              ? 'warning'
+                              : 'secondary'
+                          }
+                          sx={{
+                            backgroundColor: sale.order.order_type.display_color || undefined
+                          }}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
+                    </TableCell>
                     <TableCell>{sale.order?.items?.length || 0}</TableCell>
                     <TableCell>
                       <Typography variant="body2" fontWeight="bold">
@@ -667,14 +688,23 @@ const Sales: React.FC = () => {
                       sx={{ mt: 0.5 }}
                     />
                   </Box>
-                  {selectedSale.order?.type && (
+                  {selectedSale.order?.order_type && (
                     <Box>
                       <Typography variant="body2" color="text.secondary">Tipo de Orden</Typography>
                       <Chip
                         size="small"
-                        label={selectedSale.order.type === 'dine_in' ? 'Mesa' : 'Llevar'}
-                        color={selectedSale.order.type === 'dine_in' ? 'primary' : 'secondary'}
-                        sx={{ mt: 0.5 }}
+                        label={selectedSale.order.order_type.name}
+                        color={
+                          selectedSale.order.order_type.code === 'dine-in'
+                            ? 'primary'
+                            : selectedSale.order.order_type.code === 'delivery'
+                            ? 'warning'
+                            : 'secondary'
+                        }
+                        sx={{
+                          mt: 0.5,
+                          backgroundColor: selectedSale.order.order_type.display_color || undefined
+                        }}
                       />
                     </Box>
                   )}
@@ -705,9 +735,24 @@ const Sales: React.FC = () => {
                             <Typography variant="body2">
                               {item.product?.name || 'Producto'}
                             </Typography>
+                            {item.modifiers && item.modifiers.length > 0 && (
+                              <Box sx={{ mt: 0.5, ml: 1 }}>
+                                {item.modifiers.map((mod, modIndex) => (
+                                  <Typography
+                                    key={modIndex}
+                                    variant="caption"
+                                    color="text.secondary"
+                                    display="block"
+                                    sx={{ fontStyle: 'italic' }}
+                                  >
+                                    + {mod.modifier?.name}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            )}
                             {item.notes && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                Nota: {item.notes}
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                📝 Nota: {item.notes}
                               </Typography>
                             )}
                           </TableCell>

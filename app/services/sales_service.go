@@ -52,6 +52,17 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
+	// LOG: Verify order has OrderType loaded
+	fmt.Printf("📋 Order retrieved for sale:\n")
+	fmt.Printf("   OrderTypeID: %v\n", order.OrderTypeID)
+	if order.OrderType != nil {
+		fmt.Printf("   OrderType.Name: %s\n", order.OrderType.Name)
+		fmt.Printf("   OrderType.Code: %s\n", order.OrderType.Code)
+	} else {
+		fmt.Printf("   OrderType: nil\n")
+	}
+	fmt.Printf("   Type (deprecated): %s\n\n", order.Type)
+
 	// Validate order can be processed
 	if order.Status == models.OrderStatusPaid {
 		return nil, fmt.Errorf("order already paid")
@@ -284,6 +295,9 @@ func (s *SalesService) GetSale(id uint) (*models.Sale, error) {
 	var sale models.Sale
 
 	err := s.db.Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order.Table").
+		Preload("Order.OrderType").
 		Preload("Customer").
 		Preload("Employee").
 		Preload("PaymentDetails.PaymentMethod").
@@ -298,8 +312,13 @@ func (s *SalesService) GetSaleByNumber(saleNumber string) (*models.Sale, error) 
 	var sale models.Sale
 
 	err := s.db.Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order.Table").
+		Preload("Order.OrderType").
 		Preload("Customer").
+		Preload("Employee").
 		Preload("PaymentDetails.PaymentMethod").
+		Preload("ElectronicInvoice").
 		Where("sale_number = ?", saleNumber).
 		First(&sale).Error
 
@@ -320,6 +339,9 @@ func (s *SalesService) GetTodaySales() ([]models.Sale, error) {
 	err := s.db.Preload("Customer").
 		Preload("Employee").
 		Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order.Table").
+		Preload("Order.OrderType").
 		Preload("PaymentDetails.PaymentMethod").
 		Where("DATE(created_at) = ?", today).
 		Order("created_at DESC").
@@ -335,6 +357,9 @@ func (s *SalesService) GetSalesByDateRange(startDate, endDate time.Time) ([]mode
 	err := s.db.Preload("Customer").
 		Preload("Employee").
 		Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order.Table").
+		Preload("Order.OrderType").
 		Preload("PaymentDetails.PaymentMethod").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
 		Order("created_at DESC").
@@ -410,6 +435,9 @@ func (s *SalesService) GetSalesHistory(limit, offset int) (map[string]interface{
 		Preload("Employee").
 		Preload("ElectronicInvoice").
 		Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order.Table").
+		Preload("Order.OrderType").
 		Preload("PaymentDetails.PaymentMethod").
 		Order("created_at DESC").
 		Limit(limit).
@@ -647,6 +675,23 @@ func (s *SalesService) GetPaymentMethods() ([]models.PaymentMethod, error) {
 	return s.getPaymentMethodsFromCache()
 }
 
+// GetAllPaymentMethods gets all payment methods including inactive ones (for settings management)
+func (s *SalesService) GetAllPaymentMethods() ([]models.PaymentMethod, error) {
+	var methods []models.PaymentMethod
+
+	// Try main database first
+	if !s.localDB.IsOfflineMode() {
+		err := s.db.Order("display_order").Find(&methods).Error
+
+		if err == nil {
+			return methods, nil
+		}
+	}
+
+	// Fallback to local cache
+	return s.getPaymentMethodsFromCache()
+}
+
 func (s *SalesService) cachePaymentMethods(methods []models.PaymentMethod) {
 	if s.localDB == nil {
 		return
@@ -700,9 +745,85 @@ func (s *SalesService) UpdatePaymentMethod(method *models.PaymentMethod) error {
 	return nil
 }
 
-// DeletePaymentMethod soft deletes a payment method
+// GetPaymentMethodSalesCount returns the number of sales associated with a payment method
+func (s *SalesService) GetPaymentMethodSalesCount(id uint) (int64, error) {
+	var payments []models.Payment
+	if err := s.db.Where("payment_method_id = ?", id).Find(&payments).Error; err != nil {
+		return 0, err
+	}
+
+	// Extract unique sale IDs
+	saleIDs := make(map[uint]bool)
+	for _, payment := range payments {
+		saleIDs[payment.SaleID] = true
+	}
+
+	return int64(len(saleIDs)), nil
+}
+
+// DeletePaymentMethod deletes a payment method and all associated sales in cascade
 func (s *SalesService) DeletePaymentMethod(id uint) error {
-	return s.db.Delete(&models.PaymentMethod{}, id).Error
+	// Start a transaction
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// Rollback in case of error
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Find all payments that use this payment method
+	var payments []models.Payment
+	if err := tx.Where("payment_method_id = ?", id).Find(&payments).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Extract unique sale IDs
+	saleIDs := make(map[uint]bool)
+	for _, payment := range payments {
+		saleIDs[payment.SaleID] = true
+	}
+
+	// Delete all sales (this will cascade delete payments due to foreign key)
+	for saleID := range saleIDs {
+		// Delete electronic invoice if exists
+		if err := tx.Where("sale_id = ?", saleID).Delete(&models.ElectronicInvoice{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		// Delete payment allocations first
+		if err := tx.Where("payment_id IN (SELECT id FROM payments WHERE sale_id = ?)", saleID).Delete(&models.PaymentAllocation{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		// Delete payments
+		if err := tx.Where("sale_id = ?", saleID).Delete(&models.Payment{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		// Delete the sale
+		if err := tx.Delete(&models.Sale{}, saleID).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// Finally, delete the payment method
+	if err := tx.Delete(&models.PaymentMethod{}, id).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Commit the transaction
+	return tx.Commit().Error
 }
 
 // PrintReceipt prints a receipt for an existing sale

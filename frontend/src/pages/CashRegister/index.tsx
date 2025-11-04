@@ -56,9 +56,7 @@ interface CashRegisterStatus {
   status: 'open' | 'closed';
   movements: CashMovement[];
   sales_summary: {
-    cash: number;
-    card: number;
-    transfer: number;
+    by_payment_method: { [key: string]: number };
     total: number;
     count: number;
   };
@@ -66,9 +64,10 @@ interface CashRegisterStatus {
 
 interface CashMovement {
   id: number;
-  type: 'in' | 'out';
+  type: 'sale' | 'deposit' | 'withdrawal' | 'refund' | 'in' | 'out' | 'adjustment';
   amount: number;
-  reason: string;
+  reason?: string;
+  description?: string;
   created_at: Date;
   created_by: string;
 }
@@ -98,8 +97,8 @@ const CashRegister: React.FC = () => {
         const register = await wailsAuthService.getOpenCashRegister(user.id!);
         if (register) {
           // Get sales for this cash register to calculate summary
-          let salesSummary = { cash: 0, card: 0, transfer: 0, total: 0, count: 0 };
-          
+          let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
+
           try {
             const sales = await wailsSalesService.getSales();
             const registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
@@ -108,24 +107,21 @@ const CashRegister: React.FC = () => {
               salesSummary.total += sale.total;
               salesSummary.count++;
 
-              // Calculate by payment method using payment_details
+              // Calculate by payment method name using payment_details
               if (sale.payment_details && Array.isArray(sale.payment_details)) {
                 sale.payment_details.forEach((payment: any) => {
                   const paymentMethod = payment.payment_method;
-                  if (paymentMethod) {
-                    switch (paymentMethod.type) {
-                      case 'cash':
-                        salesSummary.cash += payment.amount;
-                        break;
-                      case 'card':
-                        salesSummary.card += payment.amount;
-                        break;
-                      case 'digital':
-                        salesSummary.transfer += payment.amount;
-                        break;
-                      default:
-                        salesSummary.transfer += payment.amount;
-                    }
+
+                  // Only include payment methods that are explicitly marked to show in cash summary
+                  // If the field is undefined/null, treat as true for backwards compatibility
+                  const shouldShow = paymentMethod?.show_in_cash_summary === undefined
+                    ? true
+                    : paymentMethod.show_in_cash_summary === true;
+
+                  if (paymentMethod && paymentMethod.name && shouldShow) {
+                    const methodName = paymentMethod.name;
+                    salesSummary.by_payment_method[methodName] =
+                      (salesSummary.by_payment_method[methodName] || 0) + payment.amount;
                   }
                 });
               }
@@ -257,9 +253,12 @@ const CashRegister: React.FC = () => {
 
   const calculateDifference = () => {
     if (!registerStatus) return 0;
-    const expected = registerStatus.opening_amount + 
-                    registerStatus.sales_summary.cash +
-                    registerStatus.movements.reduce((sum, m) => 
+    // Get only cash from sales summary (look for "Efectivo" or "cash" payment method)
+    const cashSales = registerStatus.sales_summary.by_payment_method['Efectivo'] ||
+                      registerStatus.sales_summary.by_payment_method['cash'] || 0;
+    const expected = registerStatus.opening_amount +
+                    cashSales +
+                    registerStatus.movements.reduce((sum, m) =>
                       sum + (m.type === 'in' ? m.amount : -m.amount), 0);
     return registerStatus.current_amount - expected;
   };
@@ -376,30 +375,17 @@ const CashRegister: React.FC = () => {
                   Resumen de Ventas
                 </Typography>
                 <List dense>
-                  <ListItem>
-                    <ListItemText primary="Efectivo" />
-                    <ListItemSecondaryAction>
-                      <Typography variant="body1" fontWeight="bold">
-                        ${registerStatus.sales_summary.cash.toLocaleString('es-CO')}
-                      </Typography>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Tarjeta" />
-                    <ListItemSecondaryAction>
-                      <Typography variant="body1" fontWeight="bold">
-                        ${registerStatus.sales_summary.card.toLocaleString('es-CO')}
-                      </Typography>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Transferencia" />
-                    <ListItemSecondaryAction>
-                      <Typography variant="body1" fontWeight="bold">
-                        ${registerStatus.sales_summary.transfer.toLocaleString('es-CO')}
-                      </Typography>
-                    </ListItemSecondaryAction>
-                  </ListItem>
+                  {/* Show each payment method separately */}
+                  {Object.entries(registerStatus.sales_summary.by_payment_method).map(([methodName, amount]) => (
+                    <ListItem key={methodName}>
+                      <ListItemText primary={methodName} />
+                      <ListItemSecondaryAction>
+                        <Typography variant="body1" fontWeight="bold">
+                          ${(amount as number).toLocaleString('es-CO')}
+                        </Typography>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
                   <Divider />
                   <ListItem>
                     <ListItemText primary={<strong>Total Ventas</strong>} />
@@ -437,7 +423,8 @@ const CashRegister: React.FC = () => {
                     <ListItemText primary="Ventas en efectivo" />
                     <ListItemSecondaryAction>
                       <Typography variant="body1" color="success.main">
-                        +${registerStatus.sales_summary.cash.toLocaleString('es-CO')}
+                        +${((registerStatus.sales_summary.by_payment_method['Efectivo'] ||
+                            registerStatus.sales_summary.by_payment_method['cash'] || 0).toLocaleString('es-CO'))}
                       </Typography>
                     </ListItemSecondaryAction>
                   </ListItem>
@@ -468,11 +455,15 @@ const CashRegister: React.FC = () => {
                     <ListItemText primary={<strong>Efectivo esperado</strong>} />
                     <ListItemSecondaryAction>
                       <Typography variant="h6" color="primary">
-                        ${(registerStatus.opening_amount + 
-                          registerStatus.sales_summary.cash +
-                          registerStatus.movements.reduce((sum, m) => 
-                            sum + (m.type === 'in' ? m.amount : -m.amount), 0))
-                          .toLocaleString('es-CO')}
+                        ${(() => {
+                          const cashSales = registerStatus.sales_summary.by_payment_method['Efectivo'] ||
+                                           registerStatus.sales_summary.by_payment_method['cash'] || 0;
+                          return (registerStatus.opening_amount +
+                            cashSales +
+                            registerStatus.movements.reduce((sum, m) =>
+                              sum + (m.type === 'in' ? m.amount : -m.amount), 0))
+                            .toLocaleString('es-CO');
+                        })()}
                       </Typography>
                     </ListItemSecondaryAction>
                   </ListItem>
@@ -522,17 +513,17 @@ const CashRegister: React.FC = () => {
                       <TableCell>
                         <Chip
                           size="small"
-                          label={movement.type === 'in' ? 'Entrada' : 'Salida'}
-                          color={movement.type === 'in' ? 'success' : 'error'}
+                          label={['deposit', 'in', 'sale', 'refund'].includes(movement.type) ? 'Entrada' : 'Salida'}
+                          color={['deposit', 'in', 'sale', 'refund'].includes(movement.type) ? 'success' : 'error'}
                         />
                       </TableCell>
-                      <TableCell>{movement.reason}</TableCell>
+                      <TableCell>{movement.reason || movement.description}</TableCell>
                       <TableCell align="right">
                         <Typography
                           variant="body2"
-                          color={movement.type === 'in' ? 'success.main' : 'error.main'}
+                          color={['deposit', 'in', 'sale', 'refund'].includes(movement.type) ? 'success.main' : 'error.main'}
                         >
-                          {movement.type === 'in' ? '+' : '-'}
+                          {['deposit', 'in', 'sale', 'refund'].includes(movement.type) ? '+' : '-'}
                           ${movement.amount.toLocaleString('es-CO')}
                         </Typography>
                       </TableCell>

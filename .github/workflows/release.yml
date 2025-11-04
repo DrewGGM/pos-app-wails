@@ -56,11 +56,32 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y
 
+      - name: Clean installer output directory
+        run: |
+          if (Test-Path "build/installer") {
+            Remove-Item -Path "build/installer/*.exe" -Force -ErrorAction SilentlyContinue
+          }
+        shell: pwsh
+
       - name: Build Windows Installer
         run: |
           cd installer
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ steps.get_version.outputs.VERSION }}" setup.iss
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Inno Setup failed with exit code $LASTEXITCODE"
+            exit 1
+          }
           cd ..
+
+          # Verify installer was created
+          $installerPath = "build\installer\RestaurantPOS-Setup-${{ steps.get_version.outputs.VERSION }}.exe"
+          if (-not (Test-Path $installerPath)) {
+            Write-Error "Installer not found at: $installerPath"
+            Write-Host "Contents of build\installer:"
+            Get-ChildItem build\installer -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "Installer created successfully: $installerPath"
         shell: pwsh
 
       - name: Upload Windows artifacts
@@ -68,8 +89,8 @@ jobs:
         with:
           name: windows-build
           path: |
-            RestaurantPOS-Windows-x64-*.zip
-            build/installer/RestaurantPOS-Setup-*.exe
+            RestaurantPOS-Windows-x64-${{ steps.get_version.outputs.VERSION }}.zip
+            build/installer/RestaurantPOS-Setup-${{ steps.get_version.outputs.VERSION }}.exe
 
   build-android:
     runs-on: ubuntu-latest
@@ -135,7 +156,7 @@ jobs:
 
       - name: Get version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Rename APKs
         run: |
@@ -167,14 +188,22 @@ jobs:
 
       - name: Get version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: List downloaded files
+        run: |
+          echo "Files in current directory:"
+          ls -la
+          echo ""
+          echo "Files in build/installer (if exists):"
+          ls -la build/installer || echo "Directory does not exist"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: "Restaurant POS System ${{ steps.get_version.outputs.VERSION }}"
+          name: "Restaurant POS System v${{ steps.get_version.outputs.VERSION }}"
           body: |
-            ## Restaurant POS System Release ${{ steps.get_version.outputs.VERSION }}
+            ## Restaurant POS System Release v${{ steps.get_version.outputs.VERSION }}
 
             Sistema de Punto de Venta para Restaurantes con Facturación Electrónica DIAN (Colombia)
 
@@ -214,7 +243,7 @@ jobs:
             - Contraseña: `admin`
             - ⚠️ Cambiar inmediatamente después del primer login
           files: |
-            RestaurantPOS-Windows-x64-*.zip
-            build/installer/RestaurantPOS-Setup-*.exe
-            kitchen-app-*.apk
-            waiter-app-*.apk
+            RestaurantPOS-Windows-x64-${{ steps.get_version.outputs.VERSION }}.zip
+            build/installer/RestaurantPOS-Setup-${{ steps.get_version.outputs.VERSION }}.exe
+            kitchen-app-${{ steps.get_version.outputs.VERSION }}.apk
+            waiter-app-${{ steps.get_version.outputs.VERSION }}.apk

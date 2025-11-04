@@ -25,7 +25,8 @@ data class Product(
     @SerializedName("image_url") val imageUrl: String? = null,
     val stock: Int = 0,
     val available: Boolean = true,
-    val modifiers: List<Modifier>? = null
+    val modifiers: List<Modifier>? = null,
+    @SerializedName("has_variable_price") val hasVariablePrice: Boolean = false
 )
 
 // Cart Item (local state)
@@ -33,10 +34,11 @@ data class CartItem(
     val product: Product,
     val quantity: Int = 1,
     val notes: String = "",
-    val modifiers: List<Modifier> = emptyList()
+    val modifiers: List<Modifier> = emptyList(),
+    val customPrice: Double? = null  // For variable price products
 ) {
     val unitPrice: Double
-        get() = product.price + modifiers.sumOf { it.priceChange }
+        get() = customPrice ?: (product.price + modifiers.sumOf { it.priceChange })
 
     val subtotal: Double
         get() = unitPrice * quantity

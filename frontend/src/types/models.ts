@@ -49,6 +49,7 @@ export interface Product extends BaseModel {
   has_variable_price?: boolean; // Whether this product requires price input at time of sale
   modifiers?: Modifier[];
   min_stock?: number;
+  track_inventory?: boolean; // Whether to track inventory for this product (default: true)
   tax_type_id?: number; // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
   unit_measure_id?: number; // DIAN Unit Measure (70=Unidad, 796=Porción, 797=Ración)
 }
@@ -122,12 +123,29 @@ export interface Customer extends BaseModel {
   merchant_registration?: string; // Matrícula mercantil (corporates only)
 }
 
+// Order Type model
+export interface OrderType extends BaseModel {
+  code: string;
+  name: string;
+  requires_sequential_number: boolean;
+  sequence_prefix?: string;
+  display_color: string;
+  icon: string;
+  is_active: boolean;
+  display_order: number;
+  skip_payment_dialog: boolean; // If true, skip payment dialog and auto-process with default payment method
+  default_payment_method_id?: number; // Default payment method when skip_payment_dialog is true
+}
+
 // Order model
 export interface Order extends BaseModel {
   order_number: string;
-  type: 'dine_in' | 'takeout' | 'delivery';
+  type: 'dine_in' | 'takeout' | 'delivery'; // Deprecated: use order_type_id
+  order_type_id?: number;
+  order_type?: OrderType;
+  sequence_number?: number;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'paid' | 'cancelled';
-  takeout_number?: number; // Sequential number for takeout orders (1,2,3...)
+  takeout_number?: number; // Sequential number for takeout orders (1,2,3...) - Deprecated: use sequence_number
   table_id?: number;
   table?: Table;
   customer_id?: number;
@@ -223,6 +241,8 @@ export interface PaymentMethod extends BaseModel {
   requires_ref?: boolean; // Alias for requires_reference
   dian_payment_method_id?: number; // DIAN parametric payment method ID for electronic invoicing
   affects_cash_register?: boolean; // Whether this payment type counts in cash register reconciliation
+  show_in_cash_summary?: boolean; // Whether this payment method appears in cash register sales summary
+  is_system_default?: boolean; // System default payment methods cannot be deleted
   is_active: boolean;
   display_order: number;
   icon?: string;
@@ -486,9 +506,41 @@ export interface SyncStatus extends BaseModel {
   last_error?: string;
 }
 
+// Ingredient model
+export interface Ingredient extends BaseModel {
+  name: string;
+  unit: string; // "unidades", "kg", "gramos", "litros", "ml"
+  stock: number; // Float to support fractional quantities
+  min_stock: number;
+  is_active: boolean;
+}
+
+// Product ingredient model (Recipe)
+export interface ProductIngredient extends BaseModel {
+  product_id: number;
+  product?: Product;
+  ingredient_id: number;
+  ingredient?: Ingredient;
+  quantity: number; // Amount consumed per product sale
+}
+
+// Ingredient movement model
+export interface IngredientMovement extends BaseModel {
+  ingredient_id: number;
+  ingredient?: Ingredient;
+  type: 'purchase' | 'sale' | 'adjustment' | 'loss';
+  quantity: number; // Positive for additions, negative for deductions
+  previous_qty: number;
+  new_qty: number;
+  reference?: string;
+  employee_id?: number;
+  employee?: Employee;
+}
+
 // CreateOrderData interface
 export interface CreateOrderData {
   type: 'dine_in' | 'takeout' | 'delivery';
+  order_type_id?: number;
   table_id?: number;
   customer_id?: number;
   employee_id?: number;

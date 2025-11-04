@@ -55,11 +55,35 @@ const GoogleSheetsSettings: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [jsonKeyFile, setJsonKeyFile] = useState<string>('');
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(0);
 
   useEffect(() => {
     loadConfig();
     loadSchedulerStatus();
+
+    // Update scheduler status every 5 seconds
+    const statusInterval = setInterval(() => {
+      loadSchedulerStatus();
+    }, 5000);
+
+    return () => clearInterval(statusInterval);
   }, []);
+
+  // Update countdown every second
+  useEffect(() => {
+    if (schedulerStatus?.seconds_until_next_sync) {
+      setSecondsRemaining(schedulerStatus.seconds_until_next_sync);
+    }
+
+    const countdownInterval = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 0) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(countdownInterval);
+  }, [schedulerStatus]);
 
   const loadConfig = async () => {
     try {
@@ -90,11 +114,10 @@ const GoogleSheetsSettings: React.FC = () => {
       await wailsGoogleSheetsService.saveConfig(config);
       toast.success('Configuración guardada correctamente');
 
-      // Restart scheduler if auto-sync changed
-      if (config.auto_sync) {
-        await wailsReportSchedulerService.restart();
-        await loadSchedulerStatus();
-      }
+      // Always restart scheduler to pick up new configuration
+      // If auto_sync is disabled, the scheduler will detect this and stop itself
+      await wailsReportSchedulerService.restart();
+      await loadSchedulerStatus();
     } catch (error: any) {
       console.error('Error saving config:', error);
       toast.error('Error al guardar: ' + (error.message || error));
@@ -176,6 +199,21 @@ const GoogleSheetsSettings: React.FC = () => {
     } catch (error) {
       toast.error('JSON inválido. Verifica el formato');
     }
+  };
+
+  const formatCountdown = (seconds: number): string => {
+    if (seconds <= 0) return '0s';
+
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+    return parts.join(' ');
   };
 
   if (initialLoading) {
@@ -438,53 +476,115 @@ const GoogleSheetsSettings: React.FC = () => {
           </Grid>
         </Grid>
 
-        {/* Estado de Sincronización */}
-        {config.last_sync_at && (
+        {/* Estado en Tiempo Real */}
+        {schedulerStatus && config.auto_sync && (
           <>
             <Divider sx={{ my: 4 }} />
-            <Typography variant="h6" gutterBottom>
-              Estado de la última sincronización
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <InfoIcon /> Estado del Sincronizador
             </Typography>
-            <Card sx={{ mt: 2 }}>
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Última sincronización:
-                    </Typography>
-                    <Typography variant="body1">
-                      {new Date(config.last_sync_at as any).toLocaleString('es-CO')}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Estado:
-                    </Typography>
-                    <Chip
-                      icon={config.last_sync_status === 'success' ? <CheckCircleIcon /> : <ErrorIcon />}
-                      label={config.last_sync_status === 'success' ? 'Exitoso' : 'Error'}
-                      color={config.last_sync_status === 'success' ? 'success' : 'error'}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Total de sincronizaciones:
-                    </Typography>
-                    <Typography variant="body1">
-                      {config.total_syncs}
-                    </Typography>
-                  </Grid>
-                  {config.last_sync_error && (
-                    <Grid item xs={12}>
-                      <Alert severity="error">
-                        {config.last_sync_error}
+
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              {/* Status Card */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{
+                  bgcolor: schedulerStatus.running && schedulerStatus.enabled ? 'success.light' : 'grey.100',
+                  borderLeft: 6,
+                  borderColor: schedulerStatus.running && schedulerStatus.enabled ? 'success.main' : 'grey.400'
+                }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      {schedulerStatus.running && schedulerStatus.enabled ? (
+                        <CloudSyncIcon sx={{ fontSize: 40, color: 'success.main' }} />
+                      ) : (
+                        <InfoIcon sx={{ fontSize: 40, color: 'grey.500' }} />
+                      )}
+                      <Box>
+                        <Typography variant="h6">
+                          {schedulerStatus.running && schedulerStatus.enabled ? 'Activo' : 'Inactivo'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {schedulerStatus.running && schedulerStatus.enabled
+                            ? 'Sincronización automática en ejecución'
+                            : 'Sincronización automática detenida'}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {schedulerStatus.running && schedulerStatus.enabled && secondsRemaining > 0 && (
+                      <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Próxima sincronización en:
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: 'success.main', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                          {formatCountdown(secondsRemaining)}
+                        </Typography>
+                        {schedulerStatus.next_sync_at && (
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(schedulerStatus.next_sync_at as any).toLocaleString('es-CO')}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Last Sync Status Card */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{
+                  bgcolor: config.last_sync_status === 'success' ? 'info.light' : 'error.light',
+                  borderLeft: 6,
+                  borderColor: config.last_sync_status === 'success' ? 'info.main' : 'error.main'
+                }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      {config.last_sync_status === 'success' ? (
+                        <CheckCircleIcon sx={{ fontSize: 40, color: 'info.main' }} />
+                      ) : (
+                        <ErrorIcon sx={{ fontSize: 40, color: 'error.main' }} />
+                      )}
+                      <Box>
+                        <Typography variant="h6">
+                          Último Envío
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {config.last_sync_status === 'success' ? 'Exitoso' : 'Con errores'}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {config.last_sync_at && (
+                      <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Fecha:
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {new Date(config.last_sync_at as any).toLocaleString('es-CO')}
+                        </Typography>
+
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Sincronizaciones totales:
+                          </Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                            {config.total_syncs}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+
+                    {config.last_sync_error && (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        <Typography variant="caption">
+                          {config.last_sync_error}
+                        </Typography>
                       </Alert>
-                    </Grid>
-                  )}
-                </Grid>
-              </CardContent>
-            </Card>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
           </>
         )}
 

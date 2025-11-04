@@ -155,6 +155,11 @@ func RunMigrations() error {
 		&models.ProductModifier{},
 		&models.InventoryMovement{},
 
+		// Ingredient models
+		&models.Ingredient{},
+		&models.ProductIngredient{},
+		&models.IngredientMovement{},
+
 		// Customer models
 		&models.Customer{},
 
@@ -238,6 +243,23 @@ func runAdditionalMigrations() error {
 		return fmt.Errorf("failed to add order type columns: %w", err)
 	}
 
+	// Add is_system_default column to payment_methods if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE payment_methods
+		ADD COLUMN IF NOT EXISTS is_system_default BOOLEAN DEFAULT false
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add is_system_default column: %w", err)
+	}
+
+	// Mark existing system payment methods as system defaults
+	if err := db.Exec(`
+		UPDATE payment_methods
+		SET is_system_default = true
+		WHERE name IN ('Efectivo', 'Tarjeta Débito', 'Tarjeta Crédito', 'Transferencia')
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to mark system payment methods: %v", err)
+	}
+
 	// Migrate existing orders to use order types
 	if err := migrateExistingOrderTypes(); err != nil {
 		log.Printf("Warning: Failed to migrate existing order types: %v", err)
@@ -316,16 +338,13 @@ func createIndexes() {
 
 // SeedInitialData seeds initial configuration data
 func SeedInitialData() error {
-	// Create default payment methods
+	// Create only 4 system default payment methods (cannot be deleted)
+	// Users can create additional payment methods as needed
 	paymentMethods := []models.PaymentMethod{
-		{Name: "Efectivo", Type: "cash", Icon: "💵", RequiresRef: false, IsActive: true, DisplayOrder: 1},
-		{Name: "Tarjeta Débito", Type: "card", Icon: "💳", RequiresRef: true, IsActive: true, DisplayOrder: 2},
-		{Name: "Tarjeta Crédito", Type: "card", Icon: "💳", RequiresRef: true, IsActive: true, DisplayOrder: 3},
-		{Name: "Transferencia", Type: "digital", Icon: "📱", RequiresRef: true, IsActive: true, DisplayOrder: 4},
-		{Name: "Nequi", Type: "digital", Icon: "📱", RequiresRef: true, IsActive: true, DisplayOrder: 5},
-		{Name: "Daviplata", Type: "digital", Icon: "📱", RequiresRef: true, IsActive: true, DisplayOrder: 6},
-		{Name: "QR", Type: "digital", Icon: "📷", RequiresRef: true, IsActive: true, DisplayOrder: 7},
-		{Name: "Cheque", Type: "check", Icon: "📄", RequiresRef: true, IsActive: false, DisplayOrder: 8},
+		{Name: "Efectivo", Type: "cash", Icon: "💵", RequiresRef: false, IsActive: true, IsSystemDefault: true, DisplayOrder: 1},
+		{Name: "Tarjeta Débito", Type: "card", Icon: "💳", RequiresRef: true, IsActive: true, IsSystemDefault: true, DisplayOrder: 2},
+		{Name: "Tarjeta Crédito", Type: "card", Icon: "💳", RequiresRef: true, IsActive: true, IsSystemDefault: true, DisplayOrder: 3},
+		{Name: "Transferencia", Type: "digital", Icon: "📱", RequiresRef: true, IsActive: true, IsSystemDefault: true, DisplayOrder: 4},
 	}
 
 	for _, pm := range paymentMethods {

@@ -11,7 +11,10 @@ export interface SchedulerStatus {
   sync_time: string;
   last_sync_at: string | null;
   last_sync_status: string;
+  last_sync_error: string;
   total_syncs: number;
+  next_sync_at: string | null;
+  seconds_until_next_sync: number;
 }
 
 export const wailsReportSchedulerService = {

@@ -119,6 +119,7 @@ func (s *Server) Start() error {
 		http.HandleFunc("/api/orders", s.restHandlers.HandleOrders)
 		http.HandleFunc("/api/tables", s.restHandlers.HandleGetTables)
 		http.HandleFunc("/api/tables/status", s.restHandlers.HandleUpdateTableStatus)
+		http.HandleFunc("/api/sales/today", s.restHandlers.HandleGetTodaySales)
 		log.Println("WebSocket server: REST API endpoints registered")
 	}
 

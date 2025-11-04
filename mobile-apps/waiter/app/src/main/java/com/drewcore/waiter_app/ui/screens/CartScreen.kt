@@ -62,10 +62,9 @@ fun CartScreen(
                 items(
                     count = cartItems.size,
                     key = { index ->
-                        // Use a unique key combining product id, modifiers, and notes
-                        // This ensures each cart item has a unique key even if same product
-                        val item = cartItems[index]
-                        "${item.product.id}-${item.modifiers.hashCode()}-${item.notes.hashCode()}"
+                        // Use index-based unique key to avoid hashCode collisions
+                        // This ensures each cart item position has a unique key
+                        "$index-${cartItems[index].product.id}-${System.identityHashCode(cartItems[index])}"
                     }
                 ) { index ->
                     val item = cartItems[index]

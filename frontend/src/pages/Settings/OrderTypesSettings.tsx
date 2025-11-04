@@ -44,12 +44,15 @@ import {
   UpdateOrderType,
   DeleteOrderType,
 } from '../../../wailsjs/go/services/OrderTypeService';
+import { GetPaymentMethods } from '../../../wailsjs/go/services/SalesService';
 import { models } from '../../../wailsjs/go/models';
 
 type OrderType = models.OrderType;
+type PaymentMethod = models.PaymentMethod;
 
 const OrderTypesSettings: React.FC = () => {
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingType, setEditingType] = useState<OrderType | null>(null);
   const [formData, setFormData] = useState<Partial<OrderType>>({
@@ -61,10 +64,13 @@ const OrderTypesSettings: React.FC = () => {
     icon: 'shopping_bag',
     is_active: true,
     display_order: 0,
+    skip_payment_dialog: false,
+    default_payment_method_id: undefined,
   });
 
   useEffect(() => {
     loadOrderTypes();
+    loadPaymentMethods();
   }, []);
 
   const loadOrderTypes = async () => {
@@ -74,6 +80,16 @@ const OrderTypesSettings: React.FC = () => {
     } catch (error) {
       console.error('Error loading order types:', error);
       toast.error('Error al cargar tipos de pedido');
+    }
+  };
+
+  const loadPaymentMethods = async () => {
+    try {
+      const methods = await GetPaymentMethods();
+      setPaymentMethods(methods || []);
+    } catch (error) {
+      console.error('Error loading payment methods:', error);
+      toast.error('Error al cargar métodos de pago');
     }
   };
 
@@ -89,6 +105,8 @@ const OrderTypesSettings: React.FC = () => {
         icon: type.icon || 'shopping_bag',
         is_active: type.is_active,
         display_order: type.display_order || 0,
+        skip_payment_dialog: type.skip_payment_dialog || false,
+        default_payment_method_id: type.default_payment_method_id || undefined,
       });
     } else {
       setEditingType(null);
@@ -101,6 +119,8 @@ const OrderTypesSettings: React.FC = () => {
         icon: 'shopping_bag',
         is_active: true,
         display_order: orderTypes.length,
+        skip_payment_dialog: false,
+        default_payment_method_id: undefined,
       });
     }
     setOpenDialog(true);
@@ -118,8 +138,14 @@ const OrderTypesSettings: React.FC = () => {
         return;
       }
 
+      // Validate payment settings
+      if (formData.skip_payment_dialog && !formData.default_payment_method_id) {
+        toast.error('Debe seleccionar un método de pago por defecto');
+        return;
+      }
+
       // Create OrderType instance
-      const typeData = new models.OrderType({
+      const typeData: any = {
         id: editingType?.id || 0,
         code: formData.code || '',
         name: formData.name || '',
@@ -129,10 +155,18 @@ const OrderTypesSettings: React.FC = () => {
         icon: formData.icon || 'shopping_bag',
         is_active: formData.is_active !== undefined ? formData.is_active : true,
         display_order: formData.display_order || 0,
-        created_at: editingType?.created_at || '',
-        updated_at: editingType?.updated_at || '',
-        deleted_at: editingType?.deleted_at,
-      });
+        skip_payment_dialog: formData.skip_payment_dialog || false,
+        default_payment_method_id: formData.default_payment_method_id || undefined,
+      };
+
+      // Only include timestamps when editing (GORM will auto-set them when creating)
+      if (editingType) {
+        typeData.created_at = editingType.created_at;
+        typeData.updated_at = editingType.updated_at;
+        if (editingType.deleted_at) {
+          typeData.deleted_at = editingType.deleted_at;
+        }
+      }
 
       if (editingType) {
         await UpdateOrderType(typeData);
@@ -405,6 +439,42 @@ const OrderTypesSettings: React.FC = () => {
                   label="Activo"
                 />
               </Grid>
+
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.skip_payment_dialog || false}
+                      onChange={(e) => setFormData({ ...formData, skip_payment_dialog: e.target.checked })}
+                    />
+                  }
+                  label="Procesar pago automáticamente (sin diálogo)"
+                />
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+                  Si se activa, el pedido se guardará directamente como venta pagada con el método de pago por defecto
+                </Typography>
+              </Grid>
+
+              {formData.skip_payment_dialog && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Método de pago por defecto"
+                    value={formData.default_payment_method_id || ''}
+                    onChange={(e) => setFormData({ ...formData, default_payment_method_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                    SelectProps={{ native: true }}
+                    required
+                  >
+                    <option value="">Seleccione un método de pago</option>
+                    {paymentMethods.map((method) => (
+                      <option key={method.id} value={method.id}>
+                        {method.name}
+                      </option>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
             </Grid>
           </DialogContent>
           <DialogActions>

@@ -41,9 +41,12 @@ import {
   Refresh as RefreshIcon,
   AddCircleOutline as ModifierIcon,
   Close as CloseIcon,
+  Kitchen as KitchenIcon,
+  Remove as RemoveIcon,
 } from '@mui/icons-material';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '../../store';
+import { wailsIngredientService } from '../../services/wailsIngredientService';
 import {
   fetchProducts,
   fetchCategories,
@@ -57,7 +60,7 @@ import {
   setSelectedCategory,
   setSearchQuery,
 } from '../../store/slices/productsSlice';
-import { Product, Category } from '../../types/models';
+import { Product, Category, Ingredient, ProductIngredient } from '../../types/models';
 import { toast } from 'react-toastify';
 import { compressImageToBase64, getBase64Size } from '../../utils/imageUtils';
 import { useAuth } from '../../hooks';
@@ -140,10 +143,61 @@ const Products: React.FC = () => {
   });
   const [productModifiers, setProductModifiers] = useState<number[]>([]);
 
+  // Ingredients state
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [productIngredients, setProductIngredients] = useState<Array<{ingredient_id: number, quantity: number}>>([]);
+  const [newIngredient, setNewIngredient] = useState<{ingredient_id: number, quantity: number}>({ingredient_id: 0, quantity: 1});
+
   useEffect(() => {
     dispatch(fetchProducts());
     dispatch(fetchCategories());
+    loadIngredients();
   }, [dispatch]);
+
+  const loadIngredients = async () => {
+    try {
+      const data = await wailsIngredientService.getIngredients();
+      setIngredients(data);
+    } catch (error) {
+      console.error('Error loading ingredients:', error);
+    }
+  };
+
+  const loadProductIngredients = async (productId: number) => {
+    try {
+      const data = await wailsIngredientService.getProductIngredients(productId);
+      setProductIngredients(data.map(pi => ({
+        ingredient_id: pi.ingredient_id,
+        quantity: pi.quantity
+      })));
+    } catch (error) {
+      console.error('Error loading product ingredients:', error);
+      setProductIngredients([]);
+    }
+  };
+
+  const handleAddIngredientToRecipe = () => {
+    if (newIngredient.ingredient_id === 0 || newIngredient.quantity <= 0) {
+      toast.error('Seleccione un ingrediente y una cantidad válida');
+      return;
+    }
+    if (productIngredients.find(pi => pi.ingredient_id === newIngredient.ingredient_id)) {
+      toast.error('Este ingrediente ya está en la receta');
+      return;
+    }
+    setProductIngredients([...productIngredients, newIngredient]);
+    setNewIngredient({ingredient_id: 0, quantity: 1});
+  };
+
+  const handleRemoveIngredientFromRecipe = (ingredientId: number) => {
+    setProductIngredients(productIngredients.filter(pi => pi.ingredient_id !== ingredientId));
+  };
+
+  const handleUpdateIngredientQuantity = (ingredientId: number, quantity: number) => {
+    setProductIngredients(productIngredients.map(pi =>
+      pi.ingredient_id === ingredientId ? {...pi, quantity} : pi
+    ));
+  };
 
   const handleOpenProductDialog = async (product?: Product) => {
     if (product) {
@@ -153,6 +207,10 @@ const Products: React.FC = () => {
       // Get product modifiers
       const productModifierIds = product.modifiers?.map((m: any) => m.id) || [];
       setProductModifiers(productModifierIds);
+      // Load product ingredients
+      if (product.id) {
+        await loadProductIngredients(product.id);
+      }
     } else {
       setSelectedProduct(null);
       setProductForm({
@@ -166,11 +224,13 @@ const Products: React.FC = () => {
         barcode: '',
         active: true,
         has_variable_price: false, // Variable price disabled by default
+        track_inventory: true, // Track inventory by default
         tax_type_id: 1, // IVA 19% by default
         unit_measure_id: 796, // Porción by default
       });
       setImagePreview(null);
       setProductModifiers([]);
+      setProductIngredients([]);
     }
     // Load available modifiers
     try {
@@ -268,6 +328,21 @@ const Products: React.FC = () => {
         } catch (error) {
           console.error('Error removing modifier:', error);
         }
+      }
+
+      // Update recipe ingredients
+      try {
+        await wailsIngredientService.setProductIngredients(
+          productId,
+          productIngredients.map(pi => ({
+            product_id: productId,
+            ingredient_id: pi.ingredient_id,
+            quantity: pi.quantity
+          }))
+        );
+      } catch (error) {
+        console.error('Error saving recipe ingredients:', error);
+        toast.warning('Producto guardado pero hubo un error al guardar la receta');
       }
 
       handleCloseProductDialog();
@@ -805,6 +880,17 @@ const Products: React.FC = () => {
                 label="Precio Variable (requiere digitar precio en venta)"
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={productForm.track_inventory !== false}
+                    onChange={(e) => setProductForm({ ...productForm, track_inventory: e.target.checked })}
+                  />
+                }
+                label="Seguir Inventario (desactivar para productos sin control de stock)"
+              />
+            </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
@@ -956,6 +1042,119 @@ const Products: React.FC = () => {
                   ))
                 )}
               </Box>
+            </Grid>
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" gutterBottom>
+                <KitchenIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+                Receta (Ingredientes)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                Define qué ingredientes se descontarán del inventario cuando se venda este producto
+              </Typography>
+
+              {/* List of current ingredients in recipe */}
+              {productIngredients.length > 0 && (
+                <Box sx={{ mt: 2, mb: 2 }}>
+                  <Typography variant="body2" fontWeight="medium" gutterBottom>
+                    Ingredientes en la receta:
+                  </Typography>
+                  {productIngredients.map((pi) => {
+                    const ingredient = ingredients.find(i => i.id === pi.ingredient_id);
+                    return (
+                      <Box
+                        key={pi.ingredient_id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          mb: 1,
+                          p: 1,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {ingredient?.name || 'Ingrediente desconocido'}
+                        </Typography>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={pi.quantity}
+                          onChange={(e) => handleUpdateIngredientQuantity(
+                            pi.ingredient_id,
+                            parseFloat(e.target.value) || 0
+                          )}
+                          sx={{ width: 100 }}
+                          inputProps={{ min: 0, step: 0.1 }}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ width: 60 }}>
+                          {ingredient?.unit || ''}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRemoveIngredientFromRecipe(pi.ingredient_id)}
+                          color="error"
+                        >
+                          <RemoveIcon />
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+
+              {/* Add new ingredient to recipe */}
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
+                <FormControl sx={{ flex: 1 }}>
+                  <InputLabel size="small">Ingrediente</InputLabel>
+                  <Select
+                    size="small"
+                    value={newIngredient.ingredient_id}
+                    onChange={(e) => setNewIngredient({
+                      ...newIngredient,
+                      ingredient_id: Number(e.target.value)
+                    })}
+                    label="Ingrediente"
+                  >
+                    <MenuItem value={0}>Seleccionar...</MenuItem>
+                    {ingredients
+                      .filter(ing => ing.is_active)
+                      .filter(ing => !productIngredients.find(pi => pi.ingredient_id === ing.id))
+                      .map(ing => (
+                        <MenuItem key={ing.id} value={ing.id}>
+                          {ing.name} ({ing.unit})
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Cantidad"
+                  value={newIngredient.quantity}
+                  onChange={(e) => setNewIngredient({
+                    ...newIngredient,
+                    quantity: parseFloat(e.target.value) || 0
+                  })}
+                  sx={{ width: 120 }}
+                  inputProps={{ min: 0, step: 0.1 }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddIngredientToRecipe}
+                  disabled={newIngredient.ingredient_id === 0}
+                >
+                  Agregar
+                </Button>
+              </Box>
+
+              {ingredients.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  No hay ingredientes disponibles. Créalos primero en la sección de Ingredientes.
+                </Typography>
+              )}
             </Grid>
           </Grid>
         </DialogContent>

@@ -204,9 +204,9 @@ const Orders: React.FC = () => {
       width: 120,
       renderCell: (params: GridRenderCellParams) => {
         const order = params.row as Order;
-        // Show takeout number (#1, #2) for takeout orders, otherwise show full order number
-        const displayNumber = order.type === 'takeout' && order.takeout_number != null
-          ? `#${order.takeout_number}`
+        // Show sequence number (#1, #2) for order types that require it, otherwise show full order number
+        const displayNumber = order.sequence_number != null
+          ? `#${order.sequence_number}`
           : params.value;
 
         return (
@@ -217,16 +217,32 @@ const Orders: React.FC = () => {
       },
     },
     {
-      field: 'type',
+      field: 'order_type',
       headerName: 'Tipo',
-      width: 100,
-      renderCell: (params: GridRenderCellParams) => (
-        <Chip
-          size="small"
-          label={params.value === 'dine_in' ? 'Mesa' : 'Llevar'}
-          color={params.value === 'dine_in' ? 'primary' : 'secondary'}
-        />
-      ),
+      width: 130,
+      renderCell: (params: GridRenderCellParams) => {
+        const order = params.row as Order;
+        const orderType = order.order_type;
+
+        if (!orderType) return <Chip size="small" label="-" />;
+
+        return (
+          <Chip
+            size="small"
+            label={orderType.name}
+            color={
+              orderType.code === 'dine-in'
+                ? 'primary'
+                : orderType.code === 'delivery'
+                ? 'warning'
+                : 'secondary'
+            }
+            sx={{
+              backgroundColor: orderType.display_color || undefined
+            }}
+          />
+        );
+      },
     },
     {
       field: 'table',

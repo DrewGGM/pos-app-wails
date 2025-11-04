@@ -474,6 +474,8 @@ export namespace models {
 	    requires_ref: boolean;
 	    dian_payment_method_id?: number;
 	    affects_cash_register: boolean;
+	    show_in_cash_summary: boolean;
+	    is_system_default: boolean;
 	    is_active: boolean;
 	    display_order: number;
 	    created_at: time.Time;
@@ -492,6 +494,8 @@ export namespace models {
 	        this.requires_ref = source["requires_ref"];
 	        this.dian_payment_method_id = source["dian_payment_method_id"];
 	        this.affects_cash_register = source["affects_cash_register"];
+	        this.show_in_cash_summary = source["show_in_cash_summary"];
+	        this.is_system_default = source["is_system_default"];
 	        this.is_active = source["is_active"];
 	        this.display_order = source["display_order"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
@@ -1040,6 +1044,8 @@ export namespace models {
 	    icon: string;
 	    is_active: boolean;
 	    display_order: number;
+	    skip_payment_dialog: boolean;
+	    default_payment_method_id?: number;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	    deleted_at?: gorm.DeletedAt;
@@ -1059,6 +1065,8 @@ export namespace models {
 	        this.icon = source["icon"];
 	        this.is_active = source["is_active"];
 	        this.display_order = source["display_order"];
+	        this.skip_payment_dialog = source["skip_payment_dialog"];
+	        this.default_payment_method_id = source["default_payment_method_id"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
@@ -1868,6 +1876,102 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class Ingredient {
+	    id: number;
+	    name: string;
+	    unit: string;
+	    stock: number;
+	    min_stock: number;
+	    is_active: boolean;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new Ingredient(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.unit = source["unit"];
+	        this.stock = source["stock"];
+	        this.min_stock = source["min_stock"];
+	        this.is_active = source["is_active"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class IngredientMovement {
+	    id: number;
+	    ingredient_id: number;
+	    type: string;
+	    quantity: number;
+	    previous_qty: number;
+	    new_qty: number;
+	    reference: string;
+	    employee_id?: number;
+	    notes: string;
+	    created_at: time.Time;
+	    ingredient?: Ingredient;
+	    employee?: Employee;
+	
+	    static createFrom(source: any = {}) {
+	        return new IngredientMovement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.ingredient_id = source["ingredient_id"];
+	        this.type = source["type"];
+	        this.quantity = source["quantity"];
+	        this.previous_qty = source["previous_qty"];
+	        this.new_qty = source["new_qty"];
+	        this.reference = source["reference"];
+	        this.employee_id = source["employee_id"];
+	        this.notes = source["notes"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.ingredient = this.convertValues(source["ingredient"], Ingredient);
+	        this.employee = this.convertValues(source["employee"], Employee);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class InventoryMovement {
 	    id: number;
 	    product_id: number;
@@ -1992,6 +2096,50 @@ export namespace models {
 		}
 	}
 	
+	export class ProductIngredient {
+	    id: number;
+	    product_id: number;
+	    ingredient_id: number;
+	    quantity: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    product?: Product;
+	    ingredient?: Ingredient;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductIngredient(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.product_id = source["product_id"];
+	        this.ingredient_id = source["ingredient_id"];
+	        this.quantity = source["quantity"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.product = this.convertValues(source["product"], Product);
+	        this.ingredient = this.convertValues(source["ingredient"], Ingredient);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RestaurantConfig {
 	    id: number;
 	    name: string;
@@ -2933,10 +3081,27 @@ export namespace services {
 	        this.growth_percent = source["growth_percent"];
 	    }
 	}
+	export class ProductDetail {
+	    product_name: string;
+	    quantity: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product_name = source["product_name"];
+	        this.quantity = source["quantity"];
+	        this.total = source["total"];
+	    }
+	}
 	export class OrderTypeDetail {
 	    order_type: string;
 	    amount: number;
 	    count: number;
+	    products: ProductDetail[];
 	
 	    static createFrom(source: any = {}) {
 	        return new OrderTypeDetail(source);
@@ -2947,7 +3112,26 @@ export namespace services {
 	        this.order_type = source["order_type"];
 	        this.amount = source["amount"];
 	        this.count = source["count"];
+	        this.products = this.convertValues(source["products"], ProductDetail);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class PaymentData {
 	    payment_method_id: number;
@@ -2981,22 +3165,7 @@ export namespace services {
 	        this.count = source["count"];
 	    }
 	}
-	export class ProductDetail {
-	    product_name: string;
-	    quantity: number;
-	    total: number;
 	
-	    static createFrom(source: any = {}) {
-	        return new ProductDetail(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.product_name = source["product_name"];
-	        this.quantity = source["quantity"];
-	        this.total = source["total"];
-	    }
-	}
 	
 	export class ProductSalesData {
 	    product_id: number;

@@ -28,6 +28,7 @@ import {
   Restaurant as RestaurantIcon,
   Receipt as ReceiptIcon,
   Inventory as InventoryIcon,
+  Warehouse as WarehouseIcon,
   People as PeopleIcon,
   TableChart as TableIcon,
   Assessment as ReportIcon,
@@ -40,6 +41,7 @@ import {
   MonetizationOn as MoneyIcon,
   Group as GroupIcon,
   AccountCircle,
+  Kitchen as KitchenIcon,
 } from '@mui/icons-material';
 import { useAuth, useOfflineSync, useWebSocket } from '../hooks';
 
@@ -96,6 +98,18 @@ const menuItems: MenuItem[] = [
     text: 'Productos',
     icon: <InventoryIcon />,
     path: '/products',
+    roles: ['admin', 'manager'],
+  },
+  {
+    text: 'Inventario',
+    icon: <WarehouseIcon />,
+    path: '/inventory',
+    roles: ['admin', 'manager'],
+  },
+  {
+    text: 'Ingredientes',
+    icon: <KitchenIcon />,
+    path: '/ingredients',
     roles: ['admin', 'manager'],
   },
   {

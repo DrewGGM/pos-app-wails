@@ -138,6 +138,8 @@ func (s *ProductService) DeleteProduct(id uint) error {
 }
 
 // AdjustStock adjusts product stock
+// Note: Manual adjustments are allowed even if TrackInventory is false,
+// to permit corrections and special cases
 func (s *ProductService) AdjustStock(productID uint, quantity int, reason string, employeeID uint) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var product models.Product
@@ -153,7 +155,8 @@ func (s *ProductService) AdjustStock(productID uint, quantity int, reason string
 			return err
 		}
 
-		// Create inventory movement
+		// Create inventory movement even if TrackInventory is false
+		// (manual adjustments should always be logged)
 		movement := models.InventoryMovement{
 			ProductID:   productID,
 			Type:        "adjustment",

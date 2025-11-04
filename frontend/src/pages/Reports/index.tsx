@@ -57,8 +57,8 @@ import { ArrowBack as ArrowBackIcon, ArrowForward as ArrowForwardIcon } from '@m
 const Reports: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [dateRange, setDateRange] = useState({
-    start: startOfDay(new Date()),
-    end: endOfDay(new Date()),
+    start: startOfMonth(new Date()),
+    end: endOfMonth(new Date()),
   });
   const [reportType, setReportType] = useState('sales');
   const [loading, setLoading] = useState(false);

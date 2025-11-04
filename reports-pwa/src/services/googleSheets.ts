@@ -10,6 +10,13 @@ export interface ProductDetail {
   total: number
 }
 
+export interface OrderTypeDetail {
+  order_type: string
+  amount: number
+  count: number
+  products: ProductDetail[]
+}
+
 export interface ReportData {
   fecha: string
   ventas_totales: number
@@ -19,6 +26,7 @@ export interface ReportData {
   productos_vendidos: number
   ticket_promedio: number
   detalle_productos: ProductDetail[]
+  detalle_tipos_pedido?: OrderTypeDetail[]
 }
 
 class GoogleSheetsService {
@@ -113,8 +121,8 @@ class GoogleSheetsService {
       headers.forEach((header, index) => {
         const value = row[index] || ''
 
-        // Parse detalle_productos as JSON
-        if (header === 'detalle_productos') {
+        // Parse JSON fields (detalle_productos, detalle_tipos_pedido, detalle_tipos_pago)
+        if (header === 'detalle_productos' || header === 'detalle_tipos_pedido' || header === 'detalle_tipos_pago') {
           try {
             report[header] = value ? JSON.parse(value) : []
           } catch {
@@ -141,7 +149,8 @@ class GoogleSheetsService {
           ordenes: report.ordenes || 0,
           productos_vendidos: report.productos_vendidos || 0,
           ticket_promedio: report.ticket_promedio || 0,
-          detalle_productos: report.detalle_productos || []
+          detalle_productos: report.detalle_productos || [],
+          detalle_tipos_pedido: report.detalle_tipos_pedido || []
         })
       }
     }

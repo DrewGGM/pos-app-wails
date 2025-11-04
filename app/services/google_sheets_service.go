@@ -107,9 +107,10 @@ type PaymentMethodDetail struct {
 
 // OrderTypeDetail represents order type breakdown
 type OrderTypeDetail struct {
-	OrderType string  `json:"order_type"`
-	Amount    float64 `json:"amount"`
-	Count     int     `json:"count"`
+	OrderType string          `json:"order_type"`
+	Amount    float64         `json:"amount"`
+	Count     int             `json:"count"`
+	Products  []ProductDetail `json:"products"` // Products sold in this order type
 }
 
 // ReportData represents a daily report row
@@ -136,16 +137,18 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		DetalleProductos: []ProductDetail{},
 	}
 
-	// Get total sales
+	// Get total sales (exclude refunded)
 	var totalSales float64
-	s.db.Model(&models.Order{}).
-		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
-		Where("status IN ?", []string{"completed", "paid"}).
-		Select("COALESCE(SUM(total), 0)").
+	s.db.Table("orders").
+		Select("COALESCE(SUM(orders.total), 0)").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
+		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Scan(&totalSales)
 	report.VentasTotales = totalSales
 
-	// Get DIAN sales (orders with electronic invoice)
+	// Get DIAN sales (orders with electronic invoice, exclude refunded)
 	var dianSales float64
 	s.db.Table("orders").
 		Select("COALESCE(SUM(orders.total), 0)").
@@ -153,24 +156,29 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Scan(&dianSales)
 	report.VentasDIAN = dianSales
 	report.VentasNoDIAN = totalSales - dianSales
 
-	// Get number of orders
+	// Get number of orders (exclude refunded)
 	var numOrders int64
-	s.db.Model(&models.Order{}).
-		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
-		Where("status IN ?", []string{"completed", "paid"}).
+	s.db.Table("orders").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
+		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Count(&numOrders)
 	report.NumeroOrdenes = int(numOrders)
 
-	// Get total products sold
+	// Get total products sold (exclude refunded)
 	var totalProducts int
-	s.db.Model(&models.OrderItem{}).
+	s.db.Table("order_items").
 		Joins("JOIN orders ON orders.id = order_items.order_id").
+		Joins("JOIN sales ON sales.order_id = orders.id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Select("COALESCE(SUM(order_items.quantity), 0)").
 		Scan(&totalProducts)
 	report.ProductosVendidos = totalProducts
@@ -191,9 +199,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	s.db.Table("order_items").
 		Select("products.name as product_name, SUM(order_items.quantity) as quantity, SUM(order_items.subtotal) as total").
 		Joins("JOIN orders ON orders.id = order_items.order_id").
+		Joins("JOIN sales ON sales.order_id = orders.id").
 		Joins("JOIN products ON products.id = order_items.product_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("products.id, products.name").
 		Order("SUM(order_items.subtotal) DESC").
 		Scan(&productSummaries)
@@ -221,6 +231,7 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Joins("JOIN payment_methods ON payment_methods.id = payments.payment_method_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("payment_methods.id, payment_methods.name").
 		Order("SUM(payments.amount) DESC").
 		Scan(&paymentSummaries)
@@ -242,20 +253,53 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	}
 
 	var orderTypeSummaries []OrderTypeSummary
-	s.db.Model(&models.Order{}).
-		Select("type as order_type, SUM(total) as amount, COUNT(*) as count").
-		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
-		Where("status IN ?", []string{"completed", "paid"}).
-		Group("type").
-		Order("SUM(total) DESC").
+	s.db.Table("orders").
+		Select("orders.type as order_type, SUM(orders.total) as amount, COUNT(*) as count").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
+		Where("orders.status IN ?", []string{"completed", "paid"}).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Group("orders.type").
+		Order("SUM(orders.total) DESC").
 		Scan(&orderTypeSummaries)
 
 	report.DetalleTiposPedido = []OrderTypeDetail{}
 	for _, ot := range orderTypeSummaries {
+		// Get products for this order type
+		type ProductByTypeSum struct {
+			ProductName string
+			Quantity    int
+			Total       float64
+		}
+
+		var productsForType []ProductByTypeSum
+		s.db.Table("order_items").
+			Select("products.name as product_name, SUM(order_items.quantity) as quantity, SUM(order_items.subtotal) as total").
+			Joins("JOIN orders ON orders.id = order_items.order_id").
+			Joins("JOIN sales ON sales.order_id = orders.id").
+			Joins("JOIN products ON products.id = order_items.product_id").
+			Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
+			Where("orders.status IN ?", []string{"completed", "paid"}).
+			Where("sales.status NOT IN ?", []string{"refunded"}).
+			Where("orders.type = ?", ot.OrderType). // Filter by order type
+			Group("products.id, products.name").
+			Order("SUM(order_items.subtotal) DESC").
+			Scan(&productsForType)
+
+		productDetails := []ProductDetail{}
+		for _, p := range productsForType {
+			productDetails = append(productDetails, ProductDetail{
+				ProductName: p.ProductName,
+				Quantity:    p.Quantity,
+				Total:       p.Total,
+			})
+		}
+
 		report.DetalleTiposPedido = append(report.DetalleTiposPedido, OrderTypeDetail{
 			OrderType: ot.OrderType,
 			Amount:    ot.Amount,
 			Count:     int(ot.Count),
+			Products:  productDetails,
 		})
 	}
 

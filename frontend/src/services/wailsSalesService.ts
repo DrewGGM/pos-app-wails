@@ -77,6 +77,7 @@ function mapSale(w: models.Sale): Sale {
         id: payment.payment_method.id as unknown as number,
         name: payment.payment_method.name || '',
         type: payment.payment_method.type as 'cash' | 'digital' | 'card' | 'check',
+        show_in_cash_summary: (payment.payment_method as any).show_in_cash_summary !== false,
       } : undefined,
       amount: payment.amount || 0,
       reference: payment.reference || '',
@@ -147,6 +148,7 @@ function mapPaymentMethod(w: models.PaymentMethod): PaymentMethod {
     requires_reference: w.requires_ref || false,
     dian_payment_method_id: (w as any).dian_payment_method_id,
     affects_cash_register: (w as any).affects_cash_register !== false, // Default to true
+    show_in_cash_summary: (w as any).show_in_cash_summary !== false, // Default to true
     code: (w as any).code || '',
     is_active: w.is_active || false,
     display_order: w.display_order || 0,

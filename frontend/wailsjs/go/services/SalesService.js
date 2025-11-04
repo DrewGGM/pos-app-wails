@@ -18,12 +18,20 @@ export function DeletePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['DeletePaymentMethod'](arg1);
 }
 
+export function GetAllPaymentMethods() {
+  return window['go']['services']['SalesService']['GetAllPaymentMethods']();
+}
+
 export function GetCustomer(arg1) {
   return window['go']['services']['SalesService']['GetCustomer'](arg1);
 }
 
 export function GetCustomers() {
   return window['go']['services']['SalesService']['GetCustomers']();
+}
+
+export function GetPaymentMethodSalesCount(arg1) {
+  return window['go']['services']['SalesService']['GetPaymentMethodSalesCount'](arg1);
 }
 
 export function GetPaymentMethods() {

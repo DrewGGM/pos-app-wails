@@ -11,23 +11,23 @@ type Sale struct {
 	ID                     uint               `gorm:"primaryKey" json:"id"`
 	SaleNumber             string             `gorm:"unique;not null" json:"sale_number"`
 	OrderID                uint               `json:"order_id"`
-	Order                  *Order             `json:"order,omitempty"`
+	Order                  *Order             `gorm:"foreignKey:OrderID" json:"order,omitempty"`
 	CustomerID             *uint              `json:"customer_id,omitempty"`
-	Customer               *Customer          `json:"customer,omitempty"`
+	Customer               *Customer          `gorm:"foreignKey:CustomerID" json:"customer,omitempty"`
 	Subtotal               float64            `json:"subtotal"`
 	Tax                    float64            `json:"tax"`
 	Discount               float64            `json:"discount"`
 	Total                  float64            `json:"total"`
 	PaymentMethod          string             `json:"payment_method"`
-	PaymentDetails         []Payment          `json:"payment_details"`
+	PaymentDetails         []Payment          `gorm:"foreignKey:SaleID" json:"payment_details"`
 	Status                 string             `json:"status"`                   // "completed", "refunded", "partial_refund"
 	InvoiceType            string             `json:"invoice_type"`             // "none", "electronic", "pos_equivalent"
 	NeedsElectronicInvoice bool               `json:"needs_electronic_invoice"` // Flag for electronic invoice per sale
-	ElectronicInvoice      *ElectronicInvoice `json:"electronic_invoice,omitempty"`
+	ElectronicInvoice      *ElectronicInvoice `gorm:"foreignKey:SaleID" json:"electronic_invoice,omitempty"`
 	EmployeeID             uint               `json:"employee_id"`
-	Employee               *Employee          `json:"employee,omitempty"`
+	Employee               *Employee          `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
 	CashRegisterID         uint               `json:"cash_register_id"`
-	CashRegister           *CashRegister      `json:"cash_register,omitempty"`
+	CashRegister           *CashRegister      `gorm:"foreignKey:CashRegisterID" json:"cash_register,omitempty"`
 	Notes                  string             `json:"notes"`
 	IsSynced               bool               `gorm:"default:false" json:"is_synced"`
 	CreatedAt              time.Time          `json:"created_at"`
@@ -39,12 +39,12 @@ type Sale struct {
 type Payment struct {
 	ID              uint                `gorm:"primaryKey" json:"id"`
 	SaleID          uint                `json:"sale_id"`
-	Sale            *Sale               `json:"-"`
+	Sale            *Sale               `gorm:"foreignKey:SaleID" json:"-"`
 	PaymentMethodID uint                `json:"payment_method_id"`
-	PaymentMethod   *PaymentMethod      `json:"payment_method,omitempty"`
+	PaymentMethod   *PaymentMethod      `gorm:"foreignKey:PaymentMethodID" json:"payment_method,omitempty"`
 	Amount          float64             `json:"amount"`
 	Reference       string              `json:"reference"`             // Transaction ID, check number, etc.
-	Allocations     []PaymentAllocation `json:"allocations,omitempty"` // Product allocations for split payments
+	Allocations     []PaymentAllocation `gorm:"foreignKey:PaymentID" json:"allocations,omitempty"` // Product allocations for split payments
 	CreatedAt       time.Time           `json:"created_at"`
 }
 
@@ -52,9 +52,9 @@ type Payment struct {
 type PaymentAllocation struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	PaymentID   uint       `json:"payment_id"`
-	Payment     *Payment   `json:"-"`
+	Payment     *Payment   `gorm:"foreignKey:PaymentID" json:"-"`
 	OrderItemID uint       `json:"order_item_id"`
-	OrderItem   *OrderItem `json:"order_item,omitempty"`
+	OrderItem   *OrderItem `gorm:"foreignKey:OrderItemID" json:"order_item,omitempty"`
 	Amount      float64    `json:"amount"`
 	CreatedAt   time.Time  `json:"created_at"`
 }
@@ -68,6 +68,8 @@ type PaymentMethod struct {
 	RequiresRef          bool      `json:"requires_ref"`            // Requires reference number
 	DIANPaymentMethodID  *int      `json:"dian_payment_method_id"`  // DIAN parametric payment method ID for electronic invoicing
 	AffectsCashRegister  bool      `gorm:"default:true" json:"affects_cash_register"` // Whether this payment type counts in cash register reconciliation
+	ShowInCashSummary    bool      `gorm:"default:true" json:"show_in_cash_summary"`  // Whether this payment method appears in cash register sales summary
+	IsSystemDefault      bool      `gorm:"default:false" json:"is_system_default"` // System default payment methods cannot be deleted
 	IsActive             bool      `gorm:"default:true" json:"is_active"`
 	DisplayOrder         int       `json:"display_order"`
 	CreatedAt            time.Time `json:"created_at"`

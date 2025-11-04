@@ -7,6 +7,7 @@ import com.drewcore.waiter_app.data.models.*
 import com.drewcore.waiter_app.data.network.PosApiService
 import com.drewcore.waiter_app.data.network.ServerDiscovery
 import com.drewcore.waiter_app.data.network.WebSocketManager
+import com.drewcore.waiter_app.data.preferences.WaiterPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,6 +17,7 @@ import java.util.*
 class WaiterViewModel(application: Application) : AndroidViewModel(application) {
     private val serverDiscovery = ServerDiscovery(application.applicationContext)
     private val webSocketManager = WebSocketManager()
+    private val preferences = WaiterPreferences(application.applicationContext)
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState
@@ -94,12 +96,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
                     is WebSocketManager.ConnectionState.Error -> {
-                        if (_uiState.value == UiState.DiscoveringServer || _uiState.value == UiState.LoadingData) {
-                            _uiState.value = UiState.Error(state.message)
-                        }
+                        _uiState.value = UiState.Error(state.message)
                     }
                     is WebSocketManager.ConnectionState.Disconnected -> {
-                        // If was previously connected, try to reconnect
                         if (_uiState.value == UiState.Ready) {
                             _uiState.value = UiState.Error("Desconectado del servidor. Intenta reconectar.")
                         }
@@ -131,6 +130,11 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                             android.util.Log.d("WaiterViewModel", "Reloading data due to kitchen_order")
                             refreshTables()
                             refreshOrders()
+                        }
+                        "product_update", "product_new", "product_deleted" -> {
+                            // Reload products when there's a product change
+                            android.util.Log.d("WaiterViewModel", "Reloading products due to ${it.type}")
+                            refreshProducts()
                         }
                         "notification" -> {
                             // Handle general notifications
@@ -194,48 +198,81 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
             _uiState.value = UiState.LoadingData
 
-            // Load products
             if (apiService == null) {
                 android.util.Log.e("WaiterViewModel", "loadInitialData: apiService is NULL, cannot load products")
                 _uiState.value = UiState.Error("Servicio API no inicializado")
                 return@launch
             }
 
-            android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getProducts()")
+            // Load cached data first for instant UI (cache-first strategy)
+            val cachedProducts = preferences.getCachedProducts()
+            val cachedTables = preferences.getCachedTables()
+
+            if (cachedProducts != null) {
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Using ${cachedProducts.size} cached products")
+                _products.value = cachedProducts.filter { it.available }
+            }
+
+            if (cachedTables != null) {
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Using ${cachedTables.size} cached tables")
+                _tables.value = cachedTables
+            }
+
+            // If we have cache, show UI immediately
+            if (cachedProducts != null && cachedTables != null) {
+                _uiState.value = UiState.Ready
+                loadOrders()
+            }
+
+            // Load fresh data from API in background
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Fetching fresh data from API")
             val productsResult = apiService?.getProducts()
             android.util.Log.d("WaiterViewModel", "loadInitialData: getProducts() returned: $productsResult")
 
             productsResult?.onSuccess { productList ->
-                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${productList.size} products")
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${productList.size} fresh products from API")
                 val available = productList.filter { it.available }
-                android.util.Log.d("WaiterViewModel", "loadInitialData: ${available.size} products are available")
                 _products.value = available
+                // Cache for next time
+                preferences.cacheProducts(available)
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Cached ${available.size} products")
             }?.onFailure { error ->
-                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading products: ${error.message}", error)
-                _uiState.value = UiState.Error(error.message ?: "Error cargando productos")
-                return@launch
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading products from API: ${error.message}", error)
+                // If no cache, show error. If we have cache, continue silently
+                if (cachedProducts == null) {
+                    _uiState.value = UiState.Error(error.message ?: "Error cargando productos")
+                    return@launch
+                }
             }
 
-            // Load tables
+            // Load fresh tables
             android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getTables()")
             val tablesResult = apiService?.getTables()
             android.util.Log.d("WaiterViewModel", "loadInitialData: getTables() returned: $tablesResult")
 
             tablesResult?.onSuccess { tableList ->
-                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${tableList.size} tables")
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${tableList.size} fresh tables from API")
                 _tables.value = tableList
+                // Cache for next time
+                preferences.cacheTables(tableList)
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Cached ${tableList.size} tables")
             }?.onFailure { error ->
-                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading tables: ${error.message}", error)
-                _uiState.value = UiState.Error(error.message ?: "Error cargando mesas")
-                return@launch
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading tables from API: ${error.message}", error)
+                // If no cache, show error. If we have cache, continue silently
+                if (cachedTables == null) {
+                    _uiState.value = UiState.Error(error.message ?: "Error cargando mesas")
+                    return@launch
+                }
             }
 
-            // Load only pending orders for waiter app
-            android.util.Log.d("WaiterViewModel", "loadInitialData: Loading orders")
-            loadOrders()
+            // Load pending orders
+            if (_uiState.value != UiState.Ready) {
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Loading orders")
+                loadOrders()
+                _uiState.value = UiState.Ready
+            }
 
-            android.util.Log.d("WaiterViewModel", "loadInitialData: Finished loading data, setting state to Ready")
-            _uiState.value = UiState.Ready
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Finished loading data")
         }
     }
 
@@ -272,10 +309,22 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                         val cartItems = existingOrder.items.mapNotNull { orderItem ->
                             // Find the product from our products list
                             _products.value.find { it.id == orderItem.productId }?.let { product ->
+                                // Convert order item modifiers to cart modifiers
+                                val modifiers = orderItem.modifiers?.mapNotNull { orderModifier ->
+                                    if (orderModifier.modifier != null) {
+                                        android.util.Log.d("WaiterViewModel", "Modifier found: ${orderModifier.modifier.name}")
+                                        orderModifier.modifier
+                                    } else {
+                                        android.util.Log.w("WaiterViewModel", "Modifier is null for modifierId: ${orderModifier.modifierId}")
+                                        null
+                                    }
+                                } ?: emptyList()
+
                                 CartItem(
                                     product = product,
                                     quantity = orderItem.quantity,
-                                    notes = orderItem.notes ?: ""
+                                    notes = orderItem.notes ?: "",
+                                    modifiers = modifiers
                                 )
                             }
                         }
@@ -331,25 +380,27 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         navigateToScreen(Screen.ProductSelection)
     }
 
-    fun addToCart(product: Product, modifiers: List<Modifier> = emptyList(), notes: String = "") {
+    fun addToCart(product: Product, modifiers: List<Modifier> = emptyList(), notes: String = "", customPrice: Double? = null) {
         val currentCart = _cart.value.toMutableList()
-        // Items should only stack if they have the same product, modifiers, AND notes
+        // Items should only stack if they have the same product, modifiers, notes, AND custom price
         val existingIndex = currentCart.indexOfFirst {
             it.product.id == product.id &&
             it.modifiers == modifiers &&
-            it.notes == notes
+            it.notes == notes &&
+            it.customPrice == customPrice
         }
 
         if (existingIndex != -1) {
-            // Same product with same modifiers and notes - increase quantity
+            // Same product with same modifiers, notes, and custom price - increase quantity
             currentCart[existingIndex] = currentCart[existingIndex].copy(quantity = currentCart[existingIndex].quantity + 1)
         } else {
-            // New item or different modifiers/notes - add as new cart item
+            // New item or different modifiers/notes/price - add as new cart item
             currentCart.add(CartItem(
                 product = product,
                 quantity = 1,
                 modifiers = modifiers,
-                notes = notes
+                notes = notes,
+                customPrice = customPrice
             ))
         }
 
@@ -515,6 +566,8 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             apiService?.getTables()?.onSuccess { tableList ->
                 android.util.Log.d("WaiterViewModel", "Tables refreshed: ${tableList.size} tables")
                 _tables.value = tableList
+                // Update cache
+                preferences.cacheTables(tableList)
 
                 // If we have a selected table, update it with the new data
                 _selectedTable.value?.let { currentTable ->
@@ -526,6 +579,20 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }?.onFailure { error ->
                 android.util.Log.e("WaiterViewModel", "Error refreshing tables: ${error.message}")
+            }
+        }
+    }
+
+    private fun refreshProducts() {
+        viewModelScope.launch {
+            apiService?.getProducts()?.onSuccess { productList ->
+                android.util.Log.d("WaiterViewModel", "Products refreshed: ${productList.size} products")
+                val available = productList.filter { it.available }
+                _products.value = available
+                // Update cache
+                preferences.cacheProducts(available)
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "Error refreshing products: ${error.message}")
             }
         }
     }
@@ -578,8 +645,16 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 _products.value.find { it.id == orderItem.productId }?.let { product ->
                     // Convert order item modifiers to cart modifiers
                     val modifiers = orderItem.modifiers?.mapNotNull { orderModifier ->
-                        orderModifier.modifier
+                        if (orderModifier.modifier != null) {
+                            android.util.Log.d("WaiterViewModel", "Modifier found: ${orderModifier.modifier.name}")
+                            orderModifier.modifier
+                        } else {
+                            android.util.Log.w("WaiterViewModel", "Modifier is null for modifierId: ${orderModifier.modifierId}")
+                            null
+                        }
                     } ?: emptyList()
+
+                    android.util.Log.d("WaiterViewModel", "CartItem for product ${product.name}: ${modifiers.size} modifiers")
 
                     CartItem(
                         product = product,
@@ -590,7 +665,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
 
-            android.util.Log.d("WaiterViewModel", "Loaded ${cartItems.size} items into cart")
+            android.util.Log.d("WaiterViewModel", "Loaded ${cartItems.size} items into cart with modifiers")
             _cart.value = cartItems
 
             // Navigate to product selection screen (where cart is visible)

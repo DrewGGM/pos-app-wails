@@ -35,9 +35,13 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private val _updatedOrderIds = MutableStateFlow<Set<String>>(emptySet())
     val updatedOrderIds: StateFlow<Set<String>> = _updatedOrderIds
 
-    // Track orders marked as ready and their items with quantities at that moment
-    // Map: orderId -> Map of item keys ("productId-notes") to quantity that were ready
-    private val readyOrderItems = mutableMapOf<String, Map<String, Int>>()
+    // Track orders marked as ready and their items with ACCUMULATED quantities
+    // Map: orderId -> Map of item keys ("productId-notes") to total accumulated ready quantity
+    private val readyOrderItems = mutableMapOf<String, MutableMap<String, Int>>()
+
+    // Track the full order quantities (before filtering) for accurate calculations
+    // Map: orderId -> Map of item keys to actual order quantity
+    private val fullOrderQuantities = mutableMapOf<String, Map<String, Int>>()
 
     private var serverIp: String? = null
 
@@ -154,6 +158,11 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
     private fun addNewOrder(order: Order) {
         val current = _activeOrders.value.toMutableList()
+
+        // Save full order quantities for accurate tracking
+        fullOrderQuantities[order.id] = order.items.associate {
+            "${it.productId}-${it.notes}" to it.quantity
+        }
 
         // Check if order already exists (prevent duplicates)
         val existingIndex = current.indexOfFirst { it.order.id == order.id }
@@ -314,11 +323,21 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markOrderAsReady(order: Order) {
-        // Save which items were ready with their quantities
-        readyOrderItems[order.id] = order.items.associate {
-            "${it.productId}-${it.notes}" to it.quantity
+        // Get or create the ready items map for this order
+        val currentReadyItems = readyOrderItems.getOrPut(order.id) { mutableMapOf() }
+
+        // Get full order quantities (before any filtering)
+        val fullQuantities = fullOrderQuantities[order.id] ?: emptyMap()
+
+        // Accumulate ready quantities from full order quantities
+        for ((key, fullQty) in fullQuantities) {
+            val currentReady = currentReadyItems[key] ?: 0
+            // Set ready quantity to the full current quantity
+            currentReadyItems[key] = fullQty
+            android.util.Log.d("KitchenViewModel", "Item $key: was ready=$currentReady, now marking full quantity=$fullQty as ready")
         }
-        android.util.Log.d("KitchenViewModel", "Saved ready items for order ${order.id}: ${readyOrderItems[order.id]}")
+
+        android.util.Log.d("KitchenViewModel", "Saved accumulated ready items for order ${order.id}: $currentReadyItems")
 
         // Remove from active orders
         val active = _activeOrders.value.toMutableList()
@@ -346,9 +365,9 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         completed.remove(order)
         _completedOrders.value = completed
 
-        // Clear ready items tracking (order is no longer ready)
-        readyOrderItems.remove(order.id)
-        android.util.Log.d("KitchenViewModel", "Cleared ready items for order ${order.id} after undo")
+        // DON'T clear ready items tracking - keep the accumulated ready quantities
+        // This allows us to show only new additions if the order is updated again
+        android.util.Log.d("KitchenViewModel", "Undo completion for order ${order.id}, keeping ready items: ${readyOrderItems[order.id]}")
 
         // Add back to active
         val active = _activeOrders.value.toMutableList()
@@ -425,8 +444,9 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         completed.removeAll { it.id == orderId }
         _completedOrders.value = completed
 
-        // Clean up ready items tracking
+        // Clean up tracking maps
         readyOrderItems.remove(orderId)
+        fullOrderQuantities.remove(orderId)
     }
 
     private fun playNotificationSound() {

@@ -14,21 +14,25 @@ import (
 
 // OrderService handles order operations
 type OrderService struct {
-	db         *gorm.DB
-	localDB    *database.LocalDB
-	productSvc *ProductService
-	printerSvc *PrinterService
-	wsServer   *websocket.Server
+	db            *gorm.DB
+	localDB       *database.LocalDB
+	productSvc    *ProductService
+	printerSvc    *PrinterService
+	ingredientSvc *IngredientService
+	orderTypeSvc  *OrderTypeService
+	wsServer      *websocket.Server
 }
 
 // NewOrderService creates a new order service
 func NewOrderService() *OrderService {
 	return &OrderService{
-		db:         database.GetDB(),
-		localDB:    database.GetLocalDB(),
-		productSvc: NewProductService(),
-		printerSvc: NewPrinterService(),
-		wsServer:   nil, // Will be set later
+		db:            database.GetDB(),
+		localDB:       database.GetLocalDB(),
+		productSvc:    NewProductService(),
+		printerSvc:    NewPrinterService(),
+		ingredientSvc: NewIngredientService(),
+		orderTypeSvc:  NewOrderTypeService(),
+		wsServer:      nil, // Will be set later
 	}
 }
 
@@ -40,13 +44,38 @@ func (s *OrderService) SetWebSocketServer(server *websocket.Server) {
 
 // CreateOrder creates a new order
 func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
+	// LOG: Input data
+	log.Printf("\n🔵 ========== CREATE ORDER ==========")
+	log.Printf("Type (deprecated): %s", order.Type)
+	if order.OrderTypeID != nil {
+		log.Printf("OrderTypeID: %d", *order.OrderTypeID)
+	} else {
+		log.Printf("OrderTypeID: nil")
+	}
+	log.Printf("=====================================\n")
+
 	// Generate order number
 	order.OrderNumber = s.generateOrderNumber()
 	order.Status = models.OrderStatusPending
 	order.IsSynced = false
 
-	// Assign takeout number if this is a takeout order
-	if order.Type == "takeout" {
+	// Assign sequence number if the order type requires it
+	if order.OrderTypeID != nil && *order.OrderTypeID > 0 {
+		orderType, err := s.orderTypeSvc.GetOrderType(*order.OrderTypeID)
+		if err == nil && orderType.RequiresSequentialNumber {
+			nextNumber, err := s.orderTypeSvc.GetNextSequenceNumber(*order.OrderTypeID)
+			if err != nil {
+				log.Printf("Error getting next sequence number for order type %d: %v", *order.OrderTypeID, err)
+			} else {
+				order.SequenceNumber = &nextNumber
+				log.Printf("✅ Assigned sequence number %d to order type '%s'", nextNumber, orderType.Name)
+			}
+		}
+	}
+
+	// DEPRECATED: Legacy support for old takeout number system
+	// This can be removed after migration is complete
+	if order.Type == "takeout" && order.SequenceNumber == nil {
 		nextNumber, err := s.getNextAvailableTakeoutNumber()
 		if err != nil {
 			log.Printf("Error getting next takeout number: %v", err)
@@ -76,6 +105,9 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			return err
 		}
 
+		// LOG: Verify order was saved with order_type_id
+		log.Printf("✅ Order created with ID: %d, OrderTypeID: %v", order.ID, order.OrderTypeID)
+
 		// Update table status to occupied if this is a dine-in order
 		if order.TableID != nil && *order.TableID > 0 {
 			if err := tx.Model(&models.Table{}).
@@ -93,11 +125,6 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			}
 		}
 
-		// Send to kitchen if configured
-		if order.Source == "pos" || order.Source == "waiter_app" {
-			go s.sendToKitchen(order)
-		}
-
 		return nil
 	})
 
@@ -105,8 +132,27 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		return nil, err
 	}
 
+	// Deduct ingredients (happens outside transaction, warnings only)
+	ingredientWarnings := s.ingredientSvc.DeductIngredientsForOrder(order.Items)
+	if len(ingredientWarnings) > 0 {
+		log.Printf("⚠️ Ingredient warnings for order %s:", order.OrderNumber)
+		for _, warning := range ingredientWarnings {
+			log.Println(warning)
+		}
+	}
+
 	// Reload order with all relationships
-	return s.GetOrder(order.ID)
+	reloadedOrder, err := s.GetOrder(order.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send to kitchen AFTER transaction is complete and order is reloaded
+	if order.Source == "pos" || order.Source == "waiter_app" {
+		go s.sendToKitchen(reloadedOrder)
+	}
+
+	return reloadedOrder, nil
 }
 
 // UpdateOrder updates an existing order
@@ -174,17 +220,18 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 
 		// Update order (without items first)
 		if err := tx.Model(&models.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
-			"type":        order.Type,
-			"status":      order.Status,
-			"table_id":    order.TableID,
-			"customer_id": order.CustomerID,
-			"employee_id": order.EmployeeID,
-			"subtotal":    order.Subtotal,
-			"tax":         order.Tax,
-			"discount":    order.Discount,
-			"total":       order.Total,
-			"notes":       order.Notes,
-			"source":      order.Source,
+			"type":          order.Type,
+			"status":        order.Status,
+			"order_type_id": order.OrderTypeID,
+			"table_id":      order.TableID,
+			"customer_id":   order.CustomerID,
+			"employee_id":   order.EmployeeID,
+			"subtotal":      order.Subtotal,
+			"tax":           order.Tax,
+			"discount":      order.Discount,
+			"total":         order.Total,
+			"notes":         order.Notes,
+			"source":        order.Source,
 		}).Error; err != nil {
 			return fmt.Errorf("failed to update order: %w", err)
 		}
@@ -230,7 +277,19 @@ func (s *OrderService) GetOrder(id uint) (*models.Order, error) {
 		Preload("Table").
 		Preload("Customer").
 		Preload("Employee").
+		Preload("OrderType").
 		First(&order, id).Error
+
+	// LOG: Verify OrderType was loaded
+	log.Printf("🔍 GetOrder ID=%d: OrderTypeID=%v, OrderType=%v",
+		id,
+		order.OrderTypeID,
+		func() string {
+			if order.OrderType != nil {
+				return order.OrderType.Name
+			}
+			return "nil"
+		}())
 
 	return &order, err
 }
@@ -243,6 +302,7 @@ func (s *OrderService) GetOrderByNumber(orderNumber string) (*models.Order, erro
 		Preload("Items.Modifiers.Modifier").
 		Preload("Table").
 		Preload("Customer").
+		Preload("OrderType").
 		Where("order_number = ?", orderNumber).
 		First(&order).Error
 
@@ -262,6 +322,7 @@ func (s *OrderService) GetPendingOrders() ([]models.Order, error) {
 		Preload("Items.Modifiers.Modifier").
 		Preload("Table").
 		Preload("Customer").
+		Preload("OrderType").
 		Where("status IN ?", []models.OrderStatus{
 			models.OrderStatusPending,
 			models.OrderStatusPreparing,
@@ -282,6 +343,7 @@ func (s *OrderService) GetOrdersByTable(tableID uint) ([]models.Order, error) {
 		Preload("Table").
 		Preload("Customer").
 		Preload("Employee").
+		Preload("OrderType").
 		Where("table_id = ? AND status NOT IN ?", tableID, []models.OrderStatus{
 			models.OrderStatusPaid,
 			models.OrderStatusCancelled,
@@ -301,6 +363,7 @@ func (s *OrderService) GetOrdersByStatus(status models.OrderStatus) ([]models.Or
 		Preload("Table").
 		Preload("Customer").
 		Preload("Employee").
+		Preload("OrderType").
 		Where("status = ?", status).
 		Order("created_at ASC").
 		Find(&orders).Error
@@ -653,6 +716,11 @@ func (s *OrderService) updateInventory(tx *gorm.DB, productID uint, quantity int
 		return err
 	}
 
+	// Skip inventory tracking if disabled for this product
+	if !product.TrackInventory {
+		return nil
+	}
+
 	previousStock := product.Stock
 	product.Stock += quantity
 
@@ -689,6 +757,7 @@ func (s *OrderService) sendToKitchen(order *models.Order) {
 		if err := s.db.Preload("Items.Product").
 			Preload("Items.Modifiers.Modifier").
 			Preload("Table").
+			Preload("OrderType").
 			First(&fullOrder, order.ID).Error; err != nil {
 			log.Printf("OrderService: Error loading order details: %v", err)
 			return
@@ -878,6 +947,7 @@ func (s *OrderService) GetTodayOrders() ([]models.Order, error) {
 		Preload("Customer").
 		Preload("Table").
 		Preload("Employee").
+		Preload("OrderType").
 		Where("DATE(created_at) = ? AND status != ?", today, models.OrderStatusPaid).
 		Order("created_at DESC").
 		Find(&orders).Error

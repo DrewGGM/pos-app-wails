@@ -75,7 +75,8 @@ type OrderItemRequest struct {
 // OrderRequest represents an order from mobile app
 type OrderRequest struct {
 	OrderNumber string             `json:"order_number"`
-	Type        string             `json:"type"`
+	Type        string             `json:"type"` // Deprecated: use order_type_id
+	OrderTypeID *uint              `json:"order_type_id,omitempty"`
 	Status      string             `json:"status"`
 	TableID     *uint              `json:"table_id,omitempty"`
 	Items       []OrderItemRequest `json:"items"`
@@ -199,6 +200,7 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 	order := models.Order{
 		OrderNumber: orderReq.OrderNumber,
 		Type:        orderReq.Type,
+		OrderTypeID: orderReq.OrderTypeID,
 		Status:      models.OrderStatus(orderReq.Status),
 		TableID:     orderReq.TableID,
 		Subtotal:    orderReq.Subtotal,
@@ -209,8 +211,10 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 		EmployeeID:  orderReq.EmployeeID,
 	}
 
-	// Assign takeout number if it's a takeout order
-	if order.Type == "takeout" {
+	// DEPRECATED: Legacy takeout number assignment
+	// The new system uses OrderTypeService in OrderService.CreateOrder()
+	// This can be removed after migration is complete
+	if order.Type == "takeout" && order.OrderTypeID == nil {
 		nextNumber, err := h.getNextAvailableTakeoutNumber()
 		if err != nil {
 			log.Printf("REST API: Error getting next takeout number: %v", err)
@@ -381,19 +385,23 @@ func (h *RESTHandlers) HandleUpdateTableStatus(w http.ResponseWriter, r *http.Re
 
 // OrderResponse represents an order for mobile apps
 type OrderResponse struct {
-	ID          uint                    `json:"id"`
-	OrderNumber string                  `json:"order_number"`
-	Type        string                  `json:"type"`
-	Status      string                  `json:"status"`
-	TableID     *uint                   `json:"table_id,omitempty"`
-	TableNumber string                  `json:"table_number,omitempty"`
-	Items       []OrderItemResponse     `json:"items"`
-	Subtotal    float64                 `json:"subtotal"`
-	Tax         float64                 `json:"tax"`
-	Total       float64                 `json:"total"`
-	Notes       string                  `json:"notes,omitempty"`
-	Source      string                  `json:"source"`
-	CreatedAt   string                  `json:"created_at"`
+	ID             uint                    `json:"id"`
+	OrderNumber    string                  `json:"order_number"`
+	Type           string                  `json:"type"` // Deprecated: use order_type
+	OrderType      *models.OrderType       `json:"order_type,omitempty"`
+	SequenceNumber *int                    `json:"sequence_number,omitempty"`
+	TakeoutNumber  *int                    `json:"takeout_number,omitempty"` // Deprecated
+	Status         string                  `json:"status"`
+	TableID        *uint                   `json:"table_id,omitempty"`
+	TableNumber    string                  `json:"table_number,omitempty"`
+	Table          *models.Table           `json:"table,omitempty"`
+	Items          []OrderItemResponse     `json:"items"`
+	Subtotal       float64                 `json:"subtotal"`
+	Tax            float64                 `json:"tax"`
+	Total          float64                 `json:"total"`
+	Notes          string                  `json:"notes,omitempty"`
+	Source         string                  `json:"source"`
+	CreatedAt      string                  `json:"created_at"`
 }
 
 // OrderItemModifierResponse represents a modifier on an order item
@@ -438,7 +446,7 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	tableID := r.URL.Query().Get("table_id")
 
-	query := h.db.Preload("Items.Product").Preload("Items.Modifiers.Modifier").Preload("Table")
+	query := h.db.Preload("Items.Product").Preload("Items.Modifiers.Modifier").Preload("Table").Preload("OrderType")
 
 	// Apply filters
 	if status != "" {
@@ -459,17 +467,21 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	response := make([]OrderResponse, len(orders))
 	for i, o := range orders {
 		orderResp := OrderResponse{
-			ID:          o.ID,
-			OrderNumber: o.OrderNumber,
-			Type:        o.Type,
-			Status:      string(o.Status),
-			TableID:     o.TableID,
-			Subtotal:    o.Subtotal,
-			Tax:         o.Tax,
-			Total:       o.Total,
-			Notes:       o.Notes,
-			Source:      o.Source,
-			CreatedAt:   o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:             o.ID,
+			OrderNumber:    o.OrderNumber,
+			Type:           o.Type,
+			OrderType:      o.OrderType,
+			SequenceNumber: o.SequenceNumber,
+			TakeoutNumber:  o.TakeoutNumber,
+			Status:         string(o.Status),
+			TableID:        o.TableID,
+			Table:          o.Table,
+			Subtotal:       o.Subtotal,
+			Tax:            o.Tax,
+			Total:          o.Total,
+			Notes:          o.Notes,
+			Source:         o.Source,
+			CreatedAt:      o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}
 
 		if o.Table != nil {
@@ -570,6 +582,13 @@ func (h *RESTHandlers) HandleUpdateOrder(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Delete old modifiers first (to avoid foreign key constraint violation)
+	if err := h.db.Exec("DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", orderID).Error; err != nil {
+		log.Printf("REST API: Error deleting old modifiers: %v", err)
+		http.Error(w, "Error updating order", http.StatusInternalServerError)
+		return
+	}
+
 	// Delete old items
 	if err := h.db.Where("order_id = ?", orderID).Delete(&models.OrderItem{}).Error; err != nil {
 		log.Printf("REST API: Error deleting old items: %v", err)
@@ -597,6 +616,16 @@ func (h *RESTHandlers) HandleUpdateOrder(w http.ResponseWriter, r *http.Request,
 			Notes:     itemReq.Notes,
 			Status:    "pending",
 		}
+
+		// Add modifiers if present
+		for _, modReq := range itemReq.Modifiers {
+			modifier := models.OrderItemModifier{
+				ModifierID:  modReq.ModifierID,
+				PriceChange: modReq.PriceChange,
+			}
+			item.Modifiers = append(item.Modifiers, modifier)
+		}
+
 		existingOrder.Items = append(existingOrder.Items, item)
 	}
 
@@ -641,7 +670,14 @@ func (h *RESTHandlers) HandleDeleteOrder(w http.ResponseWriter, r *http.Request,
 
 	tableID := order.TableID
 
-	// Delete order items first
+	// Delete order item modifiers first (to avoid foreign key constraint violation)
+	if err := h.db.Exec("DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", orderID).Error; err != nil {
+		log.Printf("REST API: Error deleting order item modifiers: %v", err)
+		http.Error(w, "Error deleting order", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete order items
 	if err := h.db.Where("order_id = ?", orderID).Delete(&models.OrderItem{}).Error; err != nil {
 		log.Printf("REST API: Error deleting order items: %v", err)
 		http.Error(w, "Error deleting order", http.StatusInternalServerError)
@@ -845,4 +881,172 @@ func (h *RESTHandlers) broadcastOrderCancelled(orderID uint) {
 	// Broadcast to kitchen clients
 	h.server.BroadcastToKitchen(message)
 	log.Printf("REST API: Order cancellation for ID %d broadcasted to kitchen successfully", orderID)
+}
+
+// ProductSalesItem represents sales data for a product
+type ProductSalesItem struct {
+	ProductID   uint    `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	Quantity    int     `json:"quantity"`
+	Total       float64 `json:"total"`
+}
+
+// OrderTypeSalesData represents sales data for a specific order type
+type OrderTypeSalesData struct {
+	OrderType *models.OrderType  `json:"order_type"`
+	Sales     float64            `json:"sales"`
+	Products  []ProductSalesItem `json:"products"`
+}
+
+// TodaySalesResponse represents the complete sales report for today
+type TodaySalesResponse struct {
+	Total struct {
+		Sales    float64            `json:"sales"`
+		Products []ProductSalesItem `json:"products"`
+	} `json:"total"`
+	ByOrderType []OrderTypeSalesData `json:"by_order_type"`
+}
+
+// HandleGetTodaySales returns today's sales grouped by order type
+func (h *RESTHandlers) HandleGetTodaySales(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get today's date range
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	// Query today's sales with preloads
+	var sales []models.Sale
+	err := h.db.Preload("Order.OrderType").
+		Preload("Order.Items.Product").
+		Where("created_at >= ?", startOfDay).
+		Where("status = ?", "completed").
+		Find(&sales).Error
+
+	if err != nil {
+		log.Printf("REST API: Error fetching today's sales: %v", err)
+		http.Error(w, "Failed to fetch sales", http.StatusInternalServerError)
+		return
+	}
+
+	// Initialize response
+	response := TodaySalesResponse{}
+	response.Total.Sales = 0
+	response.ByOrderType = []OrderTypeSalesData{}
+
+	// Maps for aggregation
+	totalProductsMap := make(map[uint]*ProductSalesItem)
+	orderTypeMap := make(map[uint]*OrderTypeSalesData)
+
+	// Process each sale
+	for _, sale := range sales {
+		response.Total.Sales += sale.Total
+
+		// Get order type ID (handle nil case)
+		var orderTypeID uint
+		var orderType *models.OrderType
+
+		if sale.Order != nil && sale.Order.OrderTypeID != nil {
+			orderTypeID = *sale.Order.OrderTypeID
+			orderType = sale.Order.OrderType
+		} else {
+			// Sales without order type - skip or create a "Unknown" category
+			orderTypeID = 0
+			orderType = nil
+		}
+
+		// Initialize order type data if not exists
+		if _, exists := orderTypeMap[orderTypeID]; !exists {
+			orderTypeMap[orderTypeID] = &OrderTypeSalesData{
+				OrderType: orderType,
+				Sales:     0,
+				Products:  []ProductSalesItem{},
+			}
+		}
+
+		// Add to order type total
+		orderTypeMap[orderTypeID].Sales += sale.Total
+
+		// Process order items for product aggregation
+		if sale.Order != nil && sale.Order.Items != nil {
+			orderTypeProductsMap := make(map[uint]*ProductSalesItem)
+
+			for _, item := range sale.Order.Items {
+				if item.Product == nil {
+					continue
+				}
+
+				productID := item.Product.ID
+				productName := item.Product.Name
+				itemTotal := item.Subtotal // Use subtotal which already includes modifiers
+
+				// Add to total products
+				if existing, exists := totalProductsMap[productID]; exists {
+					existing.Quantity += item.Quantity
+					existing.Total += itemTotal
+				} else {
+					totalProductsMap[productID] = &ProductSalesItem{
+						ProductID:   productID,
+						ProductName: productName,
+						Quantity:    item.Quantity,
+						Total:       itemTotal,
+					}
+				}
+
+				// Add to order type specific products
+				if existing, exists := orderTypeProductsMap[productID]; exists {
+					existing.Quantity += item.Quantity
+					existing.Total += itemTotal
+				} else {
+					orderTypeProductsMap[productID] = &ProductSalesItem{
+						ProductID:   productID,
+						ProductName: productName,
+						Quantity:    item.Quantity,
+						Total:       itemTotal,
+					}
+				}
+			}
+
+			// Convert order type products map to slice
+			for _, product := range orderTypeProductsMap {
+				orderTypeMap[orderTypeID].Products = append(orderTypeMap[orderTypeID].Products, *product)
+			}
+		}
+	}
+
+	// Convert total products map to slice
+	for _, product := range totalProductsMap {
+		response.Total.Products = append(response.Total.Products, *product)
+	}
+
+	// Convert order type map to slice
+	for _, orderTypeData := range orderTypeMap {
+		response.ByOrderType = append(response.ByOrderType, *orderTypeData)
+	}
+
+	// Marshal response
+	jsonData, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("REST API: Error marshaling sales response: %v", err)
+		http.Error(w, "Failed to generate response", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonData)
+	log.Printf("REST API: Today's sales report sent successfully")
 }

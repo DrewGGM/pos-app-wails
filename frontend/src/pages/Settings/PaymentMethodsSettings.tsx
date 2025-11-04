@@ -58,6 +58,7 @@ const PaymentMethodsSettings: React.FC = () => {
     requires_ref: false,
     dian_payment_method_id: undefined,
     affects_cash_register: true,
+    show_in_cash_summary: true,
     is_active: true,
     display_order: 0,
   });
@@ -69,8 +70,10 @@ const PaymentMethodsSettings: React.FC = () => {
 
   const loadPaymentMethods = async () => {
     try {
-      const methods = await wailsSalesService.GetPaymentMethods();
-      setPaymentMethods(methods || []);
+      // Import GetAllPaymentMethods to show both active and inactive payment methods
+      const { GetAllPaymentMethods } = await import('../../../wailsjs/go/services/SalesService');
+      const methods = await GetAllPaymentMethods();
+      setPaymentMethods((methods || []) as unknown as PaymentMethod[]);
     } catch (error) {
       console.error('Error loading payment methods:', error);
       toast.error('Error al cargar métodos de pago');
@@ -98,6 +101,7 @@ const PaymentMethodsSettings: React.FC = () => {
         requires_ref: method.requires_ref || false,
         dian_payment_method_id: method.dian_payment_method_id,
         affects_cash_register: method.affects_cash_register !== false, // Default to true
+        show_in_cash_summary: method.show_in_cash_summary !== false, // Default to true
         is_active: method.is_active,
         display_order: method.display_order || 0,
       });
@@ -110,6 +114,7 @@ const PaymentMethodsSettings: React.FC = () => {
         requires_ref: false,
         dian_payment_method_id: undefined,
         affects_cash_register: true,
+        show_in_cash_summary: true,
         is_active: true,
         display_order: paymentMethods.length,
       });
@@ -150,14 +155,28 @@ const PaymentMethodsSettings: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Está seguro de eliminar este método de pago?')) {
+  const handleDelete = async (method: PaymentMethod) => {
+    // Prevent deletion of system default payment methods
+    if (method.is_system_default) {
+      toast.error('No se puede eliminar un método de pago del sistema');
       return;
     }
 
     try {
-      await wailsSalesService.DeletePaymentMethod(id);
-      toast.success('Método de pago eliminado');
+      // Get the count of sales associated with this payment method
+      const salesCount = await (window as any).go.services.SalesService.GetPaymentMethodSalesCount(method.id!);
+
+      let confirmMessage = '¿Está seguro de eliminar este método de pago?';
+      if (salesCount > 0) {
+        confirmMessage = `¿Está seguro de eliminar este método de pago?\n\nEsto eliminará ${salesCount} venta${salesCount > 1 ? 's' : ''} asociada${salesCount > 1 ? 's' : ''} a este método de pago.\n\nEsta acción no se puede deshacer.`;
+      }
+
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+
+      await wailsSalesService.DeletePaymentMethod(method.id!);
+      toast.success('Método de pago eliminado correctamente');
       loadPaymentMethods();
     } catch (error: any) {
       console.error('Error deleting payment method:', error);
@@ -235,6 +254,14 @@ const PaymentMethodsSettings: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {getTypeIcon(method.type)}
                         {method.name}
+                        {method.is_system_default && (
+                          <Chip
+                            label="Sistema"
+                            size="small"
+                            color="default"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell>{getTypeName(method.type)}</TableCell>
@@ -274,8 +301,10 @@ const PaymentMethodsSettings: React.FC = () => {
                       </IconButton>
                       <IconButton
                         size="small"
-                        onClick={() => handleDelete(method.id!)}
+                        onClick={() => handleDelete(method)}
                         color="error"
+                        disabled={method.is_system_default}
+                        title={method.is_system_default ? 'No se puede eliminar un método de pago del sistema' : 'Eliminar'}
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -382,6 +411,20 @@ const PaymentMethodsSettings: React.FC = () => {
                     />
                   }
                   label="Afecta Cuadre de Caja"
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.show_in_cash_summary !== false}
+                      onChange={(e) =>
+                        setFormData({ ...formData, show_in_cash_summary: e.target.checked })
+                      }
+                    />
+                  }
+                  label="Mostrar en Resumen de Ventas"
                 />
               </Grid>
 

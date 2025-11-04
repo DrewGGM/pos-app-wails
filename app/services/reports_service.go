@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -125,14 +126,17 @@ func (s *ReportsService) GetSalesReport(startDate, endDate time.Time) (*SalesRep
 		PaymentBreakdown: make(map[string]float64),
 	}
 
-	// Get sales in period
+	// Get sales in period (exclude refunded sales)
 	var sales []models.Sale
 	err := s.db.Preload("PaymentDetails.PaymentMethod").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("status NOT IN ?", []string{"refunded"}).
 		Find(&sales).Error
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("📊 [REPORTS] GetSalesReport: Found %d sales from %s to %s", len(sales), startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 
 	report.NumberOfSales = len(sales)
 
@@ -202,6 +206,7 @@ func (s *ReportsService) GetSalesByPaymentMethod(startDate, endDate time.Time) (
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
 		Joins("JOIN sales ON payments.sale_id = sales.id").
 		Where("sales.created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("payment_methods.name").
 		Scan(&summaries).Error
 
@@ -372,17 +377,22 @@ func (s *ReportsService) GetEmployeeSalesReport(employeeID uint, startDate, endD
 func (s *ReportsService) getTopProducts(startDate, endDate time.Time, limit int) []ProductSalesData {
 	var results []ProductSalesData
 
+	// Use LEFT JOIN to include sales even if orders are deleted
+	// Also exclude soft-deleted orders and items
 	query := `
-		SELECT 
+		SELECT
 			p.id as product_id,
 			p.name as product_name,
-			SUM(oi.quantity) as quantity,
-			SUM(oi.subtotal) as total_sales
-		FROM order_items oi
-		JOIN products p ON oi.product_id = p.id
-		JOIN orders o ON oi.order_id = o.id
-		JOIN sales s ON o.id = s.order_id
+			COALESCE(SUM(oi.quantity), 0) as quantity,
+			COALESCE(SUM(oi.subtotal), 0) as total_sales
+		FROM sales s
+		LEFT JOIN orders o ON s.order_id = o.id AND o.deleted_at IS NULL
+		LEFT JOIN order_items oi ON oi.order_id = o.id
+		LEFT JOIN products p ON oi.product_id = p.id
 		WHERE s.created_at BETWEEN ? AND ?
+		  AND s.status NOT IN ('refunded')
+		  AND s.deleted_at IS NULL
+		  AND p.id IS NOT NULL
 		GROUP BY p.id, p.name
 		ORDER BY total_sales DESC
 		LIMIT ?
@@ -415,6 +425,7 @@ func (s *ReportsService) getHourlySales(startDate, endDate time.Time) []HourlySa
 			COUNT(*) as orders
 		FROM sales
 		WHERE created_at BETWEEN ? AND ?
+			AND status NOT IN ('refunded')
 		GROUP BY CAST(strftime('%H', created_at) AS INTEGER)
 		ORDER BY hour
 	`
@@ -449,6 +460,7 @@ func (s *ReportsService) getDailySales(startDate, endDate time.Time) []DailySale
 			COUNT(*) as orders
 		FROM sales
 		WHERE created_at BETWEEN ? AND ?
+			AND status NOT IN ('refunded')
 		GROUP BY DATE(created_at)
 		ORDER BY date
 	`
@@ -640,6 +652,7 @@ func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time) (*Custom
 		Select("customer_id, SUM(total) as total_value").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
 		Where("customer_id IS NOT NULL").
+		Where("status NOT IN ?", []string{"refunded"}).
 		Group("customer_id").
 		Scan(&customerValues)
 
@@ -662,12 +675,14 @@ func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time) (*Custom
 		Select("DISTINCT customer_id").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
 		Where("customer_id IS NOT NULL").
+		Where("status NOT IN ?", []string{"refunded"}).
 		Pluck("customer_id", &customersThisMonth)
 
 	s.db.Table("sales").
 		Select("DISTINCT customer_id").
 		Where("created_at BETWEEN ? AND ?", lastMonthStart, lastMonthEnd).
 		Where("customer_id IS NOT NULL").
+		Where("status NOT IN ?", []string{"refunded"}).
 		Pluck("customer_id", &customersLastMonth)
 
 	// Find repeating customers
@@ -743,6 +758,7 @@ func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time) ([]Cat
 		Joins("JOIN orders ON order_items.order_id = orders.id").
 		Joins("JOIN sales ON orders.id = sales.order_id").
 		Where("sales.created_at BETWEEN ? AND ?", startDate, endDate).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("categories.name").
 		Scan(&currentSales)
 
@@ -755,6 +771,7 @@ func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time) ([]Cat
 		Joins("JOIN orders ON order_items.order_id = orders.id").
 		Joins("JOIN sales ON orders.id = sales.order_id").
 		Where("sales.created_at BETWEEN ? AND ?", previousStart, previousEnd).
+		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("categories.name").
 		Scan(&previousSales)
 
@@ -836,12 +853,14 @@ func (s *ReportsService) GetKeyMetricsComparison(startDate, endDate time.Time) (
 	s.db.Model(&models.Sale{}).
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
 		Where("customer_id IS NOT NULL").
+		Where("status NOT IN ?", []string{"refunded"}).
 		Distinct("customer_id").
 		Count(&currentCustomers)
 
 	s.db.Model(&models.Sale{}).
 		Where("created_at BETWEEN ? AND ?", previousStart, previousEnd).
 		Where("customer_id IS NOT NULL").
+		Where("status NOT IN ?", []string{"refunded"}).
 		Distinct("customer_id").
 		Count(&previousCustomers)
 

@@ -19,8 +19,8 @@ android {
         applicationId = "com.drewcore.kitchen_app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 11
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

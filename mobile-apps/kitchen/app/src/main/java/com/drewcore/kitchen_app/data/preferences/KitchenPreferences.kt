@@ -26,25 +26,25 @@ class KitchenPreferences(context: Context) {
 
     var gridColumns: Int
         get() = prefs.getInt(KEY_GRID_COLUMNS, DEFAULT_GRID_COLUMNS)
-        set(value) = prefs.edit().putInt(KEY_GRID_COLUMNS, value).apply()
+        set(value) { prefs.edit().putInt(KEY_GRID_COLUMNS, value).commit() }
 
     var cardHeight: Int
         get() = prefs.getInt(KEY_CARD_HEIGHT, DEFAULT_CARD_HEIGHT)
-        set(value) = prefs.edit().putInt(KEY_CARD_HEIGHT, value).apply()
+        set(value) { prefs.edit().putInt(KEY_CARD_HEIGHT, value).commit() }
 
     var headerFontSize: Int
         get() = prefs.getInt(KEY_HEADER_FONT_SIZE, DEFAULT_HEADER_FONT_SIZE)
-        set(value) = prefs.edit().putInt(KEY_HEADER_FONT_SIZE, value).apply()
+        set(value) { prefs.edit().putInt(KEY_HEADER_FONT_SIZE, value).commit() }
 
     var itemFontSize: Int
         get() = prefs.getInt(KEY_ITEM_FONT_SIZE, DEFAULT_ITEM_FONT_SIZE)
-        set(value) = prefs.edit().putInt(KEY_ITEM_FONT_SIZE, value).apply()
+        set(value) { prefs.edit().putInt(KEY_ITEM_FONT_SIZE, value).commit() }
 
     var maxItemsPerCard: Int
         get() = prefs.getInt(KEY_MAX_ITEMS_PER_CARD, DEFAULT_MAX_ITEMS_PER_CARD)
-        set(value) = prefs.edit().putInt(KEY_MAX_ITEMS_PER_CARD, value).apply()
+        set(value) { prefs.edit().putInt(KEY_MAX_ITEMS_PER_CARD, value).commit() }
 
     fun resetToDefaults() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
     }
 }

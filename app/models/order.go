@@ -43,6 +43,8 @@ type OrderType struct {
 	Icon                    string         `json:"icon"`            // Icon identifier
 	IsActive                bool           `gorm:"default:true" json:"is_active"`
 	DisplayOrder            int            `gorm:"default:0" json:"display_order"`
+	SkipPaymentDialog       bool           `gorm:"default:false" json:"skip_payment_dialog"` // If true, skip payment dialog and use default payment method
+	DefaultPaymentMethodID  *uint          `json:"default_payment_method_id,omitempty"`      // Default payment method when skipping dialog
 	CreatedAt               time.Time      `json:"created_at"`
 	UpdatedAt               time.Time      `json:"updated_at"`
 	DeletedAt               gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
@@ -59,9 +61,9 @@ type Order struct {
 	SequenceNumber *int          `gorm:"default:null" json:"sequence_number,omitempty"` // Sequential number for order types that require it (1,2,3...), reuses freed numbers
 	TakeoutNumber *int           `gorm:"default:null" json:"takeout_number,omitempty"` // Deprecated: use SequenceNumber instead
 	TableID       *uint          `json:"table_id,omitempty"`
-	Table         *Table         `json:"table,omitempty"`
+	Table         *Table         `gorm:"foreignKey:TableID" json:"table,omitempty"`
 	CustomerID   *uint          `json:"customer_id,omitempty"`
-	Customer     *Customer      `json:"customer,omitempty"`
+	Customer     *Customer      `gorm:"foreignKey:CustomerID" json:"customer,omitempty"`
 	Items        []OrderItem    `gorm:"foreignKey:OrderID" json:"items"`
 	Subtotal     float64        `json:"subtotal"`
 	Tax          float64        `json:"tax"`
@@ -88,7 +90,7 @@ type OrderItem struct {
 	Quantity        int                 `json:"quantity"`
 	UnitPrice       float64             `json:"unit_price"`
 	Subtotal        float64             `json:"subtotal"`
-	Modifiers       []OrderItemModifier `json:"modifiers"`
+	Modifiers       []OrderItemModifier `gorm:"foreignKey:OrderItemID;constraint:OnDelete:CASCADE" json:"modifiers"`
 	Notes           string              `json:"notes"`
 	Status          string              `json:"status"` // "pending", "preparing", "ready"
 	SentToKitchen   bool                `gorm:"default:false" json:"sent_to_kitchen"`

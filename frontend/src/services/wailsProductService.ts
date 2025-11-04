@@ -37,6 +37,7 @@ function mapProduct(w: models.Product): Product {
     image: (w as any).image || '',
     stock: w.stock || 0,
     min_stock: (w as any).min_stock || 0,
+    track_inventory: (w as any).track_inventory ?? true, // Track inventory by default
     is_active: (w as any).is_active ?? true,
     has_variable_price: (w as any).has_variable_price ?? false, // Map variable price field
     has_modifiers: false, // Default value

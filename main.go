@@ -27,6 +27,7 @@ type App struct {
 	LoggerService           *services.LoggerService
 	ConfigManagerService    *services.ConfigManagerService
 	ProductService          *services.ProductService
+	IngredientService       *services.IngredientService
 	OrderService            *services.OrderService
 	OrderTypeService        *services.OrderTypeService
 	SalesService            *services.SalesService
@@ -161,6 +162,7 @@ func (a *App) shutdown(ctx context.Context) {
 func (a *App) InitializeServicesAfterSetup() error {
 	// Initialize services after database is ready
 	a.ProductService = services.NewProductService()
+	a.IngredientService = services.NewIngredientService()
 	a.OrderService = services.NewOrderService()
 	a.OrderTypeService = services.NewOrderTypeService()
 	a.SalesService = services.NewSalesService()
@@ -282,6 +284,7 @@ func main() {
 	// Always initialize services (needed for Wails bindings generation)
 	loggerService.LogInfo("Initializing services")
 	app.ProductService = services.NewProductService()
+	app.IngredientService = services.NewIngredientService()
 	app.OrderService = services.NewOrderService()
 	app.OrderTypeService = services.NewOrderTypeService()
 	app.SalesService = services.NewSalesService()
@@ -315,6 +318,7 @@ func main() {
 		if !isFirstRun {
 			loggerService.LogInfo("Reinitializing services with database connection")
 			app.ProductService = services.NewProductService()
+			app.IngredientService = services.NewIngredientService()
 			app.OrderService = services.NewOrderService()
 			app.OrderTypeService = services.NewOrderTypeService()
 			app.SalesService = services.NewSalesService()
@@ -345,6 +349,7 @@ func main() {
 		app.ConfigManagerService,
 		app.UpdateService,
 		app.ProductService,
+		app.IngredientService,
 		app.OrderService,
 		app.OrderTypeService,
 		app.SalesService,

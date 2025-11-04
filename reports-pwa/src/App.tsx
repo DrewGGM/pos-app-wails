@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { googleSheetsService, type ReportData, type ProductDetail } from './services/googleSheets'
+import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail } from './services/googleSheets'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
@@ -15,6 +15,9 @@ function App() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [viewPeriod, setViewPeriod] = useState<ViewPeriod>('day')
   const [currentReport, setCurrentReport] = useState<ReportData | null>(null)
+
+  // Products tab navigation
+  const [selectedProductsTab, setSelectedProductsTab] = useState<'total' | string>('total')
 
   useEffect(() => {
     const configured = googleSheetsService.isConfigured()
@@ -148,6 +151,52 @@ function App() {
     // Convert back to array and sort by total
     const aggregatedProducts = Object.values(allProducts).sort((a, b) => b.total - a.total)
 
+    // Aggregate products by order type
+    const orderTypeMap: { [key: string]: OrderTypeDetail } = {}
+
+    periodReports.forEach(report => {
+      if (report.detalle_tipos_pedido) {
+        report.detalle_tipos_pedido.forEach(orderTypeDetail => {
+          const orderType = orderTypeDetail.order_type
+
+          if (!orderTypeMap[orderType]) {
+            orderTypeMap[orderType] = {
+              order_type: orderType,
+              amount: 0,
+              count: 0,
+              products: []
+            }
+          }
+
+          orderTypeMap[orderType].amount += orderTypeDetail.amount
+          orderTypeMap[orderType].count += orderTypeDetail.count
+
+          // Aggregate products for this order type
+          const productsMap: { [key: string]: ProductDetail } = {}
+
+          // Convert existing products array to map
+          orderTypeMap[orderType].products.forEach(p => {
+            productsMap[p.product_name] = p
+          })
+
+          // Add/merge new products
+          orderTypeDetail.products?.forEach(product => {
+            if (productsMap[product.product_name]) {
+              productsMap[product.product_name].quantity += product.quantity
+              productsMap[product.product_name].total += product.total
+            } else {
+              productsMap[product.product_name] = { ...product }
+            }
+          })
+
+          // Convert back to array and sort
+          orderTypeMap[orderType].products = Object.values(productsMap).sort((a, b) => b.total - a.total)
+        })
+      }
+    })
+
+    const aggregatedOrderTypes = Object.values(orderTypeMap)
+
     // Get period label for fecha field
     const getPeriodLabel = (): string => {
       switch (viewPeriod) {
@@ -177,7 +226,8 @@ function App() {
       productos_vendidos: periodReports.reduce((sum, r) => sum + r.productos_vendidos, 0),
       ticket_promedio: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0) /
                        periodReports.reduce((sum, r) => sum + r.ordenes, 0),
-      detalle_productos: aggregatedProducts
+      detalle_productos: aggregatedProducts,
+      detalle_tipos_pedido: aggregatedOrderTypes
     }
   }
 
@@ -370,29 +420,107 @@ function App() {
               </div>
             </div>
 
-            {/* Products Table */}
+            {/* Products Section with Tabs */}
             {currentReport.detalle_productos && currentReport.detalle_productos.length > 0 && (
               <div className="products-section">
                 <h3>Productos Vendidos</h3>
+
+                {/* Tabs for Total and Order Types */}
+                <div className="period-tabs" style={{ marginBottom: '20px' }}>
+                  <button
+                    onClick={() => setSelectedProductsTab('total')}
+                    className={`tab ${selectedProductsTab === 'total' ? 'active' : ''}`}
+                  >
+                    Total
+                  </button>
+
+                  {currentReport.detalle_tipos_pedido?.map((orderTypeDetail) => (
+                    <button
+                      key={orderTypeDetail.order_type}
+                      onClick={() => setSelectedProductsTab(orderTypeDetail.order_type)}
+                      className={`tab ${selectedProductsTab === orderTypeDetail.order_type ? 'active' : ''}`}
+                    >
+                      {orderTypeDetail.order_type}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Products Table */}
                 <div className="products-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentReport.detalle_productos.map((product, idx) => (
-                        <tr key={idx}>
-                          <td>{product.product_name}</td>
-                          <td>{product.quantity}</td>
-                          <td>{formatCurrency(product.total)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {selectedProductsTab === 'total' ? (
+                    <>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentReport.detalle_productos.map((product, idx) => (
+                            <tr key={idx}>
+                              <td>{product.product_name}</td>
+                              <td>{product.quantity}</td>
+                              <td>{formatCurrency(product.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  ) : (
+                    <>
+                      {(() => {
+                        const orderTypeDetail = currentReport.detalle_tipos_pedido?.find(
+                          ot => ot.order_type === selectedProductsTab
+                        )
+
+                        if (!orderTypeDetail) return null
+
+                        return (
+                          <>
+                            <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <strong>Ventas {orderTypeDetail.order_type}:</strong> {formatCurrency(orderTypeDetail.amount)}
+                                </div>
+                                <div>
+                                  <strong>Órdenes:</strong> {orderTypeDetail.count}
+                                </div>
+                              </div>
+                            </div>
+
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Producto</th>
+                                  <th>Cantidad</th>
+                                  <th>Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {orderTypeDetail.products && orderTypeDetail.products.length > 0 ? (
+                                  orderTypeDetail.products.map((product, idx) => (
+                                    <tr key={idx}>
+                                      <td>{product.product_name}</td>
+                                      <td>{product.quantity}</td>
+                                      <td>{formatCurrency(product.total)}</td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                                      No hay productos para este tipo de orden
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </>
+                        )
+                      })()}
+                    </>
+                  )}
                 </div>
               </div>
             )}

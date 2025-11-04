@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -61,7 +61,9 @@ import { wailsProductService } from '../../services/wailsProductService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
 import { wailsSalesService } from '../../services/wailsSalesService';
 import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
+import { GetActiveOrderTypes } from '../../../wailsjs/go/services/OrderTypeService';
 import { Category, Product, Order, OrderItem, Table, Customer, PaymentMethod } from '../../types/models';
+import { models } from '../../../wailsjs/go/models';
 import { posColors } from '../../theme';
 
 import PaymentDialog from '../../components/pos/PaymentDialog';
@@ -90,7 +92,11 @@ const POS: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [orderType, setOrderType] = useState<'dine_in' | 'takeout' | 'delivery'>('takeout');
+  const [orderTypes, setOrderTypes] = useState<models.OrderType[]>([]);
+  const [selectedOrderType, setSelectedOrderType] = useState<models.OrderType | null>(null);
+
+  // Refs
+  const loadedOrderIdRef = useRef<number | null>(null);
 
   // Dialogs
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -123,6 +129,7 @@ const POS: React.FC = () => {
       loadCategories();
       loadProducts();
       loadPaymentMethods();
+      loadOrderTypes();
       loadCompanyConfig();
     }, 100);
     return () => clearTimeout(timer);
@@ -148,11 +155,54 @@ const POS: React.FC = () => {
     const order = state?.continueOrder || state?.editOrder;
 
     if (order) {
+      // Prevent loading the same order twice (React Strict Mode can cause double execution)
+      if (loadedOrderIdRef.current === order.id) {
+        console.log('⚠️ [LOAD ORDER] SKIPPED: Order already loaded:', order.id);
+        return;
+      }
+
       const isEditing = !!state?.editOrder;
+      console.log('🔵 [LOAD ORDER] Starting to load order from navigation:', {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        orderTypeId: order.order_type_id,
+        orderTypeName: order.order_type?.name,
+        orderTypeCode: order.order_type?.code,
+        tableId: order.table?.id,
+        tableNumber: order.table?.number,
+        isEditing
+      });
+
+      // Mark this order as loaded
+      loadedOrderIdRef.current = order.id ?? null;
+
+      // IMPORTANT: Set currentOrder FIRST to trigger the protection in auto-switch useEffect
+      console.log('🔵 [LOAD ORDER] Step 1: Setting currentOrder...');
       setCurrentOrder(order);
+
+      // Then restore the order type BEFORE setting table (to avoid auto-switch interference)
+      if (order.order_type_id && order.order_type) {
+        console.log('🔵 [LOAD ORDER] Step 2: Setting selectedOrderType to:', {
+          id: order.order_type.id,
+          name: order.order_type.name,
+          code: order.order_type.code
+        });
+        setSelectedOrderType(order.order_type as unknown as models.OrderType);
+      } else {
+        console.log('⚠️ [LOAD ORDER] Step 2: NO ORDER TYPE to restore!', {
+          order_type_id: order.order_type_id,
+          order_type: order.order_type
+        });
+      }
+
+      // Now set the rest of the order data
+      console.log('🔵 [LOAD ORDER] Step 3: Setting other order data...');
       setOrderItems(order.items || []);
       setSelectedTable(order.table || null);
       setSelectedCustomer(order.customer || null);
+
+      console.log('🔵 [LOAD ORDER] Order loading complete');
+
       toast.info(`Orden ${order.order_number} ${isEditing ? 'lista para editar' : 'cargada'}`);
 
       // Clear the state to avoid reloading on future renders
@@ -160,14 +210,67 @@ const POS: React.FC = () => {
     }
   }, [location]);
 
-  // Update order type when table is selected/deselected
+  // Track all changes to selectedOrderType
   useEffect(() => {
-    if (selectedTable && orderType !== 'dine_in') {
-      setOrderType('dine_in');
-    } else if (!selectedTable && orderType === 'dine_in') {
-      setOrderType('takeout');
+    console.log('🟣 [ORDER TYPE CHANGED]:', {
+      id: selectedOrderType?.id,
+      name: selectedOrderType?.name,
+      code: selectedOrderType?.code,
+      currentOrderId: currentOrder?.id
+    });
+  }, [selectedOrderType]);
+
+  // Set default order type when orderTypes are loaded (only for brand new orders)
+  useEffect(() => {
+    if (orderTypes.length > 0 && !selectedOrderType && !currentOrder && orderItems.length === 0) {
+      console.log('📝 [SET DEFAULT ORDER TYPE] Setting to:', orderTypes[0].name);
+      setSelectedOrderType(orderTypes[0]);
+    } else if (orderTypes.length > 0) {
+      console.log('📝 [SET DEFAULT ORDER TYPE] NOT setting. selectedOrderType:', selectedOrderType?.name, 'currentOrder:', currentOrder?.id, 'orderItems:', orderItems.length);
     }
-  }, [selectedTable]);
+  }, [orderTypes, selectedOrderType, currentOrder, orderItems]);
+
+  // Update order type when table is selected/deselected (only for new orders)
+  useEffect(() => {
+    console.log('🟡 [AUTO-SWITCH] useEffect triggered:', {
+      hasCurrentOrder: !!currentOrder,
+      currentOrderId: currentOrder?.id,
+      currentOrderTypeId: currentOrder?.order_type_id,
+      selectedTable: selectedTable?.number,
+      selectedOrderTypeCode: selectedOrderType?.code,
+      selectedOrderTypeName: selectedOrderType?.name,
+      hasOrderItems: orderItems.length > 0
+    });
+
+    // NEVER auto-switch if there's an existing order loaded (has an ID)
+    if (currentOrder && currentOrder.id) {
+      console.log('🟢 [AUTO-SWITCH] BLOCKED: Existing order detected, not switching');
+      return; // Don't touch order type when editing an existing order
+    }
+
+    // Don't auto-switch if we have order items (editing mode without currentOrder ID yet)
+    if (orderItems.length > 0) {
+      console.log('🟢 [AUTO-SWITCH] BLOCKED: Has order items, not a brand new order');
+      return;
+    }
+
+    // Only auto-switch for brand new orders (no currentOrder at all)
+    if (selectedTable && selectedOrderType?.code !== 'dine-in') {
+      console.log('🔴 [AUTO-SWITCH] SWITCHING to dine-in because table selected');
+      const dineInType = orderTypes.find(ot => ot.code === 'dine-in');
+      if (dineInType) {
+        setSelectedOrderType(dineInType);
+      }
+    } else if (!selectedTable && selectedOrderType?.code === 'dine-in') {
+      console.log('🔴 [AUTO-SWITCH] SWITCHING away from dine-in because no table');
+      // When deselecting table, go back to first order type in list (not hardcoded to takeout)
+      if (orderTypes.length > 0) {
+        setSelectedOrderType(orderTypes[0]);
+      }
+    } else {
+      console.log('🟢 [AUTO-SWITCH] No switch needed');
+    }
+  }, [selectedTable, orderTypes, currentOrder, orderItems]);
 
   // Load order/table from query parameters (when coming from Tables page)
   useEffect(() => {
@@ -180,10 +283,19 @@ const POS: React.FC = () => {
           // Load specific order
           const order = await wailsOrderService.getOrder(Number(orderId));
           if (order) {
+            // IMPORTANT: Set currentOrder FIRST to trigger the protection in auto-switch useEffect
             setCurrentOrder(order);
+
+            // Then restore the order type BEFORE setting table (to avoid auto-switch interference)
+            if (order.order_type_id && order.order_type) {
+              setSelectedOrderType(order.order_type as unknown as models.OrderType);
+            }
+
+            // Now set the rest of the order data
             setOrderItems(order.items || []);
             setSelectedTable(order.table || null);
             setSelectedCustomer(order.customer || null);
+
             toast.info(`Orden ${order.order_number} cargada`);
           }
         } else if (tableId) {
@@ -192,16 +304,27 @@ const POS: React.FC = () => {
           const table = tables.find(t => t.id === Number(tableId));
 
           if (table) {
-            setSelectedTable(table);
-
-            // Check if table has an active order
+            // Check if table has an active order BEFORE setting the table
             const existingOrder = await wailsOrderService.getOrderByTable(Number(tableId));
+
             if (existingOrder) {
+              // If there's an existing order, set it FIRST
               setCurrentOrder(existingOrder);
+
+              // Then restore the order type BEFORE setting table (to avoid auto-switch interference)
+              if (existingOrder.order_type_id && existingOrder.order_type) {
+                setSelectedOrderType(existingOrder.order_type as unknown as models.OrderType);
+              }
+
+              // Now set the table and other data
+              setSelectedTable(table);
               setOrderItems(existingOrder.items || []);
               setSelectedCustomer(existingOrder.customer || null);
+
               toast.info(`Orden de mesa ${table.number} cargada`);
             } else {
+              // New order - set table first (auto-switch will handle order type)
+              setSelectedTable(table);
               toast.info(`Nueva orden para mesa ${table.number}`);
             }
           }
@@ -242,6 +365,17 @@ const POS: React.FC = () => {
       setPaymentMethods(data);
     } catch (error) {
       toast.error('Error al cargar métodos de pago');
+    }
+  };
+
+  const loadOrderTypes = async () => {
+    try {
+      const data = await GetActiveOrderTypes();
+      setOrderTypes(data);
+      // Note: Default order type is set in a useEffect below, not here
+    } catch (error) {
+      console.error('Error loading order types:', error);
+      toast.error('Error al cargar tipos de pedido');
     }
   };
 
@@ -429,6 +563,7 @@ const POS: React.FC = () => {
     setSelectedTable(null);
     setSelectedCustomer(null);
     setNeedsElectronicInvoice(false);
+    loadedOrderIdRef.current = null; // Reset to allow loading new orders
   }, [currentOrder, selectedTable]);
 
   // Save order without payment (draft/pending)
@@ -438,10 +573,17 @@ const POS: React.FC = () => {
       return;
     }
 
+    // Validation: dine-in requires a table
+    if (selectedOrderType?.code === 'dine-in' && !selectedTable) {
+      toast.error('Debes seleccionar una mesa para pedidos "Para Comer Aquí"');
+      return;
+    }
+
     setIsSavingOrder(true);
     try {
       const orderData: CreateOrderData = {
-        type: orderType,
+        type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
+        order_type_id: selectedOrderType?.id as unknown as number,
         table_id: selectedTable?.id,
         customer_id: selectedCustomer?.id,
         employee_id: user?.id,
@@ -486,17 +628,24 @@ const POS: React.FC = () => {
       setSelectedTable(null);
       setSelectedCustomer(null);
       setNeedsElectronicInvoice(false);
+      loadedOrderIdRef.current = null; // Reset to allow loading new orders
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar la orden');
     } finally {
       setIsSavingOrder(false);
     }
-  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder]);
+  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder, selectedOrderType]);
 
   // Process payment
   const processPayment = useCallback(async (paymentData: any) => {
     if (!cashRegisterId) {
       toast.error('No hay caja abierta');
+      return;
+    }
+
+    // Validation: dine-in requires a table
+    if (selectedOrderType?.code === 'dine-in' && !selectedTable) {
+      toast.error('Debes seleccionar una mesa para pedidos "Para Comer Aquí"');
       return;
     }
 
@@ -511,7 +660,8 @@ const POS: React.FC = () => {
       } else {
         // Create new order
         const orderData: CreateOrderData = {
-          type: orderType,
+          type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
+          order_type_id: selectedOrderType?.id as unknown as number,
           table_id: selectedTable?.id,
           customer_id: selectedCustomer?.id,
           employee_id: user?.id,
@@ -561,7 +711,32 @@ const POS: React.FC = () => {
     } finally {
       setIsProcessingPayment(false);
     }
-  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, clearOrder, currentOrder]);
+  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, clearOrder, currentOrder, selectedOrderType]);
+
+  // Handle payment click - check if should auto-process or show dialog
+  const handlePaymentClick = useCallback(() => {
+    // Check if order type has skip_payment_dialog enabled
+    if (selectedOrderType?.skip_payment_dialog && selectedOrderType?.default_payment_method_id) {
+      console.log('Auto-processing payment for order type:', selectedOrderType.name);
+
+      // Create payment data with default payment method
+      const paymentData = {
+        payment_data: [{
+          payment_method_id: selectedOrderType.default_payment_method_id,
+          amount: orderTotals.total,
+        }],
+        needsInvoice: false,
+        sendByEmail: false,
+        printReceipt: true, // Always print receipt for auto-processed orders
+      };
+
+      // Process payment directly
+      processPayment(paymentData);
+    } else {
+      // Show payment dialog
+      setPaymentDialogOpen(true);
+    }
+  }, [selectedOrderType, orderTotals.total, processPayment]);
 
   // Handle edit notes for an order item
   const handleEditNotes = useCallback((item: OrderItem) => {
@@ -754,18 +929,17 @@ const POS: React.FC = () => {
           </Button>
           <Button
             startIcon={
-              orderType === 'dine_in' ? <RestaurantIcon /> :
-              orderType === 'delivery' ? <DeliveryIcon /> :
+              selectedOrderType?.code === 'dine-in' ? <RestaurantIcon /> :
+              selectedOrderType?.code === 'delivery' ? <DeliveryIcon /> :
               <FastfoodIcon />
             }
             onClick={() => setOrderTypeDialogOpen(true)}
             variant="contained"
             size="small"
-            color={orderType === 'dine_in' ? 'info' : orderType === 'delivery' ? 'warning' : 'success'}
+            color={selectedOrderType?.code === 'dine-in' ? 'info' : selectedOrderType?.code === 'delivery' ? 'warning' : 'success'}
+            style={{ backgroundColor: selectedOrderType?.display_color }}
           >
-            {orderType === 'dine_in' ? 'Mesa' :
-             orderType === 'delivery' ? 'Domicilio' :
-             'Para Llevar'}
+            {selectedOrderType?.name || 'Tipo'}
           </Button>
         </Box>
 
@@ -872,7 +1046,7 @@ const POS: React.FC = () => {
               color="success"
               size="large"
               startIcon={isProcessingPayment ? <CircularProgress size={20} color="inherit" /> : <PaymentIcon />}
-              onClick={() => setPaymentDialogOpen(true)}
+              onClick={handlePaymentClick}
               disabled={orderItems.length === 0 || !cashRegisterId || isSavingOrder || isProcessingPayment}
             >
               {isProcessingPayment ? 'Procesando...' : 'Pagar'}
@@ -910,16 +1084,22 @@ const POS: React.FC = () => {
           product={selectedProductForModifier}
           initialModifiers={selectedItemForModifierEdit?.modifiers?.map(m => m.modifier!).filter(Boolean) || []}
           onConfirm={(modifiers) => {
-            const totalPrice = selectedProductForModifier.price +
-              modifiers.reduce((sum, mod) => sum + mod.price_change, 0);
+            // IMPORTANT: unit_price should always be base product price (no modifiers)
+            // Modifiers are added to subtotal calculation only
+            // This matches backend calculation in order_service.go:659-669
+            const basePrice = selectedProductForModifier.price;
+            const modifiersPriceChange = modifiers.reduce((sum, mod) => sum + mod.price_change, 0);
 
             if (selectedItemForModifierEdit) {
               // Editing existing item - update it
               console.log('Updating existing item with new modifiers');
+              const quantity = selectedItemForModifierEdit.quantity;
+              const subtotal = (basePrice * quantity) + (modifiersPriceChange * quantity);
+
               const updatedItem: OrderItem = {
                 ...selectedItemForModifierEdit,
-                unit_price: totalPrice,
-                subtotal: totalPrice * selectedItemForModifierEdit.quantity,
+                unit_price: basePrice, // Base product price only (no modifiers)
+                subtotal: subtotal, // Base + modifiers
                 modifiers: modifiers.map(mod => ({
                   order_item_id: selectedItemForModifierEdit.id || 0,
                   modifier_id: mod.id!,
@@ -934,13 +1114,15 @@ const POS: React.FC = () => {
             } else {
               // Adding new product with modifiers
               console.log('Adding new product with modifiers');
+              const subtotal = basePrice + modifiersPriceChange;
+
               const newItem: OrderItem = {
                 id: Date.now(),
                 product_id: selectedProductForModifier.id!,
                 product: selectedProductForModifier,
                 quantity: 1,
-                unit_price: totalPrice,
-                subtotal: totalPrice,
+                unit_price: basePrice, // Base product price only (no modifiers)
+                subtotal: subtotal, // Base + modifiers
                 modifiers: modifiers.map(mod => ({
                   order_item_id: 0, // Will be set when order is created
                   modifier_id: mod.id!,
@@ -1065,45 +1247,39 @@ const POS: React.FC = () => {
         <DialogTitle>Seleccionar Tipo de Pedido</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-            <Button
-              variant={orderType === 'takeout' ? 'contained' : 'outlined'}
-              color="success"
-              size="large"
-              startIcon={<FastfoodIcon />}
-              onClick={() => {
-                setOrderType('takeout');
-                setOrderTypeDialogOpen(false);
-              }}
-              sx={{ justifyContent: 'flex-start', py: 2 }}
-            >
-              Para Llevar
-            </Button>
-            <Button
-              variant={orderType === 'dine_in' ? 'contained' : 'outlined'}
-              color="info"
-              size="large"
-              startIcon={<RestaurantIcon />}
-              onClick={() => {
-                setOrderType('dine_in');
-                setOrderTypeDialogOpen(false);
-              }}
-              sx={{ justifyContent: 'flex-start', py: 2 }}
-            >
-              Mesa / Para Comer Aquí
-            </Button>
-            <Button
-              variant={orderType === 'delivery' ? 'contained' : 'outlined'}
-              color="warning"
-              size="large"
-              startIcon={<DeliveryIcon />}
-              onClick={() => {
-                setOrderType('delivery');
-                setOrderTypeDialogOpen(false);
-              }}
-              sx={{ justifyContent: 'flex-start', py: 2 }}
-            >
-              Domicilio
-            </Button>
+            {orderTypes.map((orderType) => {
+              const isSelected = selectedOrderType?.id === orderType.id;
+              const IconComponent =
+                orderType.code === 'dine-in' ? RestaurantIcon :
+                orderType.code === 'delivery' ? DeliveryIcon :
+                FastfoodIcon;
+
+              return (
+                <Button
+                  key={orderType.id}
+                  variant={isSelected ? 'contained' : 'outlined'}
+                  size="large"
+                  startIcon={<IconComponent />}
+                  onClick={() => {
+                    setSelectedOrderType(orderType);
+                    setOrderTypeDialogOpen(false);
+                  }}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    py: 2,
+                    ...(isSelected && orderType.display_color && {
+                      backgroundColor: orderType.display_color,
+                      '&:hover': {
+                        backgroundColor: orderType.display_color,
+                        opacity: 0.9,
+                      }
+                    })
+                  }}
+                >
+                  {orderType.name}
+                </Button>
+              );
+            })}
           </Box>
         </DialogContent>
         <DialogActions>
