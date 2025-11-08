@@ -14,6 +14,7 @@ import {
   UpdatePaymentMethod,
   DeletePaymentMethod,
   RefundSale,
+  DeleteSale,
   GetSalesReport,
   PrintReceipt
 } from '../../wailsjs/go/services/SalesService';
@@ -49,6 +50,20 @@ function mapSale(w: models.Sale): Sale {
         unit_price: item.unit_price || 0,
         subtotal: item.subtotal || 0,
         notes: item.notes || '',
+        modifiers: (item.modifiers || []).map((mod) => ({
+          id: mod.id as unknown as number,
+          order_item_id: mod.order_item_id as unknown as number,
+          modifier_id: mod.modifier_id as unknown as number,
+          modifier: mod.modifier ? {
+            id: mod.modifier.id as unknown as number,
+            name: mod.modifier.name || '',
+            price_change: mod.modifier.price_change || 0,
+          } : undefined,
+          price_change: mod.price_change || 0,
+        })),
+        status: item.status || 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })),
       subtotal: w.order.subtotal || 0,
       tax: w.order.tax || 0,
@@ -224,7 +239,11 @@ class WailsSalesService {
   async getSalesHistory(limit: number = 100, offset: number = 0): Promise<{ sales: Sale[]; total: number }> {
     try {
       const result = await GetSalesHistory(limit, offset);
+      console.log('🔍 [SALES HISTORY] Raw result from backend:', result);
+      console.log('🔍 [SALES HISTORY] First sale items:', (result as any).sales?.[0]?.order?.items);
       const sales = (result as any).sales?.map(mapSale) || [];
+      console.log('🔍 [SALES HISTORY] Mapped sales:', sales);
+      console.log('🔍 [SALES HISTORY] First mapped sale items:', sales[0]?.order?.items);
       const total = (result as any).total || 0;
       return { sales, total };
     } catch (error) {
@@ -421,6 +440,15 @@ class WailsSalesService {
     } catch (error) {
       console.error('Error refunding sale:', error);
       throw new Error('Error al reembolsar venta');
+    }
+  }
+
+  async deleteSale(saleId: number, employeeId: number): Promise<void> {
+    try {
+      await DeleteSale(saleId, employeeId);
+    } catch (error) {
+      console.error('Error deleting sale:', error);
+      throw new Error('Error al eliminar venta');
     }
   }
 

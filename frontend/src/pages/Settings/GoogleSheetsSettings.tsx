@@ -474,6 +474,25 @@ const GoogleSheetsSettings: React.FC = () => {
               />
             </Stack>
           </Grid>
+
+          {/* Formato de Exportación */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Formato de exportación:
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={config.separate_by_order_type || false}
+                  onChange={(e) => updateConfig({ separate_by_order_type: e.target.checked })}
+                />
+              }
+              label="Separar ventas por tipo de pedido en columnas individuales"
+            />
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+              Cuando está activado, se crearán columnas separadas para cada tipo de pedido (Ej: domicilio_ventas, domicilio_ordenes, dine-in_ventas, etc.)
+            </Typography>
+          </Grid>
         </Grid>
 
         {/* Estado en Tiempo Real */}

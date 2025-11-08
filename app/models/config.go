@@ -243,6 +243,9 @@ type GoogleSheetsConfig struct {
 	IncludeProducts bool `json:"include_products"`
 	IncludeClients  bool `json:"include_clients"`
 
+	// Order Type Separation
+	SeparateByOrderType bool `json:"separate_by_order_type"` // Create separate columns for each order type
+
 	// Status
 	LastSyncAt     *time.Time `json:"last_sync_at,omitempty"`
 	LastSyncStatus string     `json:"last_sync_status"` // "success", "error", "pending"

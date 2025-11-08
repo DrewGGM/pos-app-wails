@@ -1823,6 +1823,7 @@ export namespace models {
 	    include_orders: boolean;
 	    include_products: boolean;
 	    include_clients: boolean;
+	    separate_by_order_type: boolean;
 	    last_sync_at?: time.Time;
 	    last_sync_status: string;
 	    last_sync_error: string;
@@ -1850,6 +1851,7 @@ export namespace models {
 	        this.include_orders = source["include_orders"];
 	        this.include_products = source["include_products"];
 	        this.include_clients = source["include_clients"];
+	        this.separate_by_order_type = source["separate_by_order_type"];
 	        this.last_sync_at = this.convertValues(source["last_sync_at"], time.Time);
 	        this.last_sync_status = source["last_sync_status"];
 	        this.last_sync_error = source["last_sync_error"];

@@ -12,6 +12,8 @@ export function DeleteCustomer(arg1:number):Promise<void>;
 
 export function DeletePaymentMethod(arg1:number):Promise<void>;
 
+export function DeleteSale(arg1:number,arg2:number):Promise<void>;
+
 export function GetAllPaymentMethods():Promise<Array<models.PaymentMethod>>;
 
 export function GetCustomer(arg1:number):Promise<models.Customer>;

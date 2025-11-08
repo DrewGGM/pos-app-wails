@@ -111,7 +111,9 @@ data class OrderType(
     @SerializedName("display_color") val displayColor: String,
     val icon: String,
     @SerializedName("is_active") val isActive: Boolean,
-    @SerializedName("display_order") val displayOrder: Int
+    @SerializedName("display_order") val displayOrder: Int,
+    @SerializedName("skip_payment_dialog") val skipPaymentDialog: Boolean = false,
+    @SerializedName("default_payment_method_id") val defaultPaymentMethodId: Int? = null
 )
 
 // Order (for viewing)

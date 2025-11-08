@@ -31,6 +31,12 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedTable = MutableStateFlow<Table?>(null)
     val selectedTable: StateFlow<Table?> = _selectedTable
 
+    private val _orderTypes = MutableStateFlow<List<OrderType>>(emptyList())
+    val orderTypes: StateFlow<List<OrderType>> = _orderTypes
+
+    private val _selectedOrderType = MutableStateFlow<OrderType?>(null)
+    val selectedOrderType: StateFlow<OrderType?> = _selectedOrderType
+
     private val _orders = MutableStateFlow<List<OrderResponse>>(emptyList())
     val orders: StateFlow<List<OrderResponse>> = _orders
 
@@ -265,6 +271,24 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
 
+            // Load order types
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getOrderTypes()")
+            val orderTypesResult = apiService?.getOrderTypes()
+            android.util.Log.d("WaiterViewModel", "loadInitialData: getOrderTypes() returned: $orderTypesResult")
+
+            orderTypesResult?.onSuccess { orderTypeList ->
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${orderTypeList.size} order types from API")
+                _orderTypes.value = orderTypeList
+                // Set first order type as default if none selected
+                if (_selectedOrderType.value == null && orderTypeList.isNotEmpty()) {
+                    _selectedOrderType.value = orderTypeList.first()
+                    android.util.Log.d("WaiterViewModel", "loadInitialData: Set default order type to ${orderTypeList.first().name}")
+                }
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading order types from API: ${error.message}", error)
+                // Continue without order types - fallback to old behavior
+            }
+
             // Load pending orders
             if (_uiState.value != UiState.Ready) {
                 android.util.Log.d("WaiterViewModel", "loadInitialData: Loading orders")
@@ -450,12 +474,19 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         _selectedCategory.value = category
     }
 
+    fun selectOrderType(orderType: OrderType) {
+        _selectedOrderType.value = orderType
+        android.util.Log.d("WaiterViewModel", "Selected order type: ${orderType.name} (id: ${orderType.id}, code: ${orderType.code})")
+    }
+
     fun sendOrder() {
         if (_cart.value.isEmpty()) return
 
         val table = _selectedTable.value
-        // Automatically detect order type based on whether a table is selected
-        val orderType = if (table != null) "dine_in" else "takeout"
+        val selectedType = _selectedOrderType.value
+
+        // Fallback to deprecated type detection if no order type selected
+        val orderType = selectedType?.code ?: (if (table != null) "dine_in" else "takeout")
 
         viewModelScope.launch {
             _uiState.value = UiState.SendingOrder
@@ -483,7 +514,8 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
             val order = OrderRequest(
                 orderNumber = orderNumber,
-                type = orderType,
+                orderTypeId = selectedType?.id, // Use order_type_id (new field)
+                type = orderType, // Keep deprecated field for backward compatibility
                 tableId = table?.id,
                 items = items,
                 subtotal = cartTotal,

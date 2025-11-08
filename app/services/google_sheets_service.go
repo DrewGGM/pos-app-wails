@@ -352,7 +352,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 	}
 
 	// Check if sheet has headers, if not, add them
-	if err := s.ensureHeaders(srv, config); err != nil {
+	if err := s.ensureHeaders(srv, config, report); err != nil {
 		return fmt.Errorf("failed to ensure headers: %w", err)
 	}
 
@@ -375,17 +375,44 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 	}
 
 	// Prepare row data
-	row := []interface{}{
-		report.Fecha,
-		report.VentasTotales,
-		report.VentasDIAN,
-		report.VentasNoDIAN,
-		report.NumeroOrdenes,
-		report.ProductosVendidos,
-		report.TicketPromedio,
-		string(productsJSON),
-		string(paymentsJSON),
-		string(orderTypesJSON),
+	var row []interface{}
+
+	if config.SeparateByOrderType && len(report.DetalleTiposPedido) > 0 {
+		// Base columns
+		row = []interface{}{
+			report.Fecha,
+			report.VentasTotales,
+			report.VentasDIAN,
+			report.VentasNoDIAN,
+			report.NumeroOrdenes,
+			report.ProductosVendidos,
+			report.TicketPromedio,
+		}
+
+		// Add columns for each order type (in the same order as headers)
+		for _, ot := range report.DetalleTiposPedido {
+			row = append(row, ot.Amount)  // amount column
+			row = append(row, ot.Count)   // count column
+		}
+
+		// Add JSON details at the end
+		row = append(row, string(productsJSON))
+		row = append(row, string(paymentsJSON))
+		row = append(row, string(orderTypesJSON))
+	} else {
+		// Original format
+		row = []interface{}{
+			report.Fecha,
+			report.VentasTotales,
+			report.VentasDIAN,
+			report.VentasNoDIAN,
+			report.NumeroOrdenes,
+			report.ProductosVendidos,
+			report.TicketPromedio,
+			string(productsJSON),
+			string(paymentsJSON),
+			string(orderTypesJSON),
+		}
 	}
 
 	// Check if a row with this date already exists
@@ -394,13 +421,25 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		return fmt.Errorf("failed to check existing row: %w", err)
 	}
 
+	// Calculate end column based on row length
+	var endColumn string
+	numColumns := len(row)
+	if numColumns <= 26 {
+		endColumn = string(rune('A' + numColumns - 1))
+	} else {
+		// For columns beyond Z (AA, AB, etc.)
+		firstLetter := (numColumns - 1) / 26 - 1
+		secondLetter := (numColumns - 1) % 26
+		endColumn = string(rune('A'+firstLetter)) + string(rune('A'+secondLetter))
+	}
+
 	valueRange := &sheets.ValueRange{
 		Values: [][]interface{}{row},
 	}
 
 	if rowIndex > 0 {
 		// Update existing row
-		sheetRange := fmt.Sprintf("%s!A%d:J%d", config.SheetName, rowIndex, rowIndex)
+		sheetRange := fmt.Sprintf("%s!A%d:%s%d", config.SheetName, rowIndex, endColumn, rowIndex)
 		_, err = srv.Spreadsheets.Values.Update(config.SpreadsheetID, sheetRange, valueRange).
 			ValueInputOption("USER_ENTERED").
 			Do()
@@ -409,7 +448,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		}
 	} else {
 		// Append new row
-		sheetRange := fmt.Sprintf("%s!A:J", config.SheetName)
+		sheetRange := fmt.Sprintf("%s!A:%s", config.SheetName, endColumn)
 		_, err = srv.Spreadsheets.Values.Append(config.SpreadsheetID, sheetRange, valueRange).
 			ValueInputOption("USER_ENTERED").
 			Do()
@@ -430,17 +469,47 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 }
 
 // ensureHeaders ensures the spreadsheet has the correct headers
-func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.GoogleSheetsConfig) error {
-	// Read first row
-	sheetRange := fmt.Sprintf("%s!A1:J1", config.SheetName)
-	resp, err := srv.Spreadsheets.Values.Get(config.SpreadsheetID, sheetRange).Do()
-	if err != nil {
-		return err
-	}
+func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.GoogleSheetsConfig, report *ReportData) error {
+	// Determine the number of columns needed
+	var endColumn string
+	var headers []interface{}
 
-	// If no data or headers are missing, add them
-	if len(resp.Values) == 0 || len(resp.Values[0]) < 10 {
-		headers := []interface{}{
+	if config.SeparateByOrderType && len(report.DetalleTiposPedido) > 0 {
+		// Base headers (A-G)
+		headers = []interface{}{
+			"fecha",
+			"ventas_totales",
+			"ventas_dian",
+			"ventas_no_dian",
+			"ordenes",
+			"productos_vendidos",
+			"ticket_promedio",
+		}
+
+		// Add a header for each order type (amount and count)
+		for _, ot := range report.DetalleTiposPedido {
+			headers = append(headers, fmt.Sprintf("%s_ventas", ot.OrderType))
+			headers = append(headers, fmt.Sprintf("%s_ordenes", ot.OrderType))
+		}
+
+		// Add final headers for JSON details
+		headers = append(headers, "detalle_productos")
+		headers = append(headers, "detalle_tipos_pago")
+		headers = append(headers, "detalle_tipos_pedido")
+
+		// Calculate end column (A=0, B=1, ... Z=25, AA=26, etc.)
+		numColumns := len(headers)
+		if numColumns <= 26 {
+			endColumn = string(rune('A' + numColumns - 1))
+		} else {
+			// For columns beyond Z (AA, AB, etc.)
+			firstLetter := (numColumns - 1) / 26 - 1
+			secondLetter := (numColumns - 1) % 26
+			endColumn = string(rune('A'+firstLetter)) + string(rune('A'+secondLetter))
+		}
+	} else {
+		// Original headers (A-J)
+		headers = []interface{}{
 			"fecha",
 			"ventas_totales",
 			"ventas_dian",
@@ -452,7 +521,18 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"detalle_tipos_pago",
 			"detalle_tipos_pedido",
 		}
+		endColumn = "J"
+	}
 
+	// Read first row
+	sheetRange := fmt.Sprintf("%s!A1:%s1", config.SheetName, endColumn)
+	resp, err := srv.Spreadsheets.Values.Get(config.SpreadsheetID, sheetRange).Do()
+	if err != nil {
+		return err
+	}
+
+	// If no data or headers are missing, add them
+	if len(resp.Values) == 0 || len(resp.Values[0]) < len(headers) {
 		valueRange := &sheets.ValueRange{
 			Values: [][]interface{}{headers},
 		}

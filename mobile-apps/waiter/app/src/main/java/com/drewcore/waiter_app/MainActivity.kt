@@ -102,6 +102,8 @@ fun WaiterApp(
     val products by viewModel.products.collectAsState()
     val tables by viewModel.tables.collectAsState()
     val selectedTable by viewModel.selectedTable.collectAsState()
+    val orderTypes by viewModel.orderTypes.collectAsState()
+    val selectedOrderType by viewModel.selectedOrderType.collectAsState()
     val orders by viewModel.orders.collectAsState()
     val cart by viewModel.cart.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -188,11 +190,14 @@ fun WaiterApp(
                                 categories = viewModel.categories,
                                 selectedCategory = selectedCategory,
                                 selectedTable = selectedTable,
+                                orderTypes = orderTypes,
+                                selectedOrderType = selectedOrderType,
                                 cart = cart,
                                 cartTotal = viewModel.cartTotal,
                                 cartItemCount = viewModel.cartItemCount,
                                 isEditingOrder = currentOrderId != null,
                                 onCategorySelected = { viewModel.selectCategory(it) },
+                                onOrderTypeSelected = { viewModel.selectOrderType(it) },
                                 onAddToCart = { product, modifiers, notes, customPrice -> viewModel.addToCart(product, modifiers, notes, customPrice) },
                                 onUpdateQuantity = { item, qty -> viewModel.updateQuantity(item, qty) },
                                 onUpdateNotes = { item, notes -> viewModel.updateNotes(item, notes) },
@@ -264,11 +269,14 @@ fun ProductSelectionWithCart(
     categories: List<String>,
     selectedCategory: String?,
     selectedTable: com.drewcore.waiter_app.data.models.Table?,
+    orderTypes: List<com.drewcore.waiter_app.data.models.OrderType>,
+    selectedOrderType: com.drewcore.waiter_app.data.models.OrderType?,
     cart: List<com.drewcore.waiter_app.data.models.CartItem>,
     cartTotal: Double,
     cartItemCount: Int,
     isEditingOrder: Boolean = false,
     onCategorySelected: (String?) -> Unit,
+    onOrderTypeSelected: (com.drewcore.waiter_app.data.models.OrderType) -> Unit,
     onAddToCart: (com.drewcore.waiter_app.data.models.Product, List<com.drewcore.waiter_app.data.models.Modifier>, String, Double?) -> Unit,
     onUpdateQuantity: (com.drewcore.waiter_app.data.models.CartItem, Int) -> Unit,
     onUpdateNotes: (com.drewcore.waiter_app.data.models.CartItem, String) -> Unit,

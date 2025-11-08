@@ -84,6 +84,33 @@ class PosApiService(private val serverIp: String) {
     }
 
     /**
+     * Fetches active order types from POS server
+     */
+    suspend fun getOrderTypes(): Result<List<com.drewcore.waiter_app.data.models.OrderType>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/order-types/active"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val type = object : TypeToken<List<com.drewcore.waiter_app.data.models.OrderType>>() {}.type
+                val orderTypes = gson.fromJson<List<com.drewcore.waiter_app.data.models.OrderType>>(body, type)
+                Result.success(orderTypes)
+            } else {
+                Result.failure(Exception("Error fetching order types: ${response.code}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching order types", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetches available tables from POS server
      */
     suspend fun getTables(): Result<List<com.drewcore.waiter_app.data.models.Table>> = withContext(Dispatchers.IO) {

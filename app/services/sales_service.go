@@ -5,6 +5,7 @@ import (
 	"PosApp/app/models"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -286,6 +287,80 @@ func (s *SalesService) RefundSale(saleID uint, amount float64, reason string, em
 				sale.SaleNumber, employeeID)
 		}
 
+		return nil
+	})
+}
+
+// DeleteSale deletes a sale and all related data (cascade)
+func (s *SalesService) DeleteSale(saleID uint, employeeID uint) error {
+	var sale models.Sale
+	if err := s.db.Preload("Order.Items").
+		Preload("PaymentDetails").
+		Preload("ElectronicInvoice").
+		First(&sale, saleID).Error; err != nil {
+		return fmt.Errorf("sale not found: %w", err)
+	}
+
+	log.Printf("DeleteSale: Deleting sale ID=%d, SaleNumber=%s", saleID, sale.SaleNumber)
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Return inventory if the sale was completed
+		if sale.Status == "completed" && sale.Order != nil {
+			for _, item := range sale.Order.Items {
+				if err := s.productSvc.AdjustStock(item.ProductID, item.Quantity,
+					fmt.Sprintf("Sale deletion - Sale %s", sale.SaleNumber), employeeID); err != nil {
+					log.Printf("Warning: Failed to adjust stock for product %d: %v", item.ProductID, err)
+					// Continue even if stock adjustment fails
+				}
+			}
+		}
+
+		// 2. Delete cash movements related to this sale
+		if sale.CashRegisterID > 0 {
+			if err := tx.Where("cash_register_id = ? AND reference = ?", sale.CashRegisterID, sale.SaleNumber).
+				Delete(&models.CashMovement{}).Error; err != nil {
+				log.Printf("Warning: Failed to delete cash movements: %v", err)
+				// Continue even if cash movement deletion fails
+			}
+		}
+
+		// 3. Delete electronic invoice if exists (cascade will delete it, but being explicit)
+		if sale.ElectronicInvoice != nil {
+			if err := tx.Delete(&sale.ElectronicInvoice).Error; err != nil {
+				return fmt.Errorf("failed to delete electronic invoice: %w", err)
+			}
+		}
+
+		// 4. Delete payment details (should cascade, but being explicit)
+		if err := tx.Where("sale_id = ?", saleID).Delete(&models.Payment{}).Error; err != nil {
+			return fmt.Errorf("failed to delete payment details: %w", err)
+		}
+
+		// 5. Delete the order and its items (cascade)
+		if sale.Order != nil {
+			// Delete order item modifiers first
+			if err := tx.Where("order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", sale.OrderID).
+				Delete(&models.OrderItemModifier{}).Error; err != nil {
+				return fmt.Errorf("failed to delete order item modifiers: %w", err)
+			}
+
+			// Delete order items
+			if err := tx.Where("order_id = ?", sale.OrderID).Delete(&models.OrderItem{}).Error; err != nil {
+				return fmt.Errorf("failed to delete order items: %w", err)
+			}
+
+			// Delete the order
+			if err := tx.Delete(&models.Order{}, sale.OrderID).Error; err != nil {
+				return fmt.Errorf("failed to delete order: %w", err)
+			}
+		}
+
+		// 6. Finally, delete the sale
+		if err := tx.Delete(&sale).Error; err != nil {
+			return fmt.Errorf("failed to delete sale: %w", err)
+		}
+
+		log.Printf("DeleteSale: Successfully deleted sale %s and all related data", sale.SaleNumber)
 		return nil
 	})
 }

@@ -42,6 +42,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Pending as PendingIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -186,6 +187,27 @@ const Sales: React.FC = () => {
       loadSalesHistory();
     } catch (error) {
       toast.error('Error al procesar reembolso');
+    }
+  };
+
+  const handleDeleteSale = async (sale: Sale) => {
+    if (!window.confirm('¿Está seguro de eliminar esta venta? Esta acción no se puede deshacer y eliminará toda la información relacionada (orden, items, pagos, factura electrónica).')) {
+      return;
+    }
+
+    if (!user) {
+      toast.error('Usuario no autenticado');
+      return;
+    }
+
+    try {
+      await wailsSalesService.deleteSale(sale.id!, user.id!);
+      toast.success('Venta eliminada correctamente');
+      handleMenuClose();
+      loadSalesHistory();
+    } catch (error: any) {
+      console.error('Error deleting sale:', error);
+      toast.error(error?.message || 'Error al eliminar venta');
     }
   };
 
@@ -619,9 +641,16 @@ const Sales: React.FC = () => {
           </MenuItem>
         )}
         {selectedSale?.status === 'completed' && (
-          <MenuItem onClick={() => selectedSale && handleOpenRefundDialog(selectedSale)}>
-            Reembolso
-          </MenuItem>
+          <>
+            <MenuItem onClick={() => selectedSale && handleOpenRefundDialog(selectedSale)}>
+              Reembolso
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => selectedSale && handleDeleteSale(selectedSale)} sx={{ color: 'error.main' }}>
+              <DeleteIcon sx={{ mr: 1 }} />
+              Eliminar Venta
+            </MenuItem>
+          </>
         )}
       </Menu>
 

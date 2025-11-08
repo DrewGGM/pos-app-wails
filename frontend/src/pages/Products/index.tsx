@@ -103,6 +103,8 @@ const Products: React.FC = () => {
     min_stock: 5,
     barcode: '',
     active: true,
+    has_variable_price: false, // Variable price disabled by default
+    track_inventory: true, // Track inventory by default
     tax_type_id: 1, // IVA 19% by default
     unit_measure_id: 796, // Porción by default (appropriate for restaurants)
   });
