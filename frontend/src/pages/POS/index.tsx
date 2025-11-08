@@ -727,7 +727,7 @@ const POS: React.FC = () => {
         }],
         needsInvoice: false,
         sendByEmail: false,
-        printReceipt: true, // Always print receipt for auto-processed orders
+        printReceipt: selectedOrderType.auto_print_receipt !== false, // Use configured value, default to true
       };
 
       // Process payment directly

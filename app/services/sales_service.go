@@ -369,13 +369,18 @@ func (s *SalesService) DeleteSale(saleID uint, employeeID uint) error {
 func (s *SalesService) GetSale(id uint) (*models.Sale, error) {
 	var sale models.Sale
 
-	err := s.db.Preload("Order.Items.Product").
-		Preload("Order.Items.Modifiers.Modifier").
+	// IMPORTANT: Load relationships in hierarchical order
+	err := s.db.Preload("Order").                             // Load Order first
+		Preload("Order.Items").                       // Then load Items
+		Preload("Order.Items.Product").               // Then load Product for each Item
+		Preload("Order.Items.Modifiers").             // Load Modifiers
+		Preload("Order.Items.Modifiers.Modifier").    // Load Modifier details
 		Preload("Order.Table").
 		Preload("Order.OrderType").
 		Preload("Customer").
 		Preload("Employee").
-		Preload("PaymentDetails.PaymentMethod").
+		Preload("PaymentDetails").                    // Load PaymentDetails first
+		Preload("PaymentDetails.PaymentMethod").      // Then load PaymentMethod
 		Preload("ElectronicInvoice").
 		First(&sale, id).Error
 
@@ -386,13 +391,18 @@ func (s *SalesService) GetSale(id uint) (*models.Sale, error) {
 func (s *SalesService) GetSaleByNumber(saleNumber string) (*models.Sale, error) {
 	var sale models.Sale
 
-	err := s.db.Preload("Order.Items.Product").
-		Preload("Order.Items.Modifiers.Modifier").
+	// IMPORTANT: Load relationships in hierarchical order
+	err := s.db.Preload("Order").                             // Load Order first
+		Preload("Order.Items").                       // Then load Items
+		Preload("Order.Items.Product").               // Then load Product for each Item
+		Preload("Order.Items.Modifiers").             // Load Modifiers
+		Preload("Order.Items.Modifiers.Modifier").    // Load Modifier details
 		Preload("Order.Table").
 		Preload("Order.OrderType").
 		Preload("Customer").
 		Preload("Employee").
-		Preload("PaymentDetails.PaymentMethod").
+		Preload("PaymentDetails").                    // Load PaymentDetails first
+		Preload("PaymentDetails.PaymentMethod").      // Then load PaymentMethod
 		Preload("ElectronicInvoice").
 		Where("sale_number = ?", saleNumber).
 		First(&sale).Error
@@ -411,13 +421,18 @@ func (s *SalesService) GetTodaySales() ([]models.Sale, error) {
 		return s.getLocalTodaySales(today)
 	}
 
+	// IMPORTANT: Load relationships in hierarchical order
 	err := s.db.Preload("Customer").
 		Preload("Employee").
-		Preload("Order.Items.Product").
-		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order").                             // Load Order first
+		Preload("Order.Items").                       // Then load Items
+		Preload("Order.Items.Product").               // Then load Product for each Item
+		Preload("Order.Items.Modifiers").             // Load Modifiers
+		Preload("Order.Items.Modifiers.Modifier").    // Load Modifier details
 		Preload("Order.Table").
 		Preload("Order.OrderType").
-		Preload("PaymentDetails.PaymentMethod").
+		Preload("PaymentDetails").                    // Load PaymentDetails first
+		Preload("PaymentDetails.PaymentMethod").      // Then load PaymentMethod
 		Where("DATE(created_at) = ?", today).
 		Order("created_at DESC").
 		Find(&sales).Error
@@ -506,14 +521,19 @@ func (s *SalesService) GetSalesHistory(limit, offset int) (map[string]interface{
 	s.db.Model(&models.Sale{}).Count(&total)
 
 	// Get paginated results
+	// IMPORTANT: Load relationships in hierarchical order
 	err := s.db.Preload("Customer").
 		Preload("Employee").
 		Preload("ElectronicInvoice").
-		Preload("Order.Items.Product").
-		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Order").                             // Load Order first
+		Preload("Order.Items").                       // Then load Items
+		Preload("Order.Items.Product").               // Then load Product for each Item
+		Preload("Order.Items.Modifiers").             // Load Modifiers
+		Preload("Order.Items.Modifiers.Modifier").    // Load Modifier details
 		Preload("Order.Table").
 		Preload("Order.OrderType").
-		Preload("PaymentDetails.PaymentMethod").
+		Preload("PaymentDetails").                    // Load PaymentDetails first
+		Preload("PaymentDetails.PaymentMethod").      // Then load PaymentMethod
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).

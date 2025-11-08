@@ -9,19 +9,22 @@ import (
 	"time"
 	"gorm.io/gorm"
 	"PosApp/app/models"
+	"PosApp/app/services"
 )
 
 // RESTHandlers provides HTTP REST endpoints for mobile apps
 type RESTHandlers struct {
-	db     *gorm.DB
-	server *Server
+	db           *gorm.DB
+	server       *Server
+	orderService *services.OrderService
 }
 
 // NewRESTHandlers creates a new REST handlers instance
-func NewRESTHandlers(db *gorm.DB, server *Server) *RESTHandlers {
+func NewRESTHandlers(db *gorm.DB, server *Server, orderService *services.OrderService) *RESTHandlers {
 	return &RESTHandlers{
-		db:     db,
-		server: server,
+		db:           db,
+		server:       server,
+		orderService: orderService,
 	}
 }
 
@@ -196,35 +199,8 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 
 	log.Printf("REST API: Order data: %+v", orderReq)
 
-	// Create order in database
-	order := models.Order{
-		OrderNumber: orderReq.OrderNumber,
-		Type:        orderReq.Type,
-		OrderTypeID: orderReq.OrderTypeID,
-		Status:      models.OrderStatus(orderReq.Status),
-		TableID:     orderReq.TableID,
-		Subtotal:    orderReq.Subtotal,
-		Tax:         orderReq.Tax,
-		Total:       orderReq.Total,
-		Notes:       orderReq.Notes,
-		Source:      orderReq.Source,
-		EmployeeID:  orderReq.EmployeeID,
-	}
-
-	// DEPRECATED: Legacy takeout number assignment
-	// The new system uses OrderTypeService in OrderService.CreateOrder()
-	// This can be removed after migration is complete
-	if order.Type == "takeout" && order.OrderTypeID == nil {
-		nextNumber, err := h.getNextAvailableTakeoutNumber()
-		if err != nil {
-			log.Printf("REST API: Error getting next takeout number: %v", err)
-		} else {
-			order.TakeoutNumber = &nextNumber
-			log.Printf("REST API: Assigned takeout number %d to order", nextNumber)
-		}
-	}
-
-	// Add items
+	// Build order items
+	var items []models.OrderItem
 	for _, itemReq := range orderReq.Items {
 		// Use UnitPrice if provided, otherwise fall back to Price
 		unitPrice := itemReq.UnitPrice
@@ -250,13 +226,23 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 			item.Modifiers = append(item.Modifiers, modifier)
 		}
 
-		order.Items = append(order.Items, item)
+		items = append(items, item)
 	}
 
-	// Save to database
-	if err := h.db.Create(&order).Error; err != nil {
+	// Use OrderService to create the order (handles sequential numbers and order types)
+	order, err := h.orderService.CreateOrder(
+		orderReq.OrderNumber,
+		orderReq.OrderTypeID, // Pass order_type_id
+		orderReq.Type,        // Legacy type field
+		items,
+		orderReq.TableID,
+		orderReq.EmployeeID,
+		orderReq.Notes,
+		orderReq.Source,
+	)
+	if err != nil {
 		log.Printf("REST API: Error creating order: %v", err)
-		http.Error(w, "Error creating order", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Error creating order: %v", err), http.StatusInternalServerError)
 		return
 	}
 

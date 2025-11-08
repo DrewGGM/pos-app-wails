@@ -66,6 +66,7 @@ const OrderTypesSettings: React.FC = () => {
     display_order: 0,
     skip_payment_dialog: false,
     default_payment_method_id: undefined,
+    auto_print_receipt: true,
   });
 
   useEffect(() => {
@@ -107,6 +108,7 @@ const OrderTypesSettings: React.FC = () => {
         display_order: type.display_order || 0,
         skip_payment_dialog: type.skip_payment_dialog || false,
         default_payment_method_id: type.default_payment_method_id || undefined,
+        auto_print_receipt: type.auto_print_receipt !== false, // Default to true if not set
       });
     } else {
       setEditingType(null);
@@ -121,6 +123,7 @@ const OrderTypesSettings: React.FC = () => {
         display_order: orderTypes.length,
         skip_payment_dialog: false,
         default_payment_method_id: undefined,
+        auto_print_receipt: true,
       });
     }
     setOpenDialog(true);
@@ -157,6 +160,7 @@ const OrderTypesSettings: React.FC = () => {
         display_order: formData.display_order || 0,
         skip_payment_dialog: formData.skip_payment_dialog || false,
         default_payment_method_id: formData.default_payment_method_id || undefined,
+        auto_print_receipt: formData.auto_print_receipt !== false, // Default to true
       };
 
       // Only include timestamps when editing (GORM will auto-set them when creating)
@@ -456,24 +460,41 @@ const OrderTypesSettings: React.FC = () => {
               </Grid>
 
               {formData.skip_payment_dialog && (
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Método de pago por defecto"
-                    value={formData.default_payment_method_id || ''}
-                    onChange={(e) => setFormData({ ...formData, default_payment_method_id: e.target.value ? parseInt(e.target.value) : undefined })}
-                    SelectProps={{ native: true }}
-                    required
-                  >
-                    <option value="">Seleccione un método de pago</option>
-                    {paymentMethods.map((method) => (
-                      <option key={method.id} value={method.id}>
-                        {method.name}
-                      </option>
-                    ))}
-                  </TextField>
-                </Grid>
+                <>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Método de pago por defecto"
+                      value={formData.default_payment_method_id || ''}
+                      onChange={(e) => setFormData({ ...formData, default_payment_method_id: e.target.value ? parseInt(e.target.value) : undefined })}
+                      SelectProps={{ native: true }}
+                      required
+                    >
+                      <option value="">Seleccione un método de pago</option>
+                      {paymentMethods.map((method) => (
+                        <option key={method.id} value={method.id}>
+                          {method.name}
+                        </option>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={formData.auto_print_receipt !== false}
+                          onChange={(e) => setFormData({ ...formData, auto_print_receipt: e.target.checked })}
+                        />
+                      }
+                      label="Imprimir recibo automáticamente"
+                    />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+                      Si se activa, se imprimirá el recibo automáticamente al procesar el pago
+                    </Typography>
+                  </Grid>
+                </>
               )}
             </Grid>
           </DialogContent>

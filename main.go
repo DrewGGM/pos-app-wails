@@ -177,6 +177,8 @@ func (a *App) InitializeServicesAfterSetup() error {
 	// Set WebSocket server on OrderService if available
 	if a.WSServer != nil && a.OrderService != nil {
 		a.OrderService.SetWebSocketServer(a.WSServer)
+		// Also set OrderService on WebSocket server for REST API endpoints
+		a.WSServer.SetOrderService(a.OrderService)
 	}
 
 	// Initialize Google Sheets services

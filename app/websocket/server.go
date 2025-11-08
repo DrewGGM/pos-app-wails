@@ -71,6 +71,7 @@ type Server struct {
 	mu           sync.RWMutex
 	port         string
 	db           *gorm.DB
+	orderService *services.OrderService
 	restHandlers *RESTHandlers
 	mdnsServer   interface{} // zeroconf.Server
 	mdnsShutdown chan bool
@@ -99,8 +100,25 @@ func NewServer(port string) *Server {
 // SetDB sets the database connection for REST API endpoints
 func (s *Server) SetDB(db *gorm.DB) {
 	s.db = db
-	s.restHandlers = NewRESTHandlers(db, s)
-	log.Println("WebSocket server: Database connection set for REST API")
+	// Initialize REST handlers if we have orderService, otherwise wait for SetOrderService
+	if s.orderService != nil {
+		s.restHandlers = NewRESTHandlers(db, s, s.orderService)
+		log.Println("WebSocket server: Database connection set for REST API with OrderService")
+	} else {
+		log.Println("WebSocket server: Database connection set, waiting for OrderService")
+	}
+}
+
+// SetOrderService sets the order service for creating orders via REST API
+func (s *Server) SetOrderService(orderService *services.OrderService) {
+	s.orderService = orderService
+	// Initialize REST handlers if we have DB, otherwise wait for SetDB
+	if s.db != nil {
+		s.restHandlers = NewRESTHandlers(s.db, s, orderService)
+		log.Println("WebSocket server: OrderService set for REST API")
+	} else {
+		log.Println("WebSocket server: OrderService set, waiting for Database")
+	}
 }
 
 // Start starts the WebSocket server
