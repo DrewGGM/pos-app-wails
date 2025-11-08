@@ -537,10 +537,11 @@ const POS: React.FC = () => {
   }, [orderItems, companyLiabilityId]);
 
   // Clear order (delete if exists and free table)
-  const clearOrder = useCallback(async () => {
+  const clearOrder = useCallback(async (skipDelete = false) => {
     try {
-      // If there's a saved order, delete it from database
-      if (currentOrder && currentOrder.id) {
+      // If there's a saved order and it hasn't been paid yet, delete it from database
+      // Don't delete paid orders - they should remain in the system
+      if (currentOrder && currentOrder.id && !skipDelete && currentOrder.status !== 'paid') {
         await wailsOrderService.deleteOrder(currentOrder.id);
 
         // Free the table if it was occupied
@@ -549,7 +550,10 @@ const POS: React.FC = () => {
         }
 
         toast.success('Pedido eliminado y mesa liberada');
-      } else {
+      } else if (!skipDelete && currentOrder?.status === 'paid') {
+        // Order was already paid, just clear local state
+        console.log('Order already paid, not deleting from database');
+      } else if (!skipDelete) {
         toast.info('Orden cancelada');
       }
     } catch (error: any) {
@@ -699,8 +703,8 @@ const POS: React.FC = () => {
 
       toast.success('Venta procesada exitosamente');
 
-      // Clear order
-      clearOrder();
+      // Clear order (skip delete since it was already paid)
+      clearOrder(true);
       setPaymentDialogOpen(false);
 
       // Note: Receipt printing is now controlled by the printReceipt checkbox
@@ -1022,7 +1026,7 @@ const POS: React.FC = () => {
                 variant="outlined"
                 color="error"
                 startIcon={<ClearIcon />}
-                onClick={clearOrder}
+                onClick={() => clearOrder(false)}
                 disabled={orderItems.length === 0}
               >
                 Cancelar

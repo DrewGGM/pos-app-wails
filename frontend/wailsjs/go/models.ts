@@ -1046,6 +1046,7 @@ export namespace models {
 	    display_order: number;
 	    skip_payment_dialog: boolean;
 	    default_payment_method_id?: number;
+	    auto_print_receipt: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	    deleted_at?: gorm.DeletedAt;
@@ -1067,6 +1068,7 @@ export namespace models {
 	        this.display_order = source["display_order"];
 	        this.skip_payment_dialog = source["skip_payment_dialog"];
 	        this.default_payment_method_id = source["default_payment_method_id"];
+	        this.auto_print_receipt = source["auto_print_receipt"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);

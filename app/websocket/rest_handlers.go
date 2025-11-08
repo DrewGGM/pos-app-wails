@@ -9,18 +9,23 @@ import (
 	"time"
 	"gorm.io/gorm"
 	"PosApp/app/models"
-	"PosApp/app/services"
 )
+
+// OrderCreator interface defines the contract for creating orders
+// This avoids importing the services package directly, breaking the import cycle
+type OrderCreator interface {
+	CreateOrder(order *models.Order) (*models.Order, error)
+}
 
 // RESTHandlers provides HTTP REST endpoints for mobile apps
 type RESTHandlers struct {
 	db           *gorm.DB
 	server       *Server
-	orderService *services.OrderService
+	orderService OrderCreator
 }
 
 // NewRESTHandlers creates a new REST handlers instance
-func NewRESTHandlers(db *gorm.DB, server *Server, orderService *services.OrderService) *RESTHandlers {
+func NewRESTHandlers(db *gorm.DB, server *Server, orderService OrderCreator) *RESTHandlers {
 	return &RESTHandlers{
 		db:           db,
 		server:       server,
@@ -229,41 +234,43 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 		items = append(items, item)
 	}
 
+	// Build the Order object
+	order := &models.Order{
+		Type:        orderReq.Type, // Legacy field
+		OrderTypeID: orderReq.OrderTypeID,
+		TableID:     orderReq.TableID,
+		EmployeeID:  orderReq.EmployeeID,
+		Items:       items,
+		Notes:       orderReq.Notes,
+		Source:      orderReq.Source,
+	}
+
 	// Use OrderService to create the order (handles sequential numbers and order types)
-	order, err := h.orderService.CreateOrder(
-		orderReq.OrderNumber,
-		orderReq.OrderTypeID, // Pass order_type_id
-		orderReq.Type,        // Legacy type field
-		items,
-		orderReq.TableID,
-		orderReq.EmployeeID,
-		orderReq.Notes,
-		orderReq.Source,
-	)
+	createdOrder, err := h.orderService.CreateOrder(order)
 	if err != nil {
 		log.Printf("REST API: Error creating order: %v", err)
 		http.Error(w, fmt.Sprintf("Error creating order: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("REST API: Order created successfully: %s (ID: %d)", order.OrderNumber, order.ID)
+	log.Printf("REST API: Order created successfully: %s (ID: %d)", createdOrder.OrderNumber, createdOrder.ID)
 
 	// Mark table as occupied if it's a dine-in order
-	if order.TableID != nil && order.Status == "pending" {
-		h.db.Model(&models.Table{}).Where("id = ?", *order.TableID).Update("status", "occupied")
-		log.Printf("REST API: Table %d marked as occupied", *order.TableID)
+	if createdOrder.TableID != nil && createdOrder.Status == "pending" {
+		h.db.Model(&models.Table{}).Where("id = ?", *createdOrder.TableID).Update("status", "occupied")
+		log.Printf("REST API: Table %d marked as occupied", *createdOrder.TableID)
 	}
 
 	// Send order to kitchen via WebSocket
-	if h.server != nil && (order.Source == "waiter_app" || order.Source == "pos") {
-		go h.sendToKitchen(&order)
+	if h.server != nil && (createdOrder.Source == "waiter_app" || createdOrder.Source == "pos") {
+		go h.sendToKitchen(createdOrder)
 	}
 
 	// Return success
 	response := map[string]interface{}{
 		"success":      true,
-		"order_id":     order.ID,
-		"order_number": order.OrderNumber,
+		"order_id":     createdOrder.ID,
+		"order_number": createdOrder.OrderNumber,
 	}
 	json.NewEncoder(w).Encode(response)
 }
@@ -1035,4 +1042,68 @@ func (h *RESTHandlers) HandleGetTodaySales(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonData)
 	log.Printf("REST API: Today's sales report sent successfully")
+}
+
+// OrderTypeResponse represents the order type data for mobile apps
+type OrderTypeResponse struct {
+	ID                     uint   `json:"id"`
+	Code                   string `json:"code"`
+	Name                   string `json:"name"`
+	RequiresSequentialNumber bool   `json:"requires_sequential_number"`
+	SequencePrefix         string `json:"sequence_prefix"`
+	DisplayColor           string `json:"display_color"`
+	Icon                   string `json:"icon"`
+	IsActive               bool   `json:"is_active"`
+	DisplayOrder           int    `json:"display_order"`
+	SkipPaymentDialog      bool   `json:"skip_payment_dialog"`
+	DefaultPaymentMethodID *uint  `json:"default_payment_method_id,omitempty"`
+}
+
+// HandleGetActiveOrderTypes returns all active order types
+func (h *RESTHandlers) HandleGetActiveOrderTypes(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Println("REST API: Fetching active order types")
+
+	var orderTypes []models.OrderType
+	if err := h.db.Where("is_active = ?", true).Order("display_order ASC").Find(&orderTypes).Error; err != nil {
+		log.Printf("REST API: Error fetching order types: %v", err)
+		http.Error(w, "Error fetching order types", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to mobile app format
+	response := make([]OrderTypeResponse, len(orderTypes))
+	for i, ot := range orderTypes {
+		response[i] = OrderTypeResponse{
+			ID:                     ot.ID,
+			Code:                   ot.Code,
+			Name:                   ot.Name,
+			RequiresSequentialNumber: ot.RequiresSequentialNumber,
+			SequencePrefix:         ot.SequencePrefix,
+			DisplayColor:           ot.DisplayColor,
+			Icon:                   ot.Icon,
+			IsActive:               ot.IsActive,
+			DisplayOrder:           ot.DisplayOrder,
+			SkipPaymentDialog:      ot.SkipPaymentDialog,
+			DefaultPaymentMethodID: ot.DefaultPaymentMethodID,
+		}
+	}
+
+	log.Printf("REST API: Returning %d active order types", len(response))
+	json.NewEncoder(w).Encode(response)
 }

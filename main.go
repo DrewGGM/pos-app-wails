@@ -61,12 +61,12 @@ func (a *App) startup(ctx context.Context) {
 
 	// Only start background services if not first run
 	if !a.isFirstRun {
-		// Start WebSocket server for mobile apps
+		// Initialize WebSocket server for mobile apps
 		wsPort := os.Getenv("WS_PORT")
 		if wsPort == "" {
 			wsPort = "8080" // Default port
 		}
-		a.LoggerService.LogInfo("Starting WebSocket server", "Port: "+wsPort)
+		a.LoggerService.LogInfo("Initializing WebSocket server", "Port: "+wsPort)
 		a.WSServer = websocket.NewServer(":" + wsPort)
 		// Set database connection for REST API endpoints
 		a.WSServer.SetDB(database.GetDB())
@@ -74,13 +74,18 @@ func (a *App) startup(ctx context.Context) {
 		if a.WSManagementService != nil {
 			a.WSManagementService.SetServer(a.WSServer)
 		}
-		// Update the OrderService with the server instance
+		// Set OrderService on WebSocket server for REST API endpoints
 		if a.OrderService != nil {
 			a.OrderService.SetWebSocketServer(a.WSServer)
+			a.WSServer.SetOrderService(a.OrderService)
+			a.LoggerService.LogInfo("OrderService configured for WebSocket REST API")
 		}
+		// Now start the WebSocket server with all handlers properly configured
 		go func() {
 			defer a.LoggerService.RecoverPanic()
-			a.WSServer.Start()
+			if err := a.WSServer.Start(); err != nil {
+				a.LoggerService.LogError("WebSocket server error", err)
+			}
 		}()
 
 		// Start sync worker for offline queue
@@ -179,6 +184,15 @@ func (a *App) InitializeServicesAfterSetup() error {
 		a.OrderService.SetWebSocketServer(a.WSServer)
 		// Also set OrderService on WebSocket server for REST API endpoints
 		a.WSServer.SetOrderService(a.OrderService)
+
+		// NOW start the WebSocket server with all handlers properly initialized
+		a.LoggerService.LogInfo("Starting WebSocket server with REST API endpoints")
+		go func() {
+			defer a.LoggerService.RecoverPanic()
+			if err := a.WSServer.Start(); err != nil {
+				a.LoggerService.LogError("WebSocket server error", err)
+			}
+		}()
 	}
 
 	// Initialize Google Sheets services

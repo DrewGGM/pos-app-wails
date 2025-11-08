@@ -71,7 +71,7 @@ type Server struct {
 	mu           sync.RWMutex
 	port         string
 	db           *gorm.DB
-	orderService *services.OrderService
+	orderService OrderCreator
 	restHandlers *RESTHandlers
 	mdnsServer   interface{} // zeroconf.Server
 	mdnsShutdown chan bool
@@ -110,7 +110,7 @@ func (s *Server) SetDB(db *gorm.DB) {
 }
 
 // SetOrderService sets the order service for creating orders via REST API
-func (s *Server) SetOrderService(orderService *services.OrderService) {
+func (s *Server) SetOrderService(orderService OrderCreator) {
 	s.orderService = orderService
 	// Initialize REST handlers if we have DB, otherwise wait for SetDB
 	if s.db != nil {
@@ -137,6 +137,7 @@ func (s *Server) Start() error {
 		http.HandleFunc("/api/orders", s.restHandlers.HandleOrders)
 		http.HandleFunc("/api/tables", s.restHandlers.HandleGetTables)
 		http.HandleFunc("/api/tables/status", s.restHandlers.HandleUpdateTableStatus)
+		http.HandleFunc("/api/order-types/active", s.restHandlers.HandleGetActiveOrderTypes)
 		http.HandleFunc("/api/sales/today", s.restHandlers.HandleGetTodaySales)
 		log.Println("WebSocket server: REST API endpoints registered")
 	}
