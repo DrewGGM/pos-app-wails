@@ -42,7 +42,7 @@ func (s *CustomPageService) GetPageWithProducts(pageID uint) ([]models.Product, 
 	err := s.db.Where("custom_page_id = ?", pageID).
 		Order("position").
 		Preload("Product.Category").
-		Preload("Product.Modifiers.ModifierGroup").
+		Preload("Product.Modifiers").
 		Find(&pageProducts).Error
 
 	if err != nil {
@@ -54,6 +54,17 @@ func (s *CustomPageService) GetPageWithProducts(pageID uint) ([]models.Product, 
 	for _, pp := range pageProducts {
 		if pp.Product != nil && pp.Product.IsActive {
 			products = append(products, *pp.Product)
+		}
+	}
+
+	// Now preload ModifierGroup for each modifier to ensure proper serialization
+	for i := range products {
+		if len(products[i].Modifiers) > 0 {
+			for j := range products[i].Modifiers {
+				if products[i].Modifiers[j].GroupID > 0 {
+					s.db.Model(&products[i].Modifiers[j]).Association("ModifierGroup").Find(&products[i].Modifiers[j].ModifierGroup)
+				}
+			}
 		}
 	}
 

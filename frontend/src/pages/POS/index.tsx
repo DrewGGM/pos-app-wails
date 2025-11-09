@@ -585,13 +585,21 @@ const POS: React.FC = () => {
       return;
     }
 
-    setOrderItems(items => 
+    setOrderItems(items =>
       items.map(item => {
         // Compare with both real ID and temporary ID
         const currentItemId = item.id ?? Date.now();
-        return currentItemId === itemId 
-          ? { ...item, quantity: newQuantity, subtotal: (item.unit_price || 0) * newQuantity }
-          : item
+        if (currentItemId === itemId) {
+          // Calculate new subtotal including modifiers
+          // unit_price is base product price (no modifiers)
+          // Add modifiers separately
+          const basePrice = item.unit_price || 0;
+          const modifiersPrice = item.modifiers?.reduce((sum, mod) => sum + mod.price_change, 0) || 0;
+          const newSubtotal = (basePrice + modifiersPrice) * newQuantity;
+
+          return { ...item, quantity: newQuantity, subtotal: newSubtotal };
+        }
+        return item;
       })
     );
   }, []);

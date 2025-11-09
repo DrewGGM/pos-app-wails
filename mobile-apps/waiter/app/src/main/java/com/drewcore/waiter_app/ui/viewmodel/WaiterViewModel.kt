@@ -632,7 +632,8 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         val selectedType = _selectedOrderType.value
 
         // Fallback to deprecated type detection if no order type selected
-        val orderType = selectedType?.code ?: (if (table != null) "dine_in" else "takeout")
+        // Convert code with hyphens (dine-in) to underscores (dine_in) for backward compatibility
+        val orderType = selectedType?.code?.replace("-", "_") ?: (if (table != null) "dine_in" else "takeout")
 
         viewModelScope.launch {
             _uiState.value = UiState.SendingOrder

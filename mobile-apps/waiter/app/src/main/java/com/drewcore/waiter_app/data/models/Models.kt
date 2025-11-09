@@ -37,11 +37,20 @@ data class CartItem(
     val modifiers: List<Modifier> = emptyList(),
     val customPrice: Double? = null  // For variable price products
 ) {
+    // IMPORTANT: unitPrice should ONLY be the base product price (no modifiers)
+    // Modifiers are added separately in subtotal calculation
+    // This matches backend calculation in order_service.go:664-669
     val unitPrice: Double
-        get() = customPrice ?: (product.price + modifiers.sumOf { it.priceChange })
+        get() = customPrice ?: product.price  // Base product price only (no modifiers)
 
     val subtotal: Double
-        get() = unitPrice * quantity
+        get() {
+            // Calculate base price * quantity
+            val baseTotal = unitPrice * quantity
+            // Add modifiers price changes * quantity
+            val modifiersTotal = modifiers.sumOf { it.priceChange } * quantity
+            return baseTotal + modifiersTotal
+        }
 }
 
 // Order Item for sending to server

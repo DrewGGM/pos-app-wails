@@ -259,6 +259,24 @@ fun OrderCard(
                         modifier = Modifier.padding(start = 16.dp)
                     )
                 }
+                // Display modifiers if any
+                if (!item.modifiers.isNullOrEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                    ) {
+                        item.modifiers.forEach { modifier ->
+                            val priceText = if (modifier.priceChange != 0.0) {
+                                " (${if (modifier.priceChange > 0) "+" else ""}$${String.format("%.0f", modifier.priceChange)})"
+                            } else ""
+                            Text(
+                                text = "  + ${modifier.modifier?.name ?: ""}$priceText",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
+                        }
+                    }
+                }
             }
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))
