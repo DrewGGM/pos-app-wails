@@ -1107,3 +1107,146 @@ func (h *RESTHandlers) HandleGetActiveOrderTypes(w http.ResponseWriter, r *http.
 	log.Printf("REST API: Returning %d active order types", len(response))
 	json.NewEncoder(w).Encode(response)
 }
+
+// CustomPageResponse represents the custom page data for mobile apps
+type CustomPageResponse struct {
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Icon         string `json:"icon"`
+	Color        string `json:"color"`
+	DisplayOrder int    `json:"display_order"`
+	IsActive     bool   `json:"is_active"`
+}
+
+// HandleGetCustomPages returns all active custom pages
+func (h *RESTHandlers) HandleGetCustomPages(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Println("REST API: Fetching custom pages")
+
+	var pages []models.CustomPage
+	if err := h.db.Where("is_active = ?", true).Order("display_order ASC").Find(&pages).Error; err != nil {
+		log.Printf("REST API: Error fetching custom pages: %v", err)
+		http.Error(w, "Error fetching custom pages", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to mobile app format
+	response := make([]CustomPageResponse, len(pages))
+	for i, page := range pages {
+		response[i] = CustomPageResponse{
+			ID:           page.ID,
+			Name:         page.Name,
+			Description:  page.Description,
+			Icon:         page.Icon,
+			Color:        page.Color,
+			DisplayOrder: page.DisplayOrder,
+			IsActive:     page.IsActive,
+		}
+	}
+
+	log.Printf("REST API: Returning %d custom pages", len(response))
+	json.NewEncoder(w).Encode(response)
+}
+
+// HandleGetCustomPageProducts returns products for a specific custom page
+func (h *RESTHandlers) HandleGetCustomPageProducts(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract page ID from URL path
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 4 {
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+
+	pageID := pathParts[3]
+	log.Printf("REST API: Fetching products for custom page %s", pageID)
+
+	// Get page products ordered by position
+	var pageProducts []models.CustomPageProduct
+	if err := h.db.Where("custom_page_id = ?", pageID).
+		Order("position").
+		Preload("Product.Category").
+		Preload("Product.Modifiers.ModifierGroup").
+		Find(&pageProducts).Error; err != nil {
+		log.Printf("REST API: Error fetching page products: %v", err)
+		http.Error(w, "Error fetching page products", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to product response format (reusing existing ProductResponse)
+	response := make([]ProductResponse, 0)
+	for _, pp := range pageProducts {
+		if pp.Product != nil && pp.Product.IsActive {
+			p := pp.Product
+
+			// Get category name
+			categoryName := "Sin categoría"
+			if p.Category != nil {
+				categoryName = p.Category.Name
+			}
+
+			// Process image URL
+			imageURL := p.Image
+			if imageURL != "" && !strings.HasPrefix(imageURL, "http") && !strings.HasPrefix(imageURL, "data:image") {
+				imageURL = "data:image/png;base64," + imageURL
+			}
+
+			// Map modifiers
+			modifiers := make([]ModifierResponse, len(p.Modifiers))
+			for j, m := range p.Modifiers {
+				modifiers[j] = ModifierResponse{
+					ID:          m.ID,
+					Name:        m.Name,
+					PriceChange: m.PriceChange,
+				}
+			}
+
+			productResp := ProductResponse{
+				ID:        p.ID,
+				Name:      p.Name,
+				Price:     p.Price,
+				Category:  categoryName,
+				ImageURL:  imageURL,
+				Stock:     float64(p.Stock),
+				Available: p.IsActive && p.Stock > 0,
+				Modifiers: modifiers,
+			}
+
+			response = append(response, productResp)
+		}
+	}
+
+	log.Printf("REST API: Returning %d products for custom page %s", len(response), pageID)
+	json.NewEncoder(w).Encode(response)
+}

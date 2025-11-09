@@ -98,6 +98,12 @@ fun WaiterApp(
 ) {
     var gridColumns by remember { mutableStateOf(preferences.gridColumns) }
     val uiState by viewModel.uiState.collectAsState()
+
+    // Log UI state changes
+    LaunchedEffect(uiState) {
+        android.util.Log.d("MainActivity", "========== UI STATE CHANGED: ${uiState.javaClass.simpleName} ==========")
+    }
+
     val currentScreen by viewModel.currentScreen.collectAsState()
     val products by viewModel.products.collectAsState()
     val tables by viewModel.tables.collectAsState()
@@ -107,6 +113,9 @@ fun WaiterApp(
     val orders by viewModel.orders.collectAsState()
     val cart by viewModel.cart.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val customPages by viewModel.customPages.collectAsState()
+    val selectedCustomPage by viewModel.selectedCustomPage.collectAsState()
+    val customPageProducts by viewModel.customPageProducts.collectAsState()
     val currentOrderId by viewModel.currentOrderId.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
@@ -132,11 +141,10 @@ fun WaiterApp(
                 selectedTab = 0 // Switch back to products
             }
             is WaiterViewModel.UiState.Error -> {
-                snackbarHostState.showSnackbar(
-                    message = state.message,
-                    duration = SnackbarDuration.Long
-                )
-                viewModel.clearError()
+                // Don't show snackbar or clear error for server discovery errors
+                // The ErrorScreen already shows the full message with action buttons
+                // Only show snackbar for transient errors during normal operations
+                android.util.Log.d("MainActivity", "Error state detected, but NOT calling clearError() to maintain error screen")
             }
             else -> {}
         }
@@ -159,16 +167,20 @@ fun WaiterApp(
             when (uiState) {
                 is WaiterViewModel.UiState.Loading,
                 is WaiterViewModel.UiState.DiscoveringServer -> {
+                    android.util.Log.d("MainActivity", "Showing LOADING screen for state: ${uiState.javaClass.simpleName}")
                     LoadingScreen(message = "Buscando servidor POS...")
                 }
                 is WaiterViewModel.UiState.LoadingData -> {
+                    android.util.Log.d("MainActivity", "Showing LOADING DATA screen")
                     LoadingScreen(message = "Cargando datos...")
                 }
                 is WaiterViewModel.UiState.SendingOrder -> {
+                    android.util.Log.d("MainActivity", "Showing SENDING ORDER screen")
                     LoadingScreen(message = "Enviando pedido...")
                 }
                 is WaiterViewModel.UiState.Ready,
                 is WaiterViewModel.UiState.OrderSent -> {
+                    android.util.Log.d("MainActivity", "Showing READY/ORDER SENT screen for state: ${uiState.javaClass.simpleName}, currentScreen: ${currentScreen.javaClass.simpleName}")
                     when (currentScreen) {
                         is WaiterViewModel.Screen.TableSelection -> {
                             TableSelectionScreen(
@@ -189,6 +201,9 @@ fun WaiterApp(
                                 products = products,
                                 categories = viewModel.categories,
                                 selectedCategory = selectedCategory,
+                                customPages = customPages,
+                                selectedCustomPage = selectedCustomPage,
+                                customPageProducts = customPageProducts,
                                 selectedTable = selectedTable,
                                 orderTypes = orderTypes,
                                 selectedOrderType = selectedOrderType,
@@ -197,6 +212,7 @@ fun WaiterApp(
                                 cartItemCount = viewModel.cartItemCount,
                                 isEditingOrder = currentOrderId != null,
                                 onCategorySelected = { viewModel.selectCategory(it) },
+                                onCustomPageSelected = { viewModel.selectCustomPage(it) },
                                 onOrderTypeSelected = { viewModel.selectOrderType(it) },
                                 onAddToCart = { product, modifiers, notes, customPrice -> viewModel.addToCart(product, modifiers, notes, customPrice) },
                                 onUpdateQuantity = { item, qty -> viewModel.updateQuantity(item, qty) },
@@ -251,10 +267,17 @@ fun WaiterApp(
                     }
                 }
                 is WaiterViewModel.UiState.Error -> {
+                    android.util.Log.d("MainActivity", "Showing ERROR screen with message: ${(uiState as WaiterViewModel.UiState.Error).message}")
                     ErrorScreen(
                         message = (uiState as WaiterViewModel.UiState.Error).message,
-                        onRetry = { viewModel.discoverAndConnect() },
-                        onManualConnect = { ip -> viewModel.connectWithManualIp(ip) }
+                        onRetry = {
+                            android.util.Log.d("MainActivity", "User clicked RETRY button")
+                            viewModel.discoverAndConnect()
+                        },
+                        onManualConnect = { ip ->
+                            android.util.Log.d("MainActivity", "User clicked MANUAL CONNECT with IP: $ip")
+                            viewModel.connectWithManualIp(ip)
+                        }
                     )
                 }
             }
@@ -268,6 +291,9 @@ fun ProductSelectionWithCart(
     products: List<com.drewcore.waiter_app.data.models.Product>,
     categories: List<String>,
     selectedCategory: String?,
+    customPages: List<com.drewcore.waiter_app.data.models.CustomPage>,
+    selectedCustomPage: com.drewcore.waiter_app.data.models.CustomPage?,
+    customPageProducts: List<com.drewcore.waiter_app.data.models.Product>,
     selectedTable: com.drewcore.waiter_app.data.models.Table?,
     orderTypes: List<com.drewcore.waiter_app.data.models.OrderType>,
     selectedOrderType: com.drewcore.waiter_app.data.models.OrderType?,
@@ -276,6 +302,7 @@ fun ProductSelectionWithCart(
     cartItemCount: Int,
     isEditingOrder: Boolean = false,
     onCategorySelected: (String?) -> Unit,
+    onCustomPageSelected: (com.drewcore.waiter_app.data.models.CustomPage?) -> Unit,
     onOrderTypeSelected: (com.drewcore.waiter_app.data.models.OrderType) -> Unit,
     onAddToCart: (com.drewcore.waiter_app.data.models.Product, List<com.drewcore.waiter_app.data.models.Modifier>, String, Double?) -> Unit,
     onUpdateQuantity: (com.drewcore.waiter_app.data.models.CartItem, Int) -> Unit,
@@ -370,7 +397,11 @@ fun ProductSelectionWithCart(
                     products = products,
                     categories = categories,
                     selectedCategory = selectedCategory,
+                    customPages = customPages,
+                    selectedCustomPage = selectedCustomPage,
+                    customPageProducts = customPageProducts,
                     onCategorySelected = onCategorySelected,
+                    onCustomPageSelected = onCustomPageSelected,
                     onAddToCart = onAddToCart,
                     gridColumns = gridColumns
                 )

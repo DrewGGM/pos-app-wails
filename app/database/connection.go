@@ -155,6 +155,10 @@ func RunMigrations() error {
 		&models.ProductModifier{},
 		&models.InventoryMovement{},
 
+		// Custom page models
+		&models.CustomPage{},
+		&models.CustomPageProduct{},
+
 		// Ingredient models
 		&models.Ingredient{},
 		&models.ProductIngredient{},

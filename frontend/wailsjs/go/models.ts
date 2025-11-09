@@ -1384,6 +1384,54 @@ export namespace models {
 	}
 	
 	
+	export class CustomPage {
+	    id: number;
+	    name: string;
+	    description: string;
+	    icon: string;
+	    color: string;
+	    display_order: number;
+	    is_active: boolean;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.icon = source["icon"];
+	        this.color = source["color"];
+	        this.display_order = source["display_order"];
+	        this.is_active = source["is_active"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class DIANConfig {
 	    id: number;

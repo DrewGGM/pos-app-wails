@@ -116,6 +116,17 @@ data class OrderType(
     @SerializedName("default_payment_method_id") val defaultPaymentMethodId: Int? = null
 )
 
+// Custom Page (for POS product organization)
+data class CustomPage(
+    val id: Int,
+    val name: String,
+    val description: String,
+    val icon: String,
+    val color: String,
+    @SerializedName("display_order") val displayOrder: Int,
+    @SerializedName("is_active") val isActive: Boolean
+)
+
 // Order (for viewing)
 data class OrderResponse(
     val id: Int,

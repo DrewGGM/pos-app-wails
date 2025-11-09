@@ -46,6 +46,15 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory
 
+    private val _customPages = MutableStateFlow<List<CustomPage>>(emptyList())
+    val customPages: StateFlow<List<CustomPage>> = _customPages
+
+    private val _selectedCustomPage = MutableStateFlow<CustomPage?>(null)
+    val selectedCustomPage: StateFlow<CustomPage?> = _selectedCustomPage
+
+    private val _customPageProducts = MutableStateFlow<List<Product>>(emptyList())
+    val customPageProducts: StateFlow<List<Product>> = _customPageProducts
+
     private val _currentScreen = MutableStateFlow<Screen>(Screen.TableSelection)
     val currentScreen: StateFlow<Screen> = _currentScreen
 
@@ -91,25 +100,45 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        android.util.Log.d("WaiterViewModel", "========== INIT CALLED ==========")
+
+        // Observe WebSocket connection state
         viewModelScope.launch {
             webSocketManager.connectionState.collect { state ->
+                android.util.Log.d("WaiterViewModel", "WebSocket state changed: ${state.javaClass.simpleName}, current UI state: ${_uiState.value.javaClass.simpleName}")
+
                 when (state) {
                     is WebSocketManager.ConnectionState.Connected -> {
-                        if (_uiState.value != UiState.Ready &&
-                            _uiState.value !is UiState.SendingOrder &&
-                            _uiState.value !is UiState.OrderSent) {
+                        android.util.Log.d("WaiterViewModel", "WebSocket Connected. Current UI state: ${_uiState.value.javaClass.simpleName}")
+                        // Only load data if we're in DiscoveringServer state (freshly connected after discovery)
+                        // This prevents automatic data loading if WebSocket reconnects while in Error state
+                        if (_uiState.value == UiState.DiscoveringServer) {
+                            android.util.Log.d("WaiterViewModel", "UI state is DiscoveringServer, calling loadInitialData()")
                             loadInitialData()
+                        } else {
+                            android.util.Log.d("WaiterViewModel", "UI state is NOT DiscoveringServer, SKIPPING loadInitialData()")
                         }
                     }
                     is WebSocketManager.ConnectionState.Error -> {
-                        _uiState.value = UiState.Error(state.message)
+                        android.util.Log.d("WaiterViewModel", "WebSocket Error: ${state.message}")
+                        // Only show WebSocket error if we're not already in a discovery error state
+                        if (_uiState.value != UiState.Error("No se encontró el servidor POS en la red local")) {
+                            android.util.Log.d("WaiterViewModel", "Setting UI state to Error: ${state.message}")
+                            _uiState.value = UiState.Error(state.message)
+                        } else {
+                            android.util.Log.d("WaiterViewModel", "Already in discovery error state, not changing")
+                        }
                     }
                     is WebSocketManager.ConnectionState.Disconnected -> {
+                        android.util.Log.d("WaiterViewModel", "WebSocket Disconnected")
                         if (_uiState.value == UiState.Ready) {
+                            android.util.Log.d("WaiterViewModel", "Was Ready, setting to Error")
                             _uiState.value = UiState.Error("Desconectado del servidor. Intenta reconectar.")
                         }
                     }
-                    else -> {}
+                    else -> {
+                        android.util.Log.d("WaiterViewModel", "WebSocket other state: ${state.javaClass.simpleName}")
+                    }
                 }
             }
         }
@@ -151,46 +180,62 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
+        // Start server discovery - same as kitchen app
+        android.util.Log.d("WaiterViewModel", "========== CALLING discoverAndConnect() FROM INIT ==========")
         discoverAndConnect()
     }
 
     fun discoverAndConnect() {
+        android.util.Log.d("WaiterViewModel", "========== discoverAndConnect() CALLED ==========")
         viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Setting UI state to DiscoveringServer")
             _uiState.value = UiState.DiscoveringServer
 
+            android.util.Log.d("WaiterViewModel", "Starting server discovery...")
             val ip = serverDiscovery.discoverServer()
+            android.util.Log.d("WaiterViewModel", "Server discovery returned: $ip")
+
             if (ip != null) {
+                android.util.Log.d("WaiterViewModel", "Server found at $ip, creating API service and connecting WebSocket")
                 serverIp = ip
                 apiService = PosApiService(ip)
                 webSocketManager.connect(ip)
-
-                // WebSocket listener in init{} will call loadInitialData() when Connected
+                android.util.Log.d("WaiterViewModel", "WebSocket connect() called, waiting for connection state change...")
             } else {
+                android.util.Log.d("WaiterViewModel", "No server found, setting UI state to Error")
                 _uiState.value = UiState.Error("No se encontró el servidor POS en la red local")
+                android.util.Log.d("WaiterViewModel", "UI state set to Error, should show manual connection screen")
             }
         }
     }
 
     fun connectWithManualIp(ip: String) {
+        android.util.Log.d("WaiterViewModel", "========== connectWithManualIp($ip) CALLED ==========")
         viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Setting UI state to DiscoveringServer")
             _uiState.value = UiState.DiscoveringServer
 
             // Validate IP format
             val ipRegex = Regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
             if (!ipRegex.matches(ip)) {
+                android.util.Log.d("WaiterViewModel", "Invalid IP format: $ip")
                 _uiState.value = UiState.Error("Formato de IP inválido. Usa formato: 192.168.1.100")
                 return@launch
             }
 
             // Check if server exists at this IP
+            android.util.Log.d("WaiterViewModel", "Checking server at $ip...")
             val serverExists = serverDiscovery.checkServer(ip)
+            android.util.Log.d("WaiterViewModel", "Server check result: $serverExists")
+
             if (serverExists) {
+                android.util.Log.d("WaiterViewModel", "Server found at $ip, creating API service and connecting WebSocket")
                 serverIp = ip
                 apiService = PosApiService(ip)
                 webSocketManager.connect(ip)
-
-                // WebSocket listener in init{} will call loadInitialData() when Connected
+                android.util.Log.d("WaiterViewModel", "WebSocket connect() called, waiting for connection state change...")
             } else {
+                android.util.Log.d("WaiterViewModel", "Server not found at $ip, setting UI state to Error")
                 _uiState.value = UiState.Error("No se pudo conectar al servidor en $ip. Verifica que el servidor esté ejecutándose y que la IP sea correcta.")
             }
         }
@@ -289,6 +334,19 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 // Continue without order types - fallback to old behavior
             }
 
+            // Load custom pages
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getCustomPages()")
+            val customPagesResult = apiService?.getCustomPages()
+            android.util.Log.d("WaiterViewModel", "loadInitialData: getCustomPages() returned: $customPagesResult")
+
+            customPagesResult?.onSuccess { pageList ->
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${pageList.size} custom pages from API")
+                _customPages.value = pageList
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading custom pages from API: ${error.message}", error)
+                // Continue without custom pages - fallback to categories
+            }
+
             // Load pending orders
             if (_uiState.value != UiState.Ready) {
                 android.util.Log.d("WaiterViewModel", "loadInitialData: Loading orders")
@@ -385,11 +443,75 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     fun changeTable(newTable: Table) {
         viewModelScope.launch {
-            android.util.Log.d("WaiterViewModel", "Changing table from ${_selectedTable.value?.number} to ${newTable.number}")
+            val oldTable = _selectedTable.value
+            android.util.Log.d("WaiterViewModel", "Changing table from ${oldTable?.number} to ${newTable.number}")
+
+            // Update the selected table
             _selectedTable.value = newTable
-            // Refresh tables to get updated status
-            apiService?.getTables()?.onSuccess { tableList ->
-                _tables.value = tableList
+
+            // If there's an existing order, update it on the server with the new table
+            val currentOrderId = _currentOrderId.value
+            if (currentOrderId != null && _cart.value.isNotEmpty()) {
+                android.util.Log.d("WaiterViewModel", "Updating existing order ${currentOrderId} with new table")
+
+                val selectedType = _selectedOrderType.value
+                val orderType = selectedType?.code ?: "dine_in"
+
+                val items = _cart.value.map { cartItem ->
+                    OrderItemRequest(
+                        productId = cartItem.product.id,
+                        quantity = cartItem.quantity,
+                        unitPrice = cartItem.unitPrice,
+                        subtotal = cartItem.subtotal,
+                        notes = cartItem.notes.takeIf { it.isNotBlank() },
+                        modifiers = cartItem.modifiers.takeIf { it.isNotEmpty() }?.map { modifier ->
+                            OrderItemModifierRequest(
+                                modifierId = modifier.id,
+                                priceChange = modifier.priceChange
+                            )
+                        }
+                    )
+                }
+
+                val orderNumber = _orders.value.find { it.id == currentOrderId }?.orderNumber ?: "W-${System.currentTimeMillis()}"
+
+                val order = OrderRequest(
+                    orderNumber = orderNumber,
+                    orderTypeId = selectedType?.id,
+                    type = orderType,
+                    tableId = newTable.id,
+                    items = items,
+                    subtotal = cartTotal,
+                    tax = 0.0,
+                    total = cartTotal,
+                    source = "waiter_app"
+                )
+
+                apiService?.updateOrder(currentOrderId, order)?.onSuccess {
+                    android.util.Log.d("WaiterViewModel", "Order updated successfully with new table")
+
+                    // Update table statuses
+                    if (oldTable != null) {
+                        // Mark old table as available
+                        apiService?.updateTableStatus(oldTable.id, "available")
+                    }
+                    // Mark new table as occupied
+                    apiService?.updateTableStatus(newTable.id, "occupied")
+
+                    // Refresh tables to get updated status
+                    apiService?.getTables()?.onSuccess { tableList ->
+                        _tables.value = tableList
+                    }
+                }?.onFailure { error ->
+                    android.util.Log.e("WaiterViewModel", "Error updating order with new table: ${error.message}")
+                    // Revert table change on error
+                    _selectedTable.value = oldTable
+                }
+            } else {
+                // No existing order, just refresh tables
+                apiService?.getTables()?.onSuccess { tableList ->
+                    _tables.value = tableList
+                }
             }
         }
     }
@@ -472,6 +594,30 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectCategory(category: String?) {
         _selectedCategory.value = category
+        // Clear custom page selection when category is selected
+        _selectedCustomPage.value = null
+        _customPageProducts.value = emptyList()
+    }
+
+    fun selectCustomPage(page: CustomPage?) {
+        viewModelScope.launch {
+            _selectedCustomPage.value = page
+            // Clear category selection when custom page is selected
+            _selectedCategory.value = null
+
+            if (page != null) {
+                android.util.Log.d("WaiterViewModel", "Loading products for custom page: ${page.name}")
+                apiService?.getCustomPageProducts(page.id)?.onSuccess { products ->
+                    android.util.Log.d("WaiterViewModel", "Received ${products.size} products for page ${page.name}")
+                    _customPageProducts.value = products.filter { it.available }
+                }?.onFailure { error ->
+                    android.util.Log.e("WaiterViewModel", "Error loading custom page products: ${error.message}")
+                    _customPageProducts.value = emptyList()
+                }
+            } else {
+                _customPageProducts.value = emptyList()
+            }
+        }
     }
 
     fun selectOrderType(orderType: OrderType) {

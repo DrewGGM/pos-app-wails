@@ -138,6 +138,60 @@ class PosApiService(private val serverIp: String) {
     }
 
     /**
+     * Fetches custom pages from POS server
+     */
+    suspend fun getCustomPages(): Result<List<com.drewcore.waiter_app.data.models.CustomPage>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/custom-pages"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val type = object : TypeToken<List<com.drewcore.waiter_app.data.models.CustomPage>>() {}.type
+                val pages = gson.fromJson<List<com.drewcore.waiter_app.data.models.CustomPage>>(body, type)
+                Result.success(pages)
+            } else {
+                Result.failure(Exception("Error fetching custom pages: ${response.code}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching custom pages", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches products for a specific custom page
+     */
+    suspend fun getCustomPageProducts(pageId: Int): Result<List<Product>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/custom-pages/$pageId/products"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val type = object : TypeToken<List<Product>>() {}.type
+                val products = gson.fromJson<List<Product>>(body, type)
+                Result.success(products)
+            } else {
+                Result.failure(Exception("Error fetching page products: ${response.code}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching page products", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Updates table status
      */
     suspend fun updateTableStatus(tableId: Int, status: String): Result<Unit> = withContext(Dispatchers.IO) {

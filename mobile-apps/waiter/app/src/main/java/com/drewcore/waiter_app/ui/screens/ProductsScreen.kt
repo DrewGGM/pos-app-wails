@@ -41,7 +41,11 @@ fun ProductsScreen(
     products: List<Product>,
     categories: List<String>,
     selectedCategory: String?,
+    customPages: List<com.drewcore.waiter_app.data.models.CustomPage>,
+    selectedCustomPage: com.drewcore.waiter_app.data.models.CustomPage?,
+    customPageProducts: List<Product>,
     onCategorySelected: (String?) -> Unit,
+    onCustomPageSelected: (com.drewcore.waiter_app.data.models.CustomPage?) -> Unit,
     onAddToCart: (Product, List<ProductModifier>, String, Double?) -> Unit,
     gridColumns: Int = 2
 ) {
@@ -53,20 +57,23 @@ fun ProductsScreen(
     var customPrice by remember { mutableStateOf<Double?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Category filter
-        if (categories.isNotEmpty()) {
-            CategoryFilter(
+        // Custom pages and category filter
+        if (customPages.isNotEmpty() || categories.isNotEmpty()) {
+            ProductFilter(
+                customPages = customPages,
+                selectedCustomPage = selectedCustomPage,
                 categories = categories,
                 selectedCategory = selectedCategory,
+                onCustomPageSelected = onCustomPageSelected,
                 onCategorySelected = onCategorySelected
             )
         }
 
-        // Products list
-        val filteredProducts = if (selectedCategory != null) {
-            products.filter { it.category == selectedCategory }
-        } else {
-            products
+        // Products list - use custom page products if selected, otherwise use category filter
+        val filteredProducts = when {
+            selectedCustomPage != null -> customPageProducts
+            selectedCategory != null -> products.filter { it.category == selectedCategory }
+            else -> products
         }
 
         if (filteredProducts.isEmpty()) {
@@ -164,6 +171,57 @@ fun ProductsScreen(
                 customPrice = null
             }
         )
+    }
+}
+
+@Composable
+fun ProductFilter(
+    customPages: List<com.drewcore.waiter_app.data.models.CustomPage>,
+    selectedCustomPage: com.drewcore.waiter_app.data.models.CustomPage?,
+    categories: List<String>,
+    selectedCategory: String?,
+    onCustomPageSelected: (com.drewcore.waiter_app.data.models.CustomPage?) -> Unit,
+    onCategorySelected: (String?) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // "All" chip
+        item {
+            FilterChip(
+                selected = selectedCategory == null && selectedCustomPage == null,
+                onClick = {
+                    onCategorySelected(null)
+                    onCustomPageSelected(null)
+                },
+                label = { Text("Todos") }
+            )
+        }
+
+        // Custom pages first (if any)
+        if (customPages.isNotEmpty()) {
+            items(customPages, key = { it.id }) { page ->
+                FilterChip(
+                    selected = selectedCustomPage?.id == page.id,
+                    onClick = { onCustomPageSelected(page) },
+                    label = { Text(page.name) }
+                )
+            }
+        }
+
+        // Then categories (if any)
+        if (categories.isNotEmpty()) {
+            items(categories, key = { it }) { category ->
+                FilterChip(
+                    selected = selectedCategory == category && selectedCustomPage == null,
+                    onClick = { onCategorySelected(category) },
+                    label = { Text(category) }
+                )
+            }
+        }
     }
 }
 

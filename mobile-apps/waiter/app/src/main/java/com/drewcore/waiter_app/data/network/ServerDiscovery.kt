@@ -34,76 +34,82 @@ class ServerDiscovery(private val context: Context? = null) {
 
     /**
      * Discover server with mDNS first, then fallback to parallel scanning
+     * Total timeout of 15 seconds to prevent infinite loading
      */
-    suspend fun discoverServer(): String? = withContext(Dispatchers.IO) {
-        try {
-            val localIp = getLocalIpAddress() ?: return@withContext null
-            Log.d(TAG, "Local IP: $localIp")
+    suspend fun discoverServer(): String? = withTimeoutOrNull(15000) {
+        withContext(Dispatchers.IO) {
+            try {
+                val localIp = getLocalIpAddress() ?: return@withContext null
+                Log.d(TAG, "Local IP: $localIp")
 
-            // Special case for Android emulator
-            if (localIp == "10.0.2.15") {
-                Log.d(TAG, "Detected Android emulator, trying host IP 10.0.2.2")
-                if (checkServerAt("10.0.2.2")) {
-                    saveLastServerIp("10.0.2.2")
-                    return@withContext "10.0.2.2"
+                // Special case for Android emulator
+                if (localIp == "10.0.2.15") {
+                    Log.d(TAG, "Detected Android emulator, trying host IP 10.0.2.2")
+                    if (checkServerAt("10.0.2.2")) {
+                        saveLastServerIp("10.0.2.2")
+                        return@withContext "10.0.2.2"
+                    }
+                    return@withContext null
                 }
-                return@withContext null
-            }
 
-            // 1. Try mDNS discovery first (fastest and most reliable)
-            if (mdnsDiscovery != null) {
-                Log.d(TAG, "Trying mDNS discovery...")
-                val mdnsIp = mdnsDiscovery.discoverServer()
-                if (mdnsIp != null && checkServerAt(mdnsIp)) {
-                    Log.d(TAG, "Server found via mDNS at: $mdnsIp")
-                    saveLastServerIp(mdnsIp)
-                    return@withContext mdnsIp
+                // 1. Try mDNS discovery first (fastest and most reliable)
+                if (mdnsDiscovery != null) {
+                    Log.d(TAG, "Trying mDNS discovery...")
+                    val mdnsIp = mdnsDiscovery.discoverServer()
+                    if (mdnsIp != null && checkServerAt(mdnsIp)) {
+                        Log.d(TAG, "Server found via mDNS at: $mdnsIp")
+                        saveLastServerIp(mdnsIp)
+                        return@withContext mdnsIp
+                    }
+                    Log.d(TAG, "mDNS discovery did not find server, falling back to IP scanning")
                 }
-                Log.d(TAG, "mDNS discovery did not find server, falling back to IP scanning")
-            }
 
-            // 2. Try last successful IP (fast fallback)
-            val lastIp = getLastServerIp()
-            if (lastIp != null) {
-                Log.d(TAG, "Trying last known server IP: $lastIp")
-                if (checkServerAt(lastIp)) {
-                    Log.d(TAG, "Server found at last known IP: $lastIp")
-                    return@withContext lastIp
-                }
-            }
-
-            // 2. Try common router/server IPs in the same subnet
-            val ipParts = localIp.split(".")
-            if (ipParts.size == 4) {
-                val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
-                val commonSubnetIps = listOf(
-                    "$networkPrefix.1",
-                    "$networkPrefix.100",
-                    "$networkPrefix.254"
-                )
-
-                Log.d(TAG, "Trying common IPs in subnet: $networkPrefix.*")
-                for (ip in commonSubnetIps) {
-                    if (ip == localIp) continue
-                    if (checkServerAt(ip)) {
-                        Log.d(TAG, "Server found at common IP: $ip")
-                        saveLastServerIp(ip)
-                        return@withContext ip
+                // 2. Try last successful IP (fast fallback)
+                val lastIp = getLastServerIp()
+                if (lastIp != null) {
+                    Log.d(TAG, "Trying last known server IP: $lastIp")
+                    if (checkServerAt(lastIp)) {
+                        Log.d(TAG, "Server found at last known IP: $lastIp")
+                        return@withContext lastIp
                     }
                 }
-            }
 
-            // 3. Parallel scan of entire subnet (much faster)
-            Log.d(TAG, "Starting parallel subnet scan...")
-            val result = parallelScanSubnet(localIp)
-            if (result != null) {
-                saveLastServerIp(result)
+                // 2. Try common router/server IPs in the same subnet
+                val ipParts = localIp.split(".")
+                if (ipParts.size == 4) {
+                    val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
+                    val commonSubnetIps = listOf(
+                        "$networkPrefix.1",
+                        "$networkPrefix.100",
+                        "$networkPrefix.254"
+                    )
+
+                    Log.d(TAG, "Trying common IPs in subnet: $networkPrefix.*")
+                    for (ip in commonSubnetIps) {
+                        if (ip == localIp) continue
+                        if (checkServerAt(ip)) {
+                            Log.d(TAG, "Server found at common IP: $ip")
+                            saveLastServerIp(ip)
+                            return@withContext ip
+                        }
+                    }
+                }
+
+                // 3. Parallel scan of entire subnet (much faster)
+                Log.d(TAG, "Starting parallel subnet scan...")
+                val result = parallelScanSubnet(localIp)
+                if (result != null) {
+                    saveLastServerIp(result)
+                }
+                result
+            } catch (e: Exception) {
+                Log.e(TAG, "Error discovering server", e)
+                null
             }
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Error discovering server", e)
-            null
         }
+    } ?: run {
+        Log.d(TAG, "Server discovery timed out after 15 seconds")
+        null
     }
 
     /**
@@ -120,40 +126,46 @@ class ServerDiscovery(private val context: Context? = null) {
 
     /**
      * Parallel scan of subnet - much faster than sequential
+     * Timeout after 10 seconds to prevent infinite loading
      */
-    private suspend fun parallelScanSubnet(localIp: String): String? = coroutineScope {
-        val ipParts = localIp.split(".")
-        if (ipParts.size != 4) return@coroutineScope null
+    private suspend fun parallelScanSubnet(localIp: String): String? = withTimeoutOrNull(10000) {
+        coroutineScope {
+            val ipParts = localIp.split(".")
+            if (ipParts.size != 4) return@coroutineScope null
 
-        val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
-        Log.d(TAG, "Parallel scanning network: $networkPrefix.*")
+            val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
+            Log.d(TAG, "Parallel scanning network: $networkPrefix.* (timeout: 10s)")
 
-        // Create jobs for all IPs in parallel
-        val jobs = (1..254).map { i ->
-            async {
-                val ip = "$networkPrefix.$i"
-                if (ip == localIp) return@async null
+            // Create jobs for all IPs in parallel
+            val jobs = (1..254).map { i ->
+                async {
+                    val ip = "$networkPrefix.$i"
+                    if (ip == localIp) return@async null
 
-                if (checkServerAt(ip)) {
-                    Log.d(TAG, "Server found at: $ip")
-                    ip
-                } else {
-                    null
+                    if (checkServerAt(ip)) {
+                        Log.d(TAG, "Server found at: $ip")
+                        ip
+                    } else {
+                        null
+                    }
                 }
             }
-        }
 
-        // Wait for first successful result
-        for (job in jobs) {
-            val result = job.await()
-            if (result != null) {
-                // Cancel remaining jobs
-                jobs.forEach { it.cancel() }
-                return@coroutineScope result
+            // Wait for first successful result
+            for (job in jobs) {
+                val result = job.await()
+                if (result != null) {
+                    // Cancel remaining jobs
+                    jobs.forEach { it.cancel() }
+                    return@coroutineScope result
+                }
             }
-        }
 
-        Log.d(TAG, "No server found on network")
+            Log.d(TAG, "No server found on network")
+            null
+        }
+    } ?: run {
+        Log.d(TAG, "Subnet scan timed out after 10 seconds")
         null
     }
 

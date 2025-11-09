@@ -58,6 +58,7 @@ import { toast } from 'react-toastify';
 import { useAuth,useWebSocket } from '../../hooks';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { wailsProductService } from '../../services/wailsProductService';
+import { wailsCustomPageService } from '../../services/wailsCustomPageService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
 import { wailsSalesService } from '../../services/wailsSalesService';
 import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
@@ -85,7 +86,15 @@ const POS: React.FC = () => {
   // State
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(() => {
+    const saved = localStorage.getItem('pos_selected_category');
+    return saved ? Number(saved) : null;
+  });
+  const [customPages, setCustomPages] = useState<any[]>([]);
+  const [selectedCustomPage, setSelectedCustomPage] = useState<number | null>(() => {
+    const saved = localStorage.getItem('pos_selected_custom_page');
+    return saved ? Number(saved) : null;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -127,13 +136,72 @@ const POS: React.FC = () => {
     // Wait for Wails bindings to be ready
     const timer = setTimeout(() => {
       loadCategories();
-      loadProducts();
+      // Don't load products here - let the dedicated useEffect handle it based on selection
       loadPaymentMethods();
       loadOrderTypes();
       loadCompanyConfig();
+      loadCustomPages();
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Persist selectedCategory in localStorage
+  useEffect(() => {
+    if (selectedCategory !== null) {
+      localStorage.setItem('pos_selected_category', String(selectedCategory));
+      localStorage.removeItem('pos_selected_custom_page');
+    } else {
+      localStorage.removeItem('pos_selected_category');
+    }
+  }, [selectedCategory]);
+
+  // Persist selectedCustomPage in localStorage
+  useEffect(() => {
+    if (selectedCustomPage !== null) {
+      localStorage.setItem('pos_selected_custom_page', String(selectedCustomPage));
+      localStorage.removeItem('pos_selected_category');
+    } else {
+      localStorage.removeItem('pos_selected_custom_page');
+    }
+  }, [selectedCustomPage]);
+
+  // Validate selectedCustomPage exists after customPages loads
+  useEffect(() => {
+    if (selectedCustomPage !== null && customPages.length > 0) {
+      const pageExists = customPages.some(p => p.id === selectedCustomPage);
+      if (!pageExists) {
+        // Saved page doesn't exist anymore, clear it
+        console.warn(`Selected custom page ID ${selectedCustomPage} not found, resetting selection`);
+        setSelectedCustomPage(null);
+        localStorage.removeItem('pos_selected_custom_page');
+      }
+    }
+  }, [customPages, selectedCustomPage]);
+
+  // Load products when custom page is selected
+  useEffect(() => {
+    const loadPageProducts = async () => {
+      if (selectedCustomPage) {
+        // Only load if customPages has been loaded and the page exists
+        if (customPages.length > 0) {
+          const pageExists = customPages.some(p => p.id === selectedCustomPage);
+          if (pageExists) {
+            try {
+              const pageProducts = await wailsCustomPageService.getPageWithProducts(selectedCustomPage);
+              setProducts(pageProducts as any);
+            } catch (error) {
+              console.error('Error loading page products:', error);
+              toast.error('Error al cargar productos de la página');
+            }
+          }
+        }
+      } else {
+        // Reload all products when switching back to categories/all
+        loadProducts();
+      }
+    };
+    loadPageProducts();
+  }, [selectedCustomPage, customPages]);
 
   // Subscribe to WebSocket events
   useEffect(() => {
@@ -391,6 +459,15 @@ const POS: React.FC = () => {
     }
   };
 
+  const loadCustomPages = async () => {
+    try {
+      const data = await wailsCustomPageService.getAllPages();
+      setCustomPages(data);
+    } catch (error) {
+      console.error('Error loading custom pages:', error);
+    }
+  };
+
   // Helper function to check if two order items are identical
   const areItemsIdentical = (item1: OrderItem, item2: OrderItem): boolean => {
     // Check if same product
@@ -412,16 +489,29 @@ const POS: React.FC = () => {
     return modIds1.every((id, index) => id === modIds2[index]);
   };
 
-  // Filter products by category and search
+  // Filter products by category/custom page and search
   const filteredProducts = useMemo(() => {
-    return products.filter(product => {
-      const matchesCategory = !selectedCategory || product.category_id === selectedCategory;
-      const matchesSearch = !searchQuery ||
+    let filtered = products;
+
+    // Filter by custom page or category
+    if (selectedCustomPage) {
+      // When custom page is selected, products are already filtered by the useEffect
+      filtered = products;
+    } else if (selectedCategory) {
+      // Traditional category filtering
+      filtered = products.filter(product => product.category_id === selectedCategory);
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(product =>
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, selectedCategory, searchQuery]);
+        product.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return filtered;
+  }, [products, selectedCategory, selectedCustomPage, searchQuery]);
 
   // Add product to order
   const addProductToOrder = useCallback((product: Product) => {
@@ -795,10 +885,29 @@ const POS: React.FC = () => {
           sx={{ mb: 2 }}
         />
 
-        {/* Categories */}
+        {/* Categories and Custom Pages Combined */}
         <Tabs
-          value={selectedCategory ?? 'all'}
-          onChange={(_, value) => setSelectedCategory(value === 'all' ? null : value)}
+          value={
+            selectedCustomPage !== null ? `page-${selectedCustomPage}` :
+            selectedCategory !== null ? `cat-${selectedCategory}` :
+            'all'
+          }
+          onChange={(_, value) => {
+            if (value === 'all') {
+              setSelectedCategory(null);
+              setSelectedCustomPage(null);
+            } else if (value.startsWith('page-')) {
+              // It's a custom page
+              const pageId = Number(value.replace('page-', ''));
+              setSelectedCustomPage(pageId);
+              setSelectedCategory(null);
+            } else if (value.startsWith('cat-')) {
+              // It's a category
+              const categoryId = Number(value.replace('cat-', ''));
+              setSelectedCategory(categoryId);
+              setSelectedCustomPage(null);
+            }
+          }}
           variant="scrollable"
           scrollButtons="auto"
           sx={{ mb: 2 }}
@@ -808,10 +917,29 @@ const POS: React.FC = () => {
             label="Todos"
             icon={<FastfoodIcon />}
           />
+          {/* Custom Pages First */}
+          {customPages.map((page) => (
+            <Tab
+              key={`page-${page.id}`}
+              value={`page-${page.id}`}
+              label={page.name}
+              icon={<FastfoodIcon />}
+              sx={{
+                backgroundColor: selectedCustomPage === page.id ? page.color : 'transparent',
+                color: selectedCustomPage === page.id ? '#fff' : 'inherit',
+                '&:hover': {
+                  backgroundColor: page.color,
+                  opacity: 0.8,
+                  color: '#fff',
+                },
+              }}
+            />
+          ))}
+          {/* Then Categories */}
           {categories.map((category) => (
             <Tab
-              key={category.id}
-              value={category.id}
+              key={`cat-${category.id}`}
+              value={`cat-${category.id}`}
               label={category.name}
               icon={<FastfoodIcon />}
               sx={{
@@ -945,6 +1073,24 @@ const POS: React.FC = () => {
           >
             {selectedOrderType?.name || 'Tipo'}
           </Button>
+          {orderItems.length > 0 && (
+            <IconButton
+              onClick={() => {
+                if (window.confirm('¿Vaciar el carrito? Esto eliminará todos los productos.')) {
+                  setOrderItems([]);
+                  setCurrentOrder(null);
+                  setSelectedTable(null);
+                  setSelectedCustomer(null);
+                  toast.info('Carrito vaciado');
+                }
+              }}
+              size="small"
+              color="error"
+              title="Vaciar carrito"
+            >
+              <ClearIcon />
+            </IconButton>
+          )}
         </Box>
 
         <Divider />
