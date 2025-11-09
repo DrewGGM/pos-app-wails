@@ -50,6 +50,7 @@ interface CashRegisterStatus {
   opening_amount: number;
   closing_amount: number;
   current_amount: number;
+  expected_amount: number;  // Expected cash based on sales and movements
   opened_at: Date;
   closed_at?: Date;
   opened_by: string;
@@ -134,7 +135,8 @@ const CashRegister: React.FC = () => {
             id: register.id || 0,
             opening_amount: register.opening_amount || 0,
             closing_amount: register.closing_amount || 0,
-            current_amount: register.expected_amount || register.opening_amount || 0,
+            current_amount: register.opening_amount || 0,  // Start with opening amount, user enters actual cash
+            expected_amount: register.expected_amount || register.opening_amount || 0,  // Backend-calculated expected amount
             opened_at: new Date(register.opened_at),
             opened_by: user.name,
             status: register.status as 'open' | 'closed',
@@ -253,14 +255,8 @@ const CashRegister: React.FC = () => {
 
   const calculateDifference = () => {
     if (!registerStatus) return 0;
-    // Get only cash from sales summary (look for "Efectivo" or "cash" payment method)
-    const cashSales = registerStatus.sales_summary.by_payment_method['Efectivo'] ||
-                      registerStatus.sales_summary.by_payment_method['cash'] || 0;
-    const expected = registerStatus.opening_amount +
-                    cashSales +
-                    registerStatus.movements.reduce((sum, m) =>
-                      sum + (m.type === 'in' ? m.amount : -m.amount), 0);
-    return registerStatus.current_amount - expected;
+    // Use backend-calculated expected amount (already considers affects_cash_register flag)
+    return registerStatus.current_amount - registerStatus.expected_amount;
   };
 
   const isRegisterOpen = registerStatus?.status === 'open';
@@ -420,7 +416,10 @@ const CashRegister: React.FC = () => {
                     </ListItemSecondaryAction>
                   </ListItem>
                   <ListItem>
-                    <ListItemText primary="Ventas en efectivo" />
+                    <ListItemText
+                      primary="Ventas en efectivo"
+                      secondary="Método de pago 'Efectivo' o 'cash'"
+                    />
                     <ListItemSecondaryAction>
                       <Typography variant="body1" color="success.main">
                         +${((registerStatus.sales_summary.by_payment_method['Efectivo'] ||
@@ -455,15 +454,7 @@ const CashRegister: React.FC = () => {
                     <ListItemText primary={<strong>Efectivo esperado</strong>} />
                     <ListItemSecondaryAction>
                       <Typography variant="h6" color="primary">
-                        ${(() => {
-                          const cashSales = registerStatus.sales_summary.by_payment_method['Efectivo'] ||
-                                           registerStatus.sales_summary.by_payment_method['cash'] || 0;
-                          return (registerStatus.opening_amount +
-                            cashSales +
-                            registerStatus.movements.reduce((sum, m) =>
-                              sum + (m.type === 'in' ? m.amount : -m.amount), 0))
-                            .toLocaleString('es-CO');
-                        })()}
+                        ${registerStatus.expected_amount.toLocaleString('es-CO')}
                       </Typography>
                     </ListItemSecondaryAction>
                   </ListItem>
