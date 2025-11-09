@@ -61,6 +61,7 @@ import { wailsProductService } from '../../services/wailsProductService';
 import { wailsCustomPageService } from '../../services/wailsCustomPageService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
 import { wailsSalesService } from '../../services/wailsSalesService';
+import { wailsConfigService } from '../../services/wailsConfigService';
 import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
 import { GetActiveOrderTypes } from '../../../wailsjs/go/services/OrderTypeService';
 import { Category, Product, Order, OrderItem, Table, Customer, PaymentMethod } from '../../types/models';
@@ -74,6 +75,7 @@ import PriceInputDialog from '../../components/pos/PriceInputDialog';
 import TableSelector from '../../components/pos/TableSelector';
 import QuickPad from '../../components/pos/QuickPad';
 import OrderList from '../../components/pos/OrderList';
+import DeliveryInfoDialog, { DeliveryInfo } from '../../components/pos/DeliveryInfoDialog';
 
 const POS: React.FC = () => {
   // Context hooks
@@ -103,6 +105,7 @@ const POS: React.FC = () => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [orderTypes, setOrderTypes] = useState<models.OrderType[]>([]);
   const [selectedOrderType, setSelectedOrderType] = useState<models.OrderType | null>(null);
+  const [autoPrintReceipt, setAutoPrintReceipt] = useState(true); // Default to true
 
   // Refs
   const loadedOrderIdRef = useRef<number | null>(null);
@@ -115,11 +118,13 @@ const POS: React.FC = () => {
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [orderTypeDialogOpen, setOrderTypeDialogOpen] = useState(false);
+  const [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
   const [selectedProductForPrice, setSelectedProductForPrice] = useState<Product | null>(null);
   const [selectedItemForModifierEdit, setSelectedItemForModifierEdit] = useState<OrderItem | null>(null);
   const [selectedItemForNotes, setSelectedItemForNotes] = useState<OrderItem | null>(null);
   const [itemNotes, setItemNotes] = useState('');
+  const [deliveryInfo, setDeliveryInfo] = useState<DeliveryInfo>({ customerName: '', address: '', phone: '' });
 
   // Electronic invoice flag per sale
   const [needsElectronicInvoice, setNeedsElectronicInvoice] = useState(false);
@@ -141,6 +146,7 @@ const POS: React.FC = () => {
       loadOrderTypes();
       loadCompanyConfig();
       loadCustomPages();
+      loadPrinterSettings();
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -468,6 +474,18 @@ const POS: React.FC = () => {
     }
   };
 
+  const loadPrinterSettings = async () => {
+    try {
+      const autoPrintValue = await wailsConfigService.getSystemConfig('printer_auto_print');
+      if (autoPrintValue) {
+        setAutoPrintReceipt(autoPrintValue === 'true');
+      }
+    } catch (error) {
+      // If config doesn't exist, use default value (true)
+      console.log('Print auto-print config not found, using default');
+    }
+  };
+
   // Helper function to check if two order items are identical
   const areItemsIdentical = (item1: OrderItem, item2: OrderItem): boolean => {
     // Check if same product
@@ -665,6 +683,7 @@ const POS: React.FC = () => {
     setSelectedTable(null);
     setSelectedCustomer(null);
     setNeedsElectronicInvoice(false);
+    setDeliveryInfo({ customerName: '', address: '', phone: '' });
     loadedOrderIdRef.current = null; // Reset to allow loading new orders
   }, [currentOrder, selectedTable]);
 
@@ -681,6 +700,9 @@ const POS: React.FC = () => {
       return;
     }
 
+    console.log('🔍 saveOrder: deliveryInfo state =', deliveryInfo);
+    console.log('🔍 saveOrder: selectedOrderType =', selectedOrderType);
+
     setIsSavingOrder(true);
     try {
       const orderData: CreateOrderData = {
@@ -692,6 +714,12 @@ const POS: React.FC = () => {
         items: orderItems,
         notes: '',
         source: 'pos',
+        // Include delivery info if exists (check for actual data, not just order type)
+        ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
+          delivery_customer_name: deliveryInfo.customerName,
+          delivery_address: deliveryInfo.address,
+          delivery_phone: deliveryInfo.phone,
+        }),
       };
 
       let resultOrder: Order;
@@ -730,13 +758,14 @@ const POS: React.FC = () => {
       setSelectedTable(null);
       setSelectedCustomer(null);
       setNeedsElectronicInvoice(false);
+      setDeliveryInfo({ customerName: '', address: '', phone: '' });
       loadedOrderIdRef.current = null; // Reset to allow loading new orders
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar la orden');
     } finally {
       setIsSavingOrder(false);
     }
-  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder, selectedOrderType]);
+  }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder, selectedOrderType, deliveryInfo]);
 
   // Process payment
   const processPayment = useCallback(async (paymentData: any) => {
@@ -770,6 +799,12 @@ const POS: React.FC = () => {
           items: orderItems,
           notes: '',
           source: 'pos',
+          // Include delivery info if exists (check for actual data, not just order type)
+          ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
+            delivery_customer_name: deliveryInfo.customerName,
+            delivery_address: deliveryInfo.address,
+            delivery_phone: deliveryInfo.phone,
+          }),
         };
 
         orderToProcess = await wailsOrderService.createOrder(orderData);
@@ -813,7 +848,7 @@ const POS: React.FC = () => {
     } finally {
       setIsProcessingPayment(false);
     }
-  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, clearOrder, currentOrder, selectedOrderType]);
+  }, [cashRegisterId, selectedTable, selectedCustomer, orderItems, orderTotals, user, clearOrder, currentOrder, selectedOrderType, deliveryInfo]);
 
   // Handle payment click - check if should auto-process or show dialog
   const handlePaymentClick = useCallback(() => {
@@ -1081,6 +1116,21 @@ const POS: React.FC = () => {
           >
             {selectedOrderType?.name || 'Tipo'}
           </Button>
+          {/* Delivery Info Button - Show when delivery type is selected */}
+          {(selectedOrderType?.code === 'delivery' || selectedOrderType?.code === 'domicilio') && (
+            <IconButton
+              onClick={() => setDeliveryDialogOpen(true)}
+              size="small"
+              color="warning"
+              title="Información de Domicilio"
+              sx={{
+                border: (deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) ? '2px solid' : '1px dashed',
+                borderColor: 'warning.main'
+              }}
+            >
+              <DeliveryIcon />
+            </IconButton>
+          )}
           {orderItems.length > 0 && (
             <IconButton
               onClick={() => {
@@ -1222,6 +1272,7 @@ const POS: React.FC = () => {
         onConfirm={processPayment}
         customer={selectedCustomer}
         needsElectronicInvoice={needsElectronicInvoice}
+        defaultPrintReceipt={autoPrintReceipt}
       />
 
       <CustomerDialog
@@ -1421,6 +1472,10 @@ const POS: React.FC = () => {
                   onClick={() => {
                     setSelectedOrderType(orderType);
                     setOrderTypeDialogOpen(false);
+                    // Open delivery dialog if this is a delivery order (check multiple codes)
+                    if (orderType.code === 'delivery' || orderType.code === 'domicilio') {
+                      setDeliveryDialogOpen(true);
+                    }
                   }}
                   sx={{
                     justifyContent: 'flex-start',
@@ -1446,6 +1501,18 @@ const POS: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Delivery Info Dialog */}
+      <DeliveryInfoDialog
+        open={deliveryDialogOpen}
+        onClose={() => setDeliveryDialogOpen(false)}
+        onConfirm={(info) => {
+          console.log('✅ DeliveryInfoDialog: Setting delivery info =', info);
+          setDeliveryInfo(info);
+          setDeliveryDialogOpen(false);
+        }}
+        initialData={deliveryInfo}
+      />
     </Box>
   );
 };

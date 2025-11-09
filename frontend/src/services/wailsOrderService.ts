@@ -102,6 +102,9 @@ function mapOrder(w: models.Order | null): Order {
     notes: w.notes || '',
     source: w.source || 'pos',
     is_synced: w.is_synced || false,
+    delivery_customer_name: (w as any).delivery_customer_name || undefined,
+    delivery_address: (w as any).delivery_address || undefined,
+    delivery_phone: (w as any).delivery_phone || undefined,
     created_at: w.created_at || new Date().toISOString(),
     updated_at: w.updated_at || new Date().toISOString(),
   } as Order;

@@ -284,6 +284,7 @@ const Settings: React.FC = () => {
     loadParametricData();
     loadDianConfig();
     loadPrinterConfigs();
+    loadPrintSettings();
     loadSyncConfig();
     loadWebSocketStatus();
   }, []);
@@ -460,6 +461,31 @@ const Settings: React.FC = () => {
       }
     } catch (e) {
       console.error('Error loading sync config:', e);
+    }
+  };
+
+  const loadPrintSettings = async () => {
+    try {
+      const autoPrintValue = await wailsConfigService.getSystemConfig('printer_auto_print');
+      if (autoPrintValue) {
+        setPrintSettings(prev => ({
+          ...prev,
+          autoPrint: autoPrintValue === 'true',
+        }));
+      }
+    } catch (e) {
+      // If config doesn't exist, it will use the default value (true)
+      console.log('Print auto-print config not found, using default');
+    }
+  };
+
+  const savePrintAutoPrint = async (value: boolean) => {
+    try {
+      await wailsConfigService.setSystemConfig('printer_auto_print', String(value), 'boolean', 'printer');
+      toast.success('Configuración de impresión guardada');
+    } catch (e) {
+      console.error('Error saving print auto-print config:', e);
+      toast.error('Error al guardar configuración de impresión');
     }
   };
 
@@ -2535,10 +2561,14 @@ const Settings: React.FC = () => {
                         control={
                           <Switch
                             checked={printSettings.autoPrint}
-                            onChange={(e) => setPrintSettings({
-                              ...printSettings,
-                              autoPrint: e.target.checked,
-                            })}
+                            onChange={(e) => {
+                              const newValue = e.target.checked;
+                              setPrintSettings({
+                                ...printSettings,
+                                autoPrint: newValue,
+                              });
+                              savePrintAutoPrint(newValue);
+                            }}
                           />
                         }
                         label="Imprimir automáticamente"

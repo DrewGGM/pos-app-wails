@@ -10,6 +10,7 @@ import (
 	_ "image/png"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -536,6 +537,10 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.init()
 	s.setAlign("center")
 
+	// Load order with all data including delivery info
+	s.db.Preload("Order").Preload("Order.Items.Product").First(sale, sale.ID)
+	log.Printf("🚚 Electronic Invoice: Loaded sale with order. Order nil? %v", sale.Order == nil)
+
 	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
@@ -614,6 +619,31 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 		s.write("CONSUMIDOR FINAL\n")
 	}
 
+	// Print delivery info if available
+	log.Printf("🚚 Print: sale.Order is nil? %v", sale.Order == nil)
+	if sale.Order != nil {
+		log.Printf("🚚 Print: Delivery data - Name='%s', Address='%s', Phone='%s'",
+			sale.Order.DeliveryCustomerName, sale.Order.DeliveryAddress, sale.Order.DeliveryPhone)
+
+		if sale.Order.DeliveryCustomerName != "" || sale.Order.DeliveryAddress != "" || sale.Order.DeliveryPhone != "" {
+			s.write(s.printSeparator())
+			s.setEmphasize(true)
+			s.write("DATOS DE ENTREGA\n")
+			s.setEmphasize(false)
+			if sale.Order.DeliveryCustomerName != "" {
+				s.write(fmt.Sprintf("Nombre: %s\n", sale.Order.DeliveryCustomerName))
+			}
+			if sale.Order.DeliveryAddress != "" {
+				s.write(fmt.Sprintf("Dirección: %s\n", sale.Order.DeliveryAddress))
+			}
+			if sale.Order.DeliveryPhone != "" {
+				s.write(fmt.Sprintf("Teléfono: %s\n", sale.Order.DeliveryPhone))
+			}
+		} else {
+			log.Printf("🚚 Print: No delivery data to print (all fields empty)")
+		}
+	}
+
 	// Print items
 	s.write(s.printSeparator())
 	s.setEmphasize(true)
@@ -621,9 +651,7 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.setEmphasize(false)
 	s.write(s.printSeparator())
 
-	// Load order items
-	s.db.Preload("Order.Items.Product").First(sale, sale.ID)
-
+	// Items already loaded at the beginning of the function
 	for _, item := range sale.Order.Items {
 		// Item description and quantity
 		s.write(fmt.Sprintf("%s\n", item.Product.Name))
@@ -738,6 +766,10 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	s.init()
 	s.setAlign("center")
 
+	// Load order with all data including delivery info
+	s.db.Preload("Order").Preload("Order.Items.Product").First(sale, sale.ID)
+	log.Printf("🚚 Simple Receipt: Loaded sale with order. Order nil? %v", sale.Order == nil)
+
 	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
@@ -773,9 +805,34 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 		s.write(fmt.Sprintf("Cliente: %s\n", sale.Customer.Name))
 	}
 
+	// Print delivery info if available
+	log.Printf("🚚 Simple Print: sale.Order is nil? %v", sale.Order == nil)
+	if sale.Order != nil {
+		log.Printf("🚚 Simple Print: Delivery data - Name='%s', Address='%s', Phone='%s'",
+			sale.Order.DeliveryCustomerName, sale.Order.DeliveryAddress, sale.Order.DeliveryPhone)
+
+		if sale.Order.DeliveryCustomerName != "" || sale.Order.DeliveryAddress != "" || sale.Order.DeliveryPhone != "" {
+			s.write(s.printSeparator())
+			s.setEmphasize(true)
+			s.write("DATOS DE ENTREGA\n")
+			s.setEmphasize(false)
+			if sale.Order.DeliveryCustomerName != "" {
+				s.write(fmt.Sprintf("Nombre: %s\n", sale.Order.DeliveryCustomerName))
+			}
+			if sale.Order.DeliveryAddress != "" {
+				s.write(fmt.Sprintf("Dirección: %s\n", sale.Order.DeliveryAddress))
+			}
+			if sale.Order.DeliveryPhone != "" {
+				s.write(fmt.Sprintf("Teléfono: %s\n", sale.Order.DeliveryPhone))
+			}
+		} else {
+			log.Printf("🚚 Simple Print: No delivery data to print (all fields empty)")
+		}
+	}
+
 	// Print items
 	s.write(s.printSeparator())
-	s.db.Preload("Order.Items.Product").First(sale, sale.ID)
+	// Items already loaded at the beginning of the function
 
 	for _, item := range sale.Order.Items {
 		s.write(fmt.Sprintf("%d x %s\n", item.Quantity, item.Product.Name))
@@ -873,6 +930,24 @@ func (s *PrinterService) PrintKitchenOrder(order *models.Order) error {
 
 	// Print type
 	s.write(fmt.Sprintf("Tipo: %s\n", order.Type))
+
+	// Print delivery info if available
+	if order.DeliveryCustomerName != "" || order.DeliveryAddress != "" || order.DeliveryPhone != "" {
+		s.write(s.printSeparator())
+		s.setEmphasize(true)
+		s.write("DATOS DE ENTREGA\n")
+		s.setEmphasize(false)
+
+		if order.DeliveryCustomerName != "" {
+			s.write(fmt.Sprintf("Cliente: %s\n", order.DeliveryCustomerName))
+		}
+		if order.DeliveryAddress != "" {
+			s.write(fmt.Sprintf("Dirección: %s\n", order.DeliveryAddress))
+		}
+		if order.DeliveryPhone != "" {
+			s.write(fmt.Sprintf("Teléfono: %s\n", order.DeliveryPhone))
+		}
+	}
 
 	// Print items
 	s.write(s.printSeparator())
@@ -986,6 +1061,27 @@ func (s *PrinterService) PrintOrder(order *models.Order) error {
 	// Print customer if available
 	if order.Customer != nil {
 		s.write(fmt.Sprintf("Cliente: %s\n", order.Customer.Name))
+	}
+
+	// Print delivery info if available
+	log.Printf("🚚 PrintOrder: Checking delivery info - Name='%s', Address='%s', Phone='%s'",
+		order.DeliveryCustomerName, order.DeliveryAddress, order.DeliveryPhone)
+
+	if order.DeliveryCustomerName != "" || order.DeliveryAddress != "" || order.DeliveryPhone != "" {
+		s.write(s.printSeparator())
+		s.setEmphasize(true)
+		s.write("DATOS DE ENTREGA\n")
+		s.setEmphasize(false)
+
+		if order.DeliveryCustomerName != "" {
+			s.write(fmt.Sprintf("Cliente: %s\n", order.DeliveryCustomerName))
+		}
+		if order.DeliveryAddress != "" {
+			s.write(fmt.Sprintf("Dirección: %s\n", order.DeliveryAddress))
+		}
+		if order.DeliveryPhone != "" {
+			s.write(fmt.Sprintf("Teléfono: %s\n", order.DeliveryPhone))
+		}
 	}
 
 	// Print items

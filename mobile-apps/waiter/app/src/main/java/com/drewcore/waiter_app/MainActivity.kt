@@ -28,6 +28,8 @@ import com.drewcore.waiter_app.ui.screens.OrdersListScreen
 import com.drewcore.waiter_app.ui.screens.SettingsScreen
 import com.drewcore.waiter_app.ui.theme.WaiterappTheme
 import com.drewcore.waiter_app.ui.viewmodel.WaiterViewModel
+import com.drewcore.waiter_app.ui.components.DeliveryInfoDialog
+import com.drewcore.waiter_app.ui.components.DeliveryInfo
 import com.drewcore.waiter_app.update.UpdateManager
 import com.drewcore.waiter_app.update.UpdateInfo
 import com.drewcore.waiter_app.data.preferences.WaiterPreferences
@@ -121,6 +123,7 @@ fun WaiterApp(
     var selectedTab by remember { mutableStateOf(0) }
     var showSuccessSnackbar by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf("") }
+    var showDeliveryDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -130,6 +133,21 @@ fun WaiterApp(
             updateInfo = updateInfo,
             onAccept = { onUpdateAccepted(updateInfo) },
             onDismiss = onUpdateDismissed
+        )
+    }
+
+    // Show delivery info dialog if needed
+    if (showDeliveryDialog) {
+        DeliveryInfoDialog(
+            onDismiss = {
+                showDeliveryDialog = false
+            },
+            onConfirm = { deliveryInfo ->
+                viewModel.setDeliveryInfo(deliveryInfo)
+                showDeliveryDialog = false
+                // Navigate to products screen (don't call startDeliveryOrder as it would reset delivery info)
+                viewModel.navigateToScreen(WaiterViewModel.Screen.ProductSelection)
+            }
         )
     }
 
@@ -193,6 +211,12 @@ fun WaiterApp(
                                 },
                                 onCreateTakeoutOrder = {
                                     viewModel.startTakeoutOrder()
+                                },
+                                onCreateDeliveryOrder = {
+                                    // First set the delivery order type
+                                    viewModel.startDeliveryOrder()
+                                    // Then show dialog to enter delivery info
+                                    showDeliveryDialog = true
                                 }
                             )
                         }

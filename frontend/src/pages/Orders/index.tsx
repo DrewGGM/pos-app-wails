@@ -474,8 +474,12 @@ const Orders: React.FC = () => {
                     <Typography variant="body2" color="text.secondary">Tipo</Typography>
                     <Chip
                       size="small"
-                      label={selectedOrder.type === 'dine_in' ? 'Mesa' : 'Llevar'}
-                      color={selectedOrder.type === 'dine_in' ? 'primary' : 'secondary'}
+                      label={selectedOrder.order_type?.name || (selectedOrder.type === 'dine_in' ? 'Mesa' : 'Llevar')}
+                      color={
+                        selectedOrder.order_type?.code === 'dine-in' || selectedOrder.type === 'dine_in' ? 'primary' :
+                        selectedOrder.order_type?.code === 'delivery' ? 'warning' :
+                        'secondary'
+                      }
                       sx={{ mt: 0.5 }}
                     />
                   </Box>
@@ -511,6 +515,38 @@ const Orders: React.FC = () => {
                   </Box>
                 </Box>
               </Box>
+
+              {/* Delivery Info - Show if delivery information exists */}
+              {(selectedOrder.delivery_customer_name || selectedOrder.delivery_address || selectedOrder.delivery_phone) && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Información de Domicilio
+                    </Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mt: 1 }}>
+                      {selectedOrder.delivery_customer_name && (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">Cliente</Typography>
+                          <Typography variant="body1">{selectedOrder.delivery_customer_name}</Typography>
+                        </Box>
+                      )}
+                      {selectedOrder.delivery_phone && (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">Teléfono</Typography>
+                          <Typography variant="body1">{selectedOrder.delivery_phone}</Typography>
+                        </Box>
+                      )}
+                      {selectedOrder.delivery_address && (
+                        <Box sx={{ gridColumn: '1 / -1' }}>
+                          <Typography variant="body2" color="text.secondary">Dirección</Typography>
+                          <Typography variant="body1">{selectedOrder.delivery_address}</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                </>
+              )}
 
               <Divider sx={{ my: 2 }} />
 

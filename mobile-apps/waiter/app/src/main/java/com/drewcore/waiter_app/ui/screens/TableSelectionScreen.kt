@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.DeliveryDining
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingBag
@@ -28,7 +29,8 @@ fun TableSelectionScreen(
     tables: List<Table>,
     onTableSelected: (Table) -> Unit,
     onViewOrders: () -> Unit,
-    onCreateTakeoutOrder: () -> Unit = {}
+    onCreateTakeoutOrder: () -> Unit = {},
+    onCreateDeliveryOrder: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -42,22 +44,49 @@ fun TableSelectionScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onCreateTakeoutOrder,
-                containerColor = MaterialTheme.colorScheme.primary
+            // Two FABs stacked vertically
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(8.dp)
+                // Delivery FAB
+                FloatingActionButton(
+                    onClick = onCreateDeliveryOrder,
+                    containerColor = MaterialTheme.colorScheme.tertiary
                 ) {
-                    Icon(
-                        Icons.Default.ShoppingBag,
-                        contentDescription = "Pedido para llevar"
-                    )
-                    Text(
-                        text = "Para Llevar",
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DeliveryDining,
+                            contentDescription = "Pedido a domicilio"
+                        )
+                        Text(
+                            text = "Domicilio",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                // Takeout FAB
+                FloatingActionButton(
+                    onClick = onCreateTakeoutOrder,
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ShoppingBag,
+                            contentDescription = "Pedido para llevar"
+                        )
+                        Text(
+                            text = "Para Llevar",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
         }

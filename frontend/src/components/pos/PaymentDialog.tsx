@@ -44,6 +44,7 @@ interface PaymentDialogProps {
   customer: Customer | null;
   orderItems?: any[]; // For split payment allocation
   needsElectronicInvoice?: boolean; // Flag from POS
+  defaultPrintReceipt?: boolean; // Default value for print receipt checkbox from printer config
 }
 
 interface PaymentLine {
@@ -62,12 +63,13 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   onConfirm,
   customer,
   needsElectronicInvoice = false,
+  defaultPrintReceipt = true,
 }) => {
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
-  const [printReceipt, setPrintReceipt] = useState(true);
+  const [printReceipt, setPrintReceipt] = useState(defaultPrintReceipt);
   const [sendByEmail, setSendByEmail] = useState(true); // Default to true - send invoice email by default
   const [customerEmail, setCustomerEmail] = useState(customer?.email || '');
   const [error, setError] = useState('');
@@ -80,13 +82,13 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       setSelectedMethod(null);
       setAmount('');
       setReference('');
-      setPrintReceipt(true);
+      setPrintReceipt(defaultPrintReceipt);
       setSendByEmail(true);
       setCustomerEmail(customer?.email || '');
       setError('');
       setChange(0);
     }
-  }, [open, customer?.email]);
+  }, [open, customer?.email, defaultPrintReceipt]);
 
   useEffect(() => {
     // Set initial amount to remaining balance

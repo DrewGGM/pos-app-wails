@@ -66,6 +66,10 @@ type Order struct {
 	Table         *Table         `gorm:"foreignKey:TableID" json:"table,omitempty"`
 	CustomerID   *uint          `json:"customer_id,omitempty"`
 	Customer     *Customer      `gorm:"foreignKey:CustomerID" json:"customer,omitempty"`
+	// Delivery information (optional, for delivery orders)
+	DeliveryCustomerName string `json:"delivery_customer_name,omitempty"`
+	DeliveryAddress      string `json:"delivery_address,omitempty"`
+	DeliveryPhone        string `json:"delivery_phone,omitempty"`
 	Items        []OrderItem    `gorm:"foreignKey:OrderID" json:"items"`
 	Subtotal     float64        `json:"subtotal"`
 	Tax          float64        `json:"tax"`

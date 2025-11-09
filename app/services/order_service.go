@@ -52,6 +52,10 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	} else {
 		log.Printf("OrderTypeID: nil")
 	}
+	log.Printf("🚚 Delivery Info:")
+	log.Printf("  - Customer Name: '%s'", order.DeliveryCustomerName)
+	log.Printf("  - Address: '%s'", order.DeliveryAddress)
+	log.Printf("  - Phone: '%s'", order.DeliveryPhone)
 	log.Printf("=====================================\n")
 
 	// Generate order number

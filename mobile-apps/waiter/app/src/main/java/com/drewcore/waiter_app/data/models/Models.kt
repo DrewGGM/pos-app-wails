@@ -82,7 +82,11 @@ data class OrderRequest(
     val total: Double,
     val notes: String? = null,
     val source: String = "waiter_app",
-    @SerializedName("employee_id") val employeeId: Int = 1
+    @SerializedName("employee_id") val employeeId: Int = 1,
+    // Delivery information (optional, for delivery orders)
+    @SerializedName("delivery_customer_name") val deliveryCustomerName: String? = null,
+    @SerializedName("delivery_address") val deliveryAddress: String? = null,
+    @SerializedName("delivery_phone") val deliveryPhone: String? = null
 )
 
 // WebSocket Message

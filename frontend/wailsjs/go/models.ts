@@ -475,6 +475,7 @@ export namespace models {
 	    dian_payment_method_id?: number;
 	    affects_cash_register: boolean;
 	    show_in_cash_summary: boolean;
+	    show_in_reports: boolean;
 	    is_system_default: boolean;
 	    is_active: boolean;
 	    display_order: number;
@@ -495,6 +496,7 @@ export namespace models {
 	        this.dian_payment_method_id = source["dian_payment_method_id"];
 	        this.affects_cash_register = source["affects_cash_register"];
 	        this.show_in_cash_summary = source["show_in_cash_summary"];
+	        this.show_in_reports = source["show_in_reports"];
 	        this.is_system_default = source["is_system_default"];
 	        this.is_active = source["is_active"];
 	        this.display_order = source["display_order"];
@@ -1047,6 +1049,7 @@ export namespace models {
 	    skip_payment_dialog: boolean;
 	    default_payment_method_id?: number;
 	    auto_print_receipt: boolean;
+	    hide_amount_in_reports: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	    deleted_at?: gorm.DeletedAt;
@@ -1069,6 +1072,7 @@ export namespace models {
 	        this.skip_payment_dialog = source["skip_payment_dialog"];
 	        this.default_payment_method_id = source["default_payment_method_id"];
 	        this.auto_print_receipt = source["auto_print_receipt"];
+	        this.hide_amount_in_reports = source["hide_amount_in_reports"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
@@ -1105,6 +1109,9 @@ export namespace models {
 	    table?: Table;
 	    customer_id?: number;
 	    customer?: Customer;
+	    delivery_customer_name?: string;
+	    delivery_address?: string;
+	    delivery_phone?: string;
 	    items: OrderItem[];
 	    subtotal: number;
 	    tax: number;
@@ -1138,6 +1145,9 @@ export namespace models {
 	        this.table = this.convertValues(source["table"], Table);
 	        this.customer_id = source["customer_id"];
 	        this.customer = this.convertValues(source["customer"], Customer);
+	        this.delivery_customer_name = source["delivery_customer_name"];
+	        this.delivery_address = source["delivery_address"];
+	        this.delivery_phone = source["delivery_phone"];
 	        this.items = this.convertValues(source["items"], OrderItem);
 	        this.subtotal = source["subtotal"];
 	        this.tax = source["tax"];
@@ -3153,6 +3163,7 @@ export namespace services {
 	    order_type: string;
 	    amount: number;
 	    count: number;
+	    hide_amount: boolean;
 	    products: ProductDetail[];
 	
 	    static createFrom(source: any = {}) {
@@ -3164,6 +3175,7 @@ export namespace services {
 	        this.order_type = source["order_type"];
 	        this.amount = source["amount"];
 	        this.count = source["count"];
+	        this.hide_amount = source["hide_amount"];
 	        this.products = this.convertValues(source["products"], ProductDetail);
 	    }
 	

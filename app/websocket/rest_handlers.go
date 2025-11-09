@@ -94,6 +94,10 @@ type OrderRequest struct {
 	Notes       string             `json:"notes,omitempty"`
 	Source      string             `json:"source"`
 	EmployeeID  uint               `json:"employee_id"`
+	// Delivery information (optional, for delivery orders)
+	DeliveryCustomerName string `json:"delivery_customer_name,omitempty"`
+	DeliveryAddress      string `json:"delivery_address,omitempty"`
+	DeliveryPhone        string `json:"delivery_phone,omitempty"`
 }
 
 // HandleGetProducts returns all available products
@@ -236,14 +240,23 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 
 	// Build the Order object
 	order := &models.Order{
-		Type:        orderReq.Type, // Legacy field
-		OrderTypeID: orderReq.OrderTypeID,
-		TableID:     orderReq.TableID,
-		EmployeeID:  orderReq.EmployeeID,
-		Items:       items,
-		Notes:       orderReq.Notes,
-		Source:      orderReq.Source,
+		Type:                 orderReq.Type, // Legacy field
+		OrderTypeID:          orderReq.OrderTypeID,
+		TableID:              orderReq.TableID,
+		EmployeeID:           orderReq.EmployeeID,
+		Items:                items,
+		Notes:                orderReq.Notes,
+		Source:               orderReq.Source,
+		DeliveryCustomerName: orderReq.DeliveryCustomerName,
+		DeliveryAddress:      orderReq.DeliveryAddress,
+		DeliveryPhone:        orderReq.DeliveryPhone,
 	}
+
+	// LOG: Debug delivery info
+	log.Printf("🚚 REST API: Delivery info received:")
+	log.Printf("  - Customer Name: '%s'", orderReq.DeliveryCustomerName)
+	log.Printf("  - Address: '%s'", orderReq.DeliveryAddress)
+	log.Printf("  - Phone: '%s'", orderReq.DeliveryPhone)
 
 	// Use OrderService to create the order (handles sequential numbers and order types)
 	createdOrder, err := h.orderService.CreateOrder(order)
@@ -395,6 +408,10 @@ type OrderResponse struct {
 	Notes          string                  `json:"notes,omitempty"`
 	Source         string                  `json:"source"`
 	CreatedAt      string                  `json:"created_at"`
+	// Delivery information (optional, for delivery orders)
+	DeliveryCustomerName string `json:"delivery_customer_name,omitempty"`
+	DeliveryAddress      string `json:"delivery_address,omitempty"`
+	DeliveryPhone        string `json:"delivery_phone,omitempty"`
 }
 
 // OrderItemModifierResponse represents a modifier on an order item
@@ -460,21 +477,24 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	response := make([]OrderResponse, len(orders))
 	for i, o := range orders {
 		orderResp := OrderResponse{
-			ID:             o.ID,
-			OrderNumber:    o.OrderNumber,
-			Type:           o.Type,
-			OrderType:      o.OrderType,
-			SequenceNumber: o.SequenceNumber,
-			TakeoutNumber:  o.TakeoutNumber,
-			Status:         string(o.Status),
-			TableID:        o.TableID,
-			Table:          o.Table,
-			Subtotal:       o.Subtotal,
-			Tax:            o.Tax,
-			Total:          o.Total,
-			Notes:          o.Notes,
-			Source:         o.Source,
-			CreatedAt:      o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:                   o.ID,
+			OrderNumber:          o.OrderNumber,
+			Type:                 o.Type,
+			OrderType:            o.OrderType,
+			SequenceNumber:       o.SequenceNumber,
+			TakeoutNumber:        o.TakeoutNumber,
+			Status:               string(o.Status),
+			TableID:              o.TableID,
+			Table:                o.Table,
+			Subtotal:             o.Subtotal,
+			Tax:                  o.Tax,
+			Total:                o.Total,
+			Notes:                o.Notes,
+			Source:               o.Source,
+			CreatedAt:            o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			DeliveryCustomerName: o.DeliveryCustomerName,
+			DeliveryAddress:      o.DeliveryAddress,
+			DeliveryPhone:        o.DeliveryPhone,
 		}
 
 		if o.Table != nil {
@@ -597,6 +617,9 @@ func (h *RESTHandlers) HandleUpdateOrder(w http.ResponseWriter, r *http.Request,
 	existingOrder.Tax = orderReq.Tax
 	existingOrder.Total = orderReq.Total
 	existingOrder.Notes = orderReq.Notes
+	existingOrder.DeliveryCustomerName = orderReq.DeliveryCustomerName
+	existingOrder.DeliveryAddress = orderReq.DeliveryAddress
+	existingOrder.DeliveryPhone = orderReq.DeliveryPhone
 	existingOrder.Items = []models.OrderItem{}
 
 	// Add new items

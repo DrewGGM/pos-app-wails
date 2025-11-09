@@ -59,6 +59,7 @@ const PaymentMethodsSettings: React.FC = () => {
     dian_payment_method_id: undefined,
     affects_cash_register: true,
     show_in_cash_summary: true,
+    show_in_reports: true,
     is_active: true,
     display_order: 0,
   });
@@ -102,6 +103,7 @@ const PaymentMethodsSettings: React.FC = () => {
         dian_payment_method_id: method.dian_payment_method_id,
         affects_cash_register: method.affects_cash_register !== false, // Default to true
         show_in_cash_summary: method.show_in_cash_summary !== false, // Default to true
+        show_in_reports: method.show_in_reports !== false, // Default to true
         is_active: method.is_active,
         display_order: method.display_order || 0,
       });
@@ -425,6 +427,20 @@ const PaymentMethodsSettings: React.FC = () => {
                     />
                   }
                   label="Mostrar en Resumen de Ventas"
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.show_in_reports !== false}
+                      onChange={(e) =>
+                        setFormData({ ...formData, show_in_reports: e.target.checked })
+                      }
+                    />
+                  }
+                  label="Mostrar en Reportes (Google Sheets)"
                 />
               </Grid>
 

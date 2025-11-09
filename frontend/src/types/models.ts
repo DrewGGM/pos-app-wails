@@ -135,6 +135,8 @@ export interface OrderType extends BaseModel {
   display_order: number;
   skip_payment_dialog: boolean; // If true, skip payment dialog and auto-process with default payment method
   default_payment_method_id?: number; // Default payment method when skip_payment_dialog is true
+  auto_print_receipt?: boolean; // If true, auto-print receipt when processing payment
+  hide_amount_in_reports?: boolean; // If true, hide sales amount in reports (only show products)
 }
 
 // Order model
@@ -161,6 +163,10 @@ export interface Order extends BaseModel {
   source: 'pos' | 'web' | 'mobile' | 'waiter_app';
   is_synced: boolean;
   sale_id?: number;
+  // Delivery information (optional, for delivery orders)
+  delivery_customer_name?: string;
+  delivery_address?: string;
+  delivery_phone?: string;
 }
 
 // Order item model
@@ -242,6 +248,7 @@ export interface PaymentMethod extends BaseModel {
   dian_payment_method_id?: number; // DIAN parametric payment method ID for electronic invoicing
   affects_cash_register?: boolean; // Whether this payment type counts in cash register reconciliation
   show_in_cash_summary?: boolean; // Whether this payment method appears in cash register sales summary
+  show_in_reports?: boolean; // Whether this payment method appears in Google Sheets reports
   is_system_default?: boolean; // System default payment methods cannot be deleted
   is_active: boolean;
   display_order: number;
@@ -547,6 +554,9 @@ export interface CreateOrderData {
   items: Partial<OrderItem>[];
   notes?: string;
   source?: string;
+  delivery_customer_name?: string;
+  delivery_address?: string;
+  delivery_phone?: string;
 }
 
 // ProcessSaleData interface

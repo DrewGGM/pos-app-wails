@@ -37,6 +37,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedOrderType = MutableStateFlow<OrderType?>(null)
     val selectedOrderType: StateFlow<OrderType?> = _selectedOrderType
 
+    private val _deliveryInfo = MutableStateFlow<com.drewcore.waiter_app.ui.components.DeliveryInfo?>(null)
+    val deliveryInfo: StateFlow<com.drewcore.waiter_app.ui.components.DeliveryInfo?> = _deliveryInfo
+
     private val _orders = MutableStateFlow<List<OrderResponse>>(emptyList())
     val orders: StateFlow<List<OrderResponse>> = _orders
 
@@ -531,6 +534,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     fun startTakeoutOrder() {
         _selectedTable.value = null
         _cart.value = emptyList()
+        _deliveryInfo.value = null
 
         // Set order type to takeout
         // Look for order type with code "takeout" or "para-llevar"
@@ -541,6 +545,28 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         android.util.Log.d("WaiterViewModel", "startTakeoutOrder: Set order type to ${takeoutType?.name ?: "null"} (code: ${takeoutType?.code})")
 
         navigateToScreen(Screen.ProductSelection)
+    }
+
+    fun startDeliveryOrder() {
+        _selectedTable.value = null
+        // DON'T clear cart - keep existing products if any
+        // Reset delivery info to allow entering new data (will be set after dialog confirmation)
+        _deliveryInfo.value = null
+
+        // Set order type to delivery
+        // Look for order type with code "delivery" or "domicilio"
+        val deliveryType = _orderTypes.value.find {
+            it.code == "delivery" || it.code == "domicilio"
+        }
+        _selectedOrderType.value = deliveryType
+        android.util.Log.d("WaiterViewModel", "startDeliveryOrder: Set order type to ${deliveryType?.name ?: "null"} (code: ${deliveryType?.code}), cart has ${_cart.value.size} items")
+
+        // Don't navigate here - navigation happens after delivery info dialog is confirmed
+    }
+
+    fun setDeliveryInfo(info: com.drewcore.waiter_app.ui.components.DeliveryInfo) {
+        _deliveryInfo.value = info
+        android.util.Log.d("WaiterViewModel", "setDeliveryInfo: name=${info.customerName}, address=${info.address}, phone=${info.phone}")
     }
 
     fun addToCart(product: Product, modifiers: List<Modifier> = emptyList(), notes: String = "", customPrice: Double? = null) {
@@ -676,6 +702,10 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
 
+            // Include delivery info if it exists (regardless of order type code)
+            val deliveryData = _deliveryInfo.value
+            android.util.Log.d("WaiterViewModel", "sendOrder: deliveryData=$deliveryData, selectedType=${selectedType?.code}")
+
             val order = OrderRequest(
                 orderNumber = orderNumber,
                 orderTypeId = selectedType?.id, // Use order_type_id (new field)
@@ -685,8 +715,13 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 subtotal = cartTotal,
                 tax = 0.0,
                 total = cartTotal,
-                source = "waiter_app"
+                source = "waiter_app",
+                deliveryCustomerName = deliveryData?.customerName,
+                deliveryAddress = deliveryData?.address,
+                deliveryPhone = deliveryData?.phone
             )
+
+            android.util.Log.d("WaiterViewModel", "sendOrder: Sending order with delivery info: name='${order.deliveryCustomerName}', address='${order.deliveryAddress}', phone='${order.deliveryPhone}'")
 
             // Update existing order or create new one
             val currentOrderId = _currentOrderId.value

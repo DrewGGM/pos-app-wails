@@ -67,6 +67,7 @@ const OrderTypesSettings: React.FC = () => {
     skip_payment_dialog: false,
     default_payment_method_id: undefined,
     auto_print_receipt: true,
+    hide_amount_in_reports: false,
   });
 
   useEffect(() => {
@@ -109,6 +110,7 @@ const OrderTypesSettings: React.FC = () => {
         skip_payment_dialog: type.skip_payment_dialog || false,
         default_payment_method_id: type.default_payment_method_id || undefined,
         auto_print_receipt: type.auto_print_receipt !== false, // Default to true if not set
+        hide_amount_in_reports: type.hide_amount_in_reports || false,
       });
     } else {
       setEditingType(null);
@@ -161,6 +163,7 @@ const OrderTypesSettings: React.FC = () => {
         skip_payment_dialog: formData.skip_payment_dialog || false,
         default_payment_method_id: formData.default_payment_method_id || undefined,
         auto_print_receipt: formData.auto_print_receipt !== false, // Default to true
+        hide_amount_in_reports: formData.hide_amount_in_reports || false,
       };
 
       // Only include timestamps when editing (GORM will auto-set them when creating)
@@ -496,6 +499,21 @@ const OrderTypesSettings: React.FC = () => {
                   </Grid>
                 </>
               )}
+
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.hide_amount_in_reports || false}
+                      onChange={(e) => setFormData({ ...formData, hide_amount_in_reports: e.target.checked })}
+                    />
+                  }
+                  label="Ocultar monto en reportes"
+                />
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mt: 0.5 }}>
+                  Si se activa, los reportes solo mostrarán productos y cantidades, pero no los montos de venta para este tipo de pedido
+                </Typography>
+              </Grid>
             </Grid>
           </DialogContent>
           <DialogActions>
