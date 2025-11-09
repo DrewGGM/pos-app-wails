@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"gorm.io/gorm"
@@ -132,6 +133,25 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		s.localDB.SaveOrder(order)
 
 		return sale, nil
+	}
+
+	// CRITICAL: Validate payment data BEFORE creating sale
+	totalPaymentAmount := 0.0
+	for _, payment := range paymentData {
+		// Validate positive amount
+		if payment.Amount <= 0 {
+			return nil, fmt.Errorf("payment amount must be greater than 0")
+		}
+		totalPaymentAmount += payment.Amount
+	}
+
+	// Ensure payments match sale total (with small tolerance for rounding)
+	tolerance := 0.01
+	if math.Abs(totalPaymentAmount-sale.Total) > tolerance {
+		return nil, fmt.Errorf(
+			"payment total ($%.2f) does not match sale total ($%.2f)",
+			totalPaymentAmount, sale.Total,
+		)
 	}
 
 	// Process sale in transaction

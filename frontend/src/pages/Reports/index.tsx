@@ -67,6 +67,7 @@ const Reports: React.FC = () => {
   const [salesData, setSalesData] = useState<any[]>([]);
   const [productsData, setProductsData] = useState<any[]>([]);
   const [customersData, setCustomersData] = useState<any[]>([]);
+  const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
   const [customerStats, setCustomerStats] = useState<any>(null);
   const [keyMetrics, setKeyMetrics] = useState<any[]>([]);
   const [categoryComparison, setCategoryComparison] = useState<any[]>([]);
@@ -131,6 +132,13 @@ const Reports: React.FC = () => {
           revenue: p.total_sales,
         }));
         setProductsData(productsChartData);
+
+        // Set payment methods data from payment breakdown
+        const paymentMethodsChartData = Object.entries(salesReport.payment_breakdown || {}).map(([method, amount]) => ({
+          method,
+          amount,
+        })).sort((a, b) => b.amount - a.amount);
+        setPaymentMethodsData(paymentMethodsChartData);
 
         // Generate customer segmentation data
         if (custStats && custStats.total_customers > 0) {
@@ -455,6 +463,7 @@ const Reports: React.FC = () => {
         >
           <Tab label="Tendencias" />
           <Tab label="Productos" />
+          <Tab label="Métodos de Pago" />
           <Tab label="Clientes" />
           <Tab label="Comparativo" />
         </Tabs>
@@ -551,6 +560,90 @@ const Reports: React.FC = () => {
 
         {selectedTab === 2 && (
           <>
+            {/* Payment Methods Tab */}
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Distribución por Método de Pago
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={paymentMethodsData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="method" />
+                    <YAxis />
+                    <Tooltip formatter={(value: any) => `$${value.toLocaleString('es-CO')}`} />
+                    <Legend />
+                    <Bar dataKey="amount" fill="#8884d8" name="Monto ($)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Paper>
+            </Grid>
+
+            {/* Payment Methods Table */}
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Detalle por Método de Pago
+                </Typography>
+                {paymentMethodsData.length > 0 ? (
+                  paymentMethodsData.map((payment, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        py: 1,
+                        borderBottom: index < paymentMethodsData.length - 1 ? 1 : 0,
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Typography variant="body2">{payment.method}</Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        ${payment.amount.toLocaleString('es-CO')}
+                      </Typography>
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    No hay datos de métodos de pago disponibles
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Payment Methods Pie Chart */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Proporción de Métodos de Pago
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={paymentMethodsData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ method, amount }) => `${method}: $${amount.toLocaleString('es-CO')}`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="amount"
+                    >
+                      {paymentMethodsData.map((entry, index) => {
+                        const colors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+                        return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                      })}
+                    </Pie>
+                    <Tooltip formatter={(value: any) => `$${value.toLocaleString('es-CO')}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Paper>
+            </Grid>
+          </>
+        )}
+
+        {selectedTab === 3 && (
+          <>
             {/* Customer Segments Pie Chart */}
             <Grid item xs={12} md={6}>
               <Paper sx={{ p: 2 }}>
@@ -616,7 +709,7 @@ const Reports: React.FC = () => {
           </>
         )}
 
-        {selectedTab === 3 && (
+        {selectedTab === 4 && (
           <>
             {/* Comparative Analysis */}
             <Grid item xs={12}>

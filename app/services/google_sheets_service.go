@@ -258,13 +258,13 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 
 	var orderTypeSummaries []OrderTypeSummary
 	s.db.Table("orders").
-		Select("COALESCE(order_types.name, orders.type) as order_type, orders.order_type_id as order_type_id, SUM(orders.total) as amount, COUNT(*) as count, COALESCE(order_types.hide_amount_in_reports, false) as hide_amount").
+		Select("COALESCE(order_types.name, orders.type) as order_type, COALESCE(orders.order_type_id, 0) as order_type_id, SUM(orders.total) as amount, COUNT(*) as count, COALESCE(order_types.hide_amount_in_reports, false) as hide_amount").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id"). // LEFT JOIN to support legacy orders
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
-		Group("order_types.id, order_types.name, orders.type, orders.order_type_id, order_types.hide_amount_in_reports").
+		Group("COALESCE(order_types.name, orders.type), COALESCE(orders.order_type_id, 0), COALESCE(order_types.hide_amount_in_reports, false)").
 		Order("SUM(orders.total) DESC").
 		Scan(&orderTypeSummaries)
 
@@ -283,16 +283,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 			Joins("JOIN orders ON orders.id = order_items.order_id").
 			Joins("JOIN sales ON sales.order_id = orders.id").
 			Joins("JOIN products ON products.id = order_items.product_id").
+			Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 			Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 			Where("orders.status IN ?", []string{"completed", "paid"}).
-			Where("sales.status NOT IN ?", []string{"refunded"})
-
-		// Filter by order type (support both new and legacy systems)
-		if ot.OrderTypeID > 0 {
-			query = query.Where("orders.order_type_id = ?", ot.OrderTypeID)
-		} else {
-			query = query.Where("orders.type = ?", ot.OrderType)
-		}
+			Where("sales.status NOT IN ?", []string{"refunded"}).
+			Where("COALESCE(order_types.name, orders.type) = ?", ot.OrderType)
 
 		query.Group("products.id, products.name").
 			Order("SUM(order_items.subtotal) DESC").

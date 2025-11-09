@@ -382,6 +382,17 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 		s.db.Preload("PaymentMethod").Where("sale_id = ?", sale.ID).Find(&payments)
 
 		for _, payment := range payments {
+			if payment.PaymentMethod == nil {
+				continue
+			}
+
+			// IMPORTANT: Only include payments that affect cash register (consistent with expected_amount calculation)
+			// Payments like "Rappi" or third-party services that don't go into the physical register
+			// should have affects_cash_register = false
+			if !payment.PaymentMethod.AffectsCashRegister {
+				continue
+			}
+
 			switch payment.PaymentMethod.Type {
 			case "cash":
 				report.TotalCash += payment.Amount
@@ -540,22 +551,28 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 	// Add only CASH payments from sales in this register
 	// Only physical cash should affect the cash register balance
 	// Cards, digital payments, etc. do NOT go into the physical cash drawer
+	// IMPORTANT: Only include payment methods where affects_cash_register = true
+	//
+	// NOTE: We sum payment.Amount (not sale.Total) to correctly handle split payments
+	// Example: Sale $100 paid with $60 cash + $40 card → Only $60 goes in register
+	// Backend validation ensures payment amounts always match sale total, so this is safe
 	var cashPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
-		Where("sales.cash_register_id = ? AND payment_methods.type = ?", register.ID, "cash").
+		Where("sales.cash_register_id = ? AND payment_methods.type = ? AND payment_methods.affects_cash_register = ?", register.ID, "cash", true).
 		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
 		Find(&cashPayments)
 
 	for _, payment := range cashPayments {
-		expected += payment.Amount
+		expected += payment.Amount // Correct: handles split payments properly
 	}
 
 	// Subtract refunded cash payments (money returned to customer)
+	// IMPORTANT: Only include payment methods where affects_cash_register = true
 	var refundedCashPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
-		Where("sales.cash_register_id = ? AND payment_methods.type = ?", register.ID, "cash").
+		Where("sales.cash_register_id = ? AND payment_methods.type = ? AND payment_methods.affects_cash_register = ?", register.ID, "cash", true).
 		Where("sales.status IN ?", []string{"refunded", "partial_refund"}).
 		Find(&refundedCashPayments)
 
@@ -593,6 +610,17 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 		s.db.Preload("PaymentMethod").Where("sale_id = ?", sale.ID).Find(&payments)
 
 		for _, payment := range payments {
+			if payment.PaymentMethod == nil {
+				continue
+			}
+
+			// IMPORTANT: Only include payments that affect cash register (consistent with expected_amount calculation)
+			// Payments like "Rappi" or third-party services that don't go into the physical register
+			// should have affects_cash_register = false
+			if !payment.PaymentMethod.AffectsCashRegister {
+				continue
+			}
+
 			switch payment.PaymentMethod.Type {
 			case "cash":
 				report.TotalCash += payment.Amount

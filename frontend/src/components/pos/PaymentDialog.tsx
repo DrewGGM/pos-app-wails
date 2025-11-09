@@ -108,7 +108,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
 
-    const paymentAmount = parseFloat(amount);
+    let paymentAmount = parseFloat(amount);
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
       setError('Ingrese un monto válido');
       return;
@@ -123,17 +123,44 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
 
+    // IMPORTANT: Automatically cap payment at remaining balance
+    // The change is calculated and displayed, but NEVER recorded in the database
+    const totalPaidSoFar = paymentLines.reduce((sum, line) => sum + line.amount, 0);
+    const remainingBalance = total - totalPaidSoFar;
+
+    // Calculate change if overpayment (for cash only)
+    let cashChange = 0;
+    if (paymentAmount > remainingBalance && method.type === 'cash') {
+      cashChange = paymentAmount - remainingBalance;
+      // Store the cash received for display purposes only
+      const cashReceived = paymentAmount;
+      // Cap the actual payment amount to remaining balance
+      paymentAmount = remainingBalance;
+
+      // Show info message about change (non-blocking)
+      setError(`Efectivo recibido: $${cashReceived.toLocaleString('es-CO')} → Cambio a dar: $${cashChange.toLocaleString('es-CO')}`);
+    } else if (paymentAmount > remainingBalance) {
+      // For non-cash payments, just cap at remaining balance
+      paymentAmount = remainingBalance;
+    }
+
     const newLine: PaymentLine = {
       payment_method_id: selectedMethod,
       payment_method_name: method.name,
-      amount: paymentAmount,
+      amount: paymentAmount, // Always the exact amount, never more
       reference: reference.trim() || undefined,
     };
 
     setPaymentLines([...paymentLines, newLine]);
     setAmount('');
     setReference('');
-    setError('');
+
+    // Clear error after 3 seconds if it's a change message
+    if (cashChange > 0) {
+      setTimeout(() => setError(''), 3000);
+    } else {
+      setError('');
+    }
   };
 
   const removePaymentLine = (index: number) => {
