@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail } from './services/googleSheets'
+import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail } from './services/googleSheets'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
@@ -164,6 +164,7 @@ function App() {
               order_type: orderType,
               amount: 0,
               count: 0,
+              hide_amount: orderTypeDetail.hide_amount || false,
               products: []
             }
           }
@@ -197,6 +198,30 @@ function App() {
 
     const aggregatedOrderTypes = Object.values(orderTypeMap)
 
+    // Aggregate payment methods
+    const paymentMethodMap: { [key: string]: PaymentMethodDetail } = {}
+
+    periodReports.forEach(report => {
+      if (report.detalle_tipos_pago) {
+        report.detalle_tipos_pago.forEach(paymentDetail => {
+          const paymentMethod = paymentDetail.payment_method
+
+          if (!paymentMethodMap[paymentMethod]) {
+            paymentMethodMap[paymentMethod] = {
+              payment_method: paymentMethod,
+              amount: 0,
+              count: 0
+            }
+          }
+
+          paymentMethodMap[paymentMethod].amount += paymentDetail.amount
+          paymentMethodMap[paymentMethod].count += paymentDetail.count
+        })
+      }
+    })
+
+    const aggregatedPaymentMethods = Object.values(paymentMethodMap)
+
     // Get period label for fecha field
     const getPeriodLabel = (): string => {
       switch (viewPeriod) {
@@ -227,6 +252,7 @@ function App() {
       ticket_promedio: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0) /
                        periodReports.reduce((sum, r) => sum + r.ordenes, 0),
       detalle_productos: aggregatedProducts,
+      detalle_tipos_pago: aggregatedPaymentMethods,
       detalle_tipos_pedido: aggregatedOrderTypes
     }
   }
@@ -420,6 +446,33 @@ function App() {
               </div>
             </div>
 
+            {/* Payment Methods Section */}
+            {currentReport.detalle_tipos_pago && currentReport.detalle_tipos_pago.length > 0 && (
+              <div className="products-section">
+                <h3>Métodos de Pago</h3>
+                <div className="products-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Método de Pago</th>
+                        <th>Cantidad</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentReport.detalle_tipos_pago.map((payment, idx) => (
+                        <tr key={idx}>
+                          <td>{payment.payment_method}</td>
+                          <td>{payment.count}</td>
+                          <td>{formatCurrency(payment.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Products Section with Tabs */}
             {currentReport.detalle_productos && currentReport.detalle_productos.length > 0 && (
               <div className="products-section">
@@ -481,9 +534,11 @@ function App() {
                           <>
                             <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <strong>Ventas {orderTypeDetail.order_type}:</strong> {formatCurrency(orderTypeDetail.amount)}
-                                </div>
+                                {!orderTypeDetail.hide_amount && (
+                                  <div>
+                                    <strong>Ventas {orderTypeDetail.order_type}:</strong> {formatCurrency(orderTypeDetail.amount)}
+                                  </div>
+                                )}
                                 <div>
                                   <strong>Órdenes:</strong> {orderTypeDetail.count}
                                 </div>
@@ -495,7 +550,7 @@ function App() {
                                 <tr>
                                   <th>Producto</th>
                                   <th>Cantidad</th>
-                                  <th>Total</th>
+                                  {!orderTypeDetail.hide_amount && <th>Total</th>}
                                 </tr>
                               </thead>
                               <tbody>
@@ -504,12 +559,12 @@ function App() {
                                     <tr key={idx}>
                                       <td>{product.product_name}</td>
                                       <td>{product.quantity}</td>
-                                      <td>{formatCurrency(product.total)}</td>
+                                      {!orderTypeDetail.hide_amount && <td>{formatCurrency(product.total)}</td>}
                                     </tr>
                                   ))
                                 ) : (
                                   <tr>
-                                    <td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                                    <td colSpan={orderTypeDetail.hide_amount ? 2 : 3} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
                                       No hay productos para este tipo de orden
                                     </td>
                                   </tr>

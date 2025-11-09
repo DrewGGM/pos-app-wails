@@ -56,6 +56,45 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
+# Check for unpushed commits
+UNPUSHED_COMMITS=$(git log --branches --not --remotes 2>/dev/null)
+if [ -n "$UNPUSHED_COMMITS" ]; then
+    warning "⚠️  Tienes commits sin hacer push al remoto"
+    COMMIT_COUNT=$(git log --oneline --branches --not --remotes | wc -l)
+    echo "   Commits pendientes: $COMMIT_COUNT"
+
+    # Check if there's a version bump commit
+    HAS_VERSION_BUMP=$(git log --oneline --branches --not --remotes | grep "chore: bump version" || true)
+    if [ -n "$HAS_VERSION_BUMP" ]; then
+        warning "   ⚠️  Detectado commit de versión previo sin push"
+        echo ""
+        read -p "¿Deseas hacer push de los commits existentes antes de continuar? (S/n): " response
+        if [ "$response" != "n" ] && [ "$response" != "N" ]; then
+            info "   Haciendo push..."
+            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            git push origin "$CURRENT_BRANCH"
+
+            # Also push any existing tags
+            UNPUSHED_TAGS=$(git tag --points-at HEAD 2>/dev/null)
+            if [ -n "$UNPUSHED_TAGS" ]; then
+                for tag in $UNPUSHED_TAGS; do
+                    info "   Haciendo push del tag $tag..."
+                    git push origin "$tag"
+                done
+            fi
+            success "   ✓ Push completado"
+            echo ""
+        fi
+    else
+        echo ""
+        read -p "¿Deseas continuar de todas formas? (s/N): " response
+        if [ "$response" != "s" ] && [ "$response" != "S" ]; then
+            info "Operación cancelada"
+            exit 0
+        fi
+    fi
+fi
+
 # Obtener versión actual
 if command -v jq &> /dev/null; then
     CURRENT_VERSION=$(jq -r '.info.productVersion' wails.json)
@@ -166,8 +205,28 @@ success "✓ Commit creado"
 
 echo ""
 info "🏷️  Creando tag v$NEW_VERSION..."
-git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-success "✓ Tag creado"
+
+# Check if tag already exists locally
+if git tag -l | grep -q "^v$NEW_VERSION$"; then
+    warning "⚠️  El tag v$NEW_VERSION ya existe localmente"
+    read -p "¿Deseas eliminarlo y crearlo nuevamente? (s/N): " response
+    if [ "$response" = "s" ] || [ "$response" = "S" ]; then
+        info "   Eliminando tag existente..."
+        git tag -d "v$NEW_VERSION"
+        # Also try to delete from remote if it exists
+        git push origin ":refs/tags/v$NEW_VERSION" 2>/dev/null || true
+    else
+        info "   Usando tag existente"
+    fi
+fi
+
+# Create tag if it doesn't exist
+if ! git tag -l | grep -q "^v$NEW_VERSION$"; then
+    git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+    success "✓ Tag creado"
+else
+    success "✓ Tag existente confirmado"
+fi
 
 echo ""
 info "📤 Haciendo push al repositorio remoto..."

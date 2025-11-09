@@ -10,10 +10,17 @@ export interface ProductDetail {
   total: number
 }
 
+export interface PaymentMethodDetail {
+  payment_method: string
+  amount: number
+  count: number
+}
+
 export interface OrderTypeDetail {
   order_type: string
   amount: number
   count: number
+  hide_amount: boolean
   products: ProductDetail[]
 }
 
@@ -26,6 +33,7 @@ export interface ReportData {
   productos_vendidos: number
   ticket_promedio: number
   detalle_productos: ProductDetail[]
+  detalle_tipos_pago?: PaymentMethodDetail[]
   detalle_tipos_pedido?: OrderTypeDetail[]
 }
 
@@ -150,6 +158,7 @@ class GoogleSheetsService {
           productos_vendidos: report.productos_vendidos || 0,
           ticket_promedio: report.ticket_promedio || 0,
           detalle_productos: report.detalle_productos || [],
+          detalle_tipos_pago: report.detalle_tipos_pago || [],
           detalle_tipos_pedido: report.detalle_tipos_pedido || []
         })
       }

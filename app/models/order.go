@@ -46,6 +46,7 @@ type OrderType struct {
 	SkipPaymentDialog       bool           `gorm:"default:false" json:"skip_payment_dialog"`      // If true, skip payment dialog and use default payment method
 	DefaultPaymentMethodID  *uint          `json:"default_payment_method_id,omitempty"`           // Default payment method when skipping dialog
 	AutoPrintReceipt        bool           `gorm:"default:true" json:"auto_print_receipt"`        // If true, automatically print receipt when auto-processing payment
+	HideAmountInReports     bool           `gorm:"default:false" json:"hide_amount_in_reports"`   // If true, hide sales amount in reports (only show products)
 	CreatedAt               time.Time      `json:"created_at"`
 	UpdatedAt               time.Time      `json:"updated_at"`
 	DeletedAt               gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`

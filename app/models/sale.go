@@ -69,6 +69,7 @@ type PaymentMethod struct {
 	DIANPaymentMethodID  *int      `json:"dian_payment_method_id"`  // DIAN parametric payment method ID for electronic invoicing
 	AffectsCashRegister  bool      `gorm:"default:true" json:"affects_cash_register"` // Whether this payment type counts in cash register reconciliation
 	ShowInCashSummary    bool      `gorm:"default:true" json:"show_in_cash_summary"`  // Whether this payment method appears in cash register sales summary
+	ShowInReports        bool      `gorm:"default:true" json:"show_in_reports"`       // Whether this payment method appears in Google Sheets reports
 	IsSystemDefault      bool      `gorm:"default:false" json:"is_system_default"` // System default payment methods cannot be deleted
 	IsActive             bool      `gorm:"default:true" json:"is_active"`
 	DisplayOrder         int       `json:"display_order"`

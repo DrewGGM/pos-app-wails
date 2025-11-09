@@ -269,6 +269,22 @@ func runAdditionalMigrations() error {
 		log.Printf("Warning: Failed to migrate existing order types: %v", err)
 	}
 
+	// Add hide_amount_in_reports column to order_types if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE order_types
+		ADD COLUMN IF NOT EXISTS hide_amount_in_reports BOOLEAN DEFAULT false
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add hide_amount_in_reports column: %w", err)
+	}
+
+	// Add show_in_reports column to payment_methods if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE payment_methods
+		ADD COLUMN IF NOT EXISTS show_in_reports BOOLEAN DEFAULT true
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add show_in_reports column: %w", err)
+	}
+
 	log.Println("✅ Additional migrations completed successfully")
 	return nil
 }

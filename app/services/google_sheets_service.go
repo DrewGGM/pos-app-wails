@@ -107,10 +107,11 @@ type PaymentMethodDetail struct {
 
 // OrderTypeDetail represents order type breakdown
 type OrderTypeDetail struct {
-	OrderType string          `json:"order_type"`
-	Amount    float64         `json:"amount"`
-	Count     int             `json:"count"`
-	Products  []ProductDetail `json:"products"` // Products sold in this order type
+	OrderType  string          `json:"order_type"`
+	Amount     float64         `json:"amount"`
+	Count      int             `json:"count"`
+	HideAmount bool            `json:"hide_amount"` // If true, PWA should hide the amount (only show products)
+	Products   []ProductDetail `json:"products"`    // Products sold in this order type
 }
 
 // ReportData represents a daily report row
@@ -216,7 +217,7 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		})
 	}
 
-	// Get payment method breakdown
+	// Get payment method breakdown (only payment methods with show_in_reports=true)
 	type PaymentSummary struct {
 		PaymentMethodName string
 		Amount            float64
@@ -232,6 +233,7 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("payment_methods.show_in_reports = ?", true). // Filter by show_in_reports flag
 		Group("payment_methods.id, payment_methods.name").
 		Order("SUM(payments.amount) DESC").
 		Scan(&paymentSummaries)
@@ -245,21 +247,24 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		})
 	}
 
-	// Get order type breakdown
+	// Get order type breakdown using order_types table
 	type OrderTypeSummary struct {
-		OrderType string
-		Amount    float64
-		Count     int64
+		OrderType      string
+		OrderTypeID    uint
+		Amount         float64
+		Count          int64
+		HideAmount     bool
 	}
 
 	var orderTypeSummaries []OrderTypeSummary
 	s.db.Table("orders").
-		Select("orders.type as order_type, SUM(orders.total) as amount, COUNT(*) as count").
+		Select("COALESCE(order_types.name, orders.type) as order_type, orders.order_type_id as order_type_id, SUM(orders.total) as amount, COUNT(*) as count, COALESCE(order_types.hide_amount_in_reports, false) as hide_amount").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id"). // LEFT JOIN to support legacy orders
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
-		Group("orders.type").
+		Group("order_types.id, order_types.name, orders.type, orders.order_type_id, order_types.hide_amount_in_reports").
 		Order("SUM(orders.total) DESC").
 		Scan(&orderTypeSummaries)
 
@@ -273,16 +278,23 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		}
 
 		var productsForType []ProductByTypeSum
-		s.db.Table("order_items").
+		query := s.db.Table("order_items").
 			Select("products.name as product_name, SUM(order_items.quantity) as quantity, SUM(order_items.subtotal) as total").
 			Joins("JOIN orders ON orders.id = order_items.order_id").
 			Joins("JOIN sales ON sales.order_id = orders.id").
 			Joins("JOIN products ON products.id = order_items.product_id").
 			Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 			Where("orders.status IN ?", []string{"completed", "paid"}).
-			Where("sales.status NOT IN ?", []string{"refunded"}).
-			Where("orders.type = ?", ot.OrderType). // Filter by order type
-			Group("products.id, products.name").
+			Where("sales.status NOT IN ?", []string{"refunded"})
+
+		// Filter by order type (support both new and legacy systems)
+		if ot.OrderTypeID > 0 {
+			query = query.Where("orders.order_type_id = ?", ot.OrderTypeID)
+		} else {
+			query = query.Where("orders.type = ?", ot.OrderType)
+		}
+
+		query.Group("products.id, products.name").
 			Order("SUM(order_items.subtotal) DESC").
 			Scan(&productsForType)
 
@@ -296,10 +308,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		}
 
 		report.DetalleTiposPedido = append(report.DetalleTiposPedido, OrderTypeDetail{
-			OrderType: ot.OrderType,
-			Amount:    ot.Amount,
-			Count:     int(ot.Count),
-			Products:  productDetails,
+			OrderType:  ot.OrderType,
+			Amount:     ot.Amount,
+			Count:      int(ot.Count),
+			HideAmount: ot.HideAmount,
+			Products:   productDetails,
 		})
 	}
 

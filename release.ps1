@@ -45,6 +45,45 @@ if ($gitStatus) {
     }
 }
 
+# Check for unpushed commits
+$unpushedCommits = git log --branches --not --remotes 2>$null
+if ($unpushedCommits) {
+    Write-Warning "⚠️  Tienes commits sin hacer push al remoto"
+    $commitCount = (git log --oneline --branches --not --remotes | Measure-Object -Line).Lines
+    Write-Host "   Commits pendientes: $commitCount"
+
+    # Check if there's a version bump commit
+    $hasVersionBump = git log --oneline --branches --not --remotes | Select-String "chore: bump version"
+    if ($hasVersionBump) {
+        Write-Warning "   ⚠️  Detectado commit de versión previo sin push"
+        Write-Host ""
+        $response = Read-Host "¿Deseas hacer push de los commits existentes antes de continuar? (S/n)"
+        if ($response -ne "n" -and $response -ne "N") {
+            Write-Info "   Haciendo push..."
+            $currentBranch = git rev-parse --abbrev-ref HEAD
+            git push origin $currentBranch
+
+            # Also push any existing tags
+            $unpushedTags = git tag --points-at HEAD
+            if ($unpushedTags) {
+                foreach ($tag in $unpushedTags) {
+                    Write-Info "   Haciendo push del tag $tag..."
+                    git push origin $tag
+                }
+            }
+            Write-Success "   ✓ Push completado"
+            Write-Host ""
+        }
+    } else {
+        Write-Host ""
+        $response = Read-Host "¿Deseas continuar de todas formas? (s/N)"
+        if ($response -ne "s" -and $response -ne "S") {
+            Write-Info "Operación cancelada"
+            exit 0
+        }
+    }
+}
+
 # Obtener versión actual
 $wailsJson = Get-Content "wails.json" | ConvertFrom-Json
 $currentVersion = $wailsJson.info.productVersion
@@ -163,13 +202,33 @@ Write-Success "✓ Commit creado"
 
 Write-Host ""
 Write-Info "🏷️  Creando tag v$Version..."
-git tag -a "v$Version" -m "Release version $Version"
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "❌ Error al crear el tag"
-    exit 1
+# Check if tag already exists locally
+$tagExists = git tag -l "v$Version"
+if ($tagExists) {
+    Write-Warning "⚠️  El tag v$Version ya existe localmente"
+    $response = Read-Host "¿Deseas eliminarlo y crearlo nuevamente? (s/N)"
+    if ($response -eq "s" -or $response -eq "S") {
+        Write-Info "   Eliminando tag existente..."
+        git tag -d "v$Version"
+        # Also try to delete from remote if it exists
+        git push origin ":refs/tags/v$Version" 2>$null
+    } else {
+        Write-Info "   Usando tag existente"
+    }
 }
-Write-Success "✓ Tag creado"
+
+# Create tag if it doesn't exist
+if (-not (git tag -l "v$Version")) {
+    git tag -a "v$Version" -m "Release version $Version"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "❌ Error al crear el tag"
+        exit 1
+    }
+    Write-Success "✓ Tag creado"
+} else {
+    Write-Success "✓ Tag existente confirmado"
+}
 
 Write-Host ""
 Write-Info "📤 Haciendo push al repositorio remoto..."

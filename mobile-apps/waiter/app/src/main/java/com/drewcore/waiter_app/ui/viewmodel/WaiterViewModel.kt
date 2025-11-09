@@ -422,6 +422,14 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 android.util.Log.d("WaiterViewModel", "Table is available, starting new order")
             }
 
+            // Set order type to dine-in when selecting a table
+            // Look for order type with code "dine-in" or "para-comer-aqui"
+            val dineInType = _orderTypes.value.find {
+                it.code == "dine-in" || it.code == "dine_in" || it.code == "para-comer-aqui" || it.code == "para_comer_aqui"
+            }
+            _selectedOrderType.value = dineInType
+            android.util.Log.d("WaiterViewModel", "selectTable: Set order type to ${dineInType?.name ?: "null"} (code: ${dineInType?.code})")
+
             navigateToScreen(Screen.ProductSelection)
         }
     }
@@ -523,6 +531,15 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     fun startTakeoutOrder() {
         _selectedTable.value = null
         _cart.value = emptyList()
+
+        // Set order type to takeout
+        // Look for order type with code "takeout" or "para-llevar"
+        val takeoutType = _orderTypes.value.find {
+            it.code == "takeout" || it.code == "para-llevar" || it.code == "take-out" || it.code == "take_out"
+        }
+        _selectedOrderType.value = takeoutType
+        android.util.Log.d("WaiterViewModel", "startTakeoutOrder: Set order type to ${takeoutType?.name ?: "null"} (code: ${takeoutType?.code})")
+
         navigateToScreen(Screen.ProductSelection)
     }
 
