@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // SalesService handles sales operations
@@ -120,6 +121,24 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.InvoiceType = "electronic"
 	}
 
+	// CRITICAL FIX: Validate customer for electronic invoice
+	if needsElectronicInvoice {
+		if sale.Customer == nil {
+			return nil, fmt.Errorf("electronic invoice requires a valid customer")
+		}
+		// Check if customer is CONSUMIDOR FINAL (default customer - not valid for electronic invoices)
+		if sale.Customer.IdentificationNumber == "222222222222" {
+			return nil, fmt.Errorf("electronic invoice cannot be issued to CONSUMIDOR FINAL - please provide customer details")
+		}
+		// Validate customer has required fields for DIAN
+		if sale.Customer.IdentificationNumber == "" {
+			return nil, fmt.Errorf("customer identification number is required for electronic invoice")
+		}
+		if sale.Customer.Name == "" {
+			return nil, fmt.Errorf("customer name is required for electronic invoice")
+		}
+	}
+
 	// CRITICAL: Validate payment data BEFORE creating sale
 	totalPaymentAmount := 0.0
 	for _, payment := range paymentData {
@@ -127,23 +146,51 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		if payment.Amount <= 0 {
 			return nil, fmt.Errorf("payment amount must be greater than 0")
 		}
+
+		// CRITICAL FIX: Validate payment method exists and is active
+		var paymentMethod models.PaymentMethod
+		if err := s.db.First(&paymentMethod, payment.PaymentMethodID).Error; err != nil {
+			return nil, fmt.Errorf("payment method ID %d not found", payment.PaymentMethodID)
+		}
+		if !paymentMethod.IsActive {
+			return nil, fmt.Errorf("payment method '%s' is not active", paymentMethod.Name)
+		}
+
 		totalPaymentAmount += payment.Amount
 	}
 
 	// Ensure payments match sale total
+	// CRITICAL FIX: Allow 1 peso difference to handle rounding issues
 	// Round both amounts to handle floating-point precision and Colombian Peso (no decimals)
 	roundedPaymentTotal := math.Round(totalPaymentAmount)
 	roundedSaleTotal := math.Round(sale.Total)
+	difference := math.Abs(roundedPaymentTotal - roundedSaleTotal)
 
-	if roundedPaymentTotal != roundedSaleTotal {
+	// Allow up to 1 peso difference due to rounding
+	if difference > 1 {
 		return nil, fmt.Errorf(
-			"payment total ($%.0f) does not match sale total ($%.0f) - difference: $%.2f",
-			roundedPaymentTotal, roundedSaleTotal, math.Abs(roundedPaymentTotal-roundedSaleTotal),
+			"payment total ($%.0f) does not match sale total ($%.0f) - difference: $%.2f (allowed: $1)",
+			roundedPaymentTotal, roundedSaleTotal, difference,
 		)
 	}
 
 	// Process sale in transaction
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// CRITICAL FIX: Lock order row and re-check status to prevent race condition
+		// This prevents double payment if two requests arrive simultaneously
+		var lockedOrder models.Order
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedOrder, orderID).Error; err != nil {
+			return fmt.Errorf("failed to lock order: %w", err)
+		}
+
+		// Re-validate order status within transaction with lock
+		if lockedOrder.Status == models.OrderStatusPaid {
+			return fmt.Errorf("order already paid (locked check)")
+		}
+		if lockedOrder.Status == models.OrderStatusCancelled {
+			return fmt.Errorf("order is cancelled (locked check)")
+		}
+
 		// Create sale
 		if err := tx.Create(sale).Error; err != nil {
 			return fmt.Errorf("failed to create sale: %w", err)
@@ -167,6 +214,15 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		order.SaleID = &sale.ID
 		if err := tx.Save(order).Error; err != nil {
 			return fmt.Errorf("failed to update order: %w", err)
+		}
+
+		// CRITICAL FIX: Free the table when order is paid
+		if order.TableID != nil {
+			if err := tx.Model(&models.Table{}).
+				Where("id = ?", *order.TableID).
+				Update("status", "available").Error; err != nil {
+				log.Printf("Warning: Failed to free table %d: %v", *order.TableID, err)
+			}
 		}
 
 		// NOTE: Sales are NOT recorded as cash movements
@@ -284,10 +340,13 @@ func (s *SalesService) RefundSale(saleID uint, amount float64, reason string, em
 			return err
 		}
 
-		// CRITICAL FIX: Restore product inventory
+		// CRITICAL FIX: Restore product inventory within transaction
 		for _, item := range order.Items {
-			s.productSvc.AdjustStock(item.ProductID, item.Quantity,
-				fmt.Sprintf("Refund - Sale %s", sale.SaleNumber), employeeID)
+			if err := s.productSvc.AdjustStockInTransaction(tx, item.ProductID, item.Quantity,
+				fmt.Sprintf("Refund - Sale %s", sale.SaleNumber), employeeID); err != nil {
+				log.Printf("Warning: Failed to adjust stock for product %d: %v", item.ProductID, err)
+				// Continue even if stock adjustment fails
+			}
 		}
 
 		// CRITICAL FIX: Restore ingredient stocks
@@ -323,11 +382,16 @@ func (s *SalesService) DeleteSale(saleID uint, employeeID uint) error {
 		// 1. Return inventory if the sale was completed
 		if sale.Status == "completed" && sale.Order != nil {
 			for _, item := range sale.Order.Items {
-				if err := s.productSvc.AdjustStock(item.ProductID, item.Quantity,
+				if err := s.productSvc.AdjustStockInTransaction(tx, item.ProductID, item.Quantity,
 					fmt.Sprintf("Sale deletion - Sale %s", sale.SaleNumber), employeeID); err != nil {
 					log.Printf("Warning: Failed to adjust stock for product %d: %v", item.ProductID, err)
 					// Continue even if stock adjustment fails
 				}
+			}
+
+			// CRITICAL FIX: Restore ingredients for the deleted sale
+			if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, sale.Order.Items); err != nil {
+				log.Printf("Warning: Failed to restore ingredients for deleted sale %s: %v", sale.SaleNumber, err)
 			}
 		}
 

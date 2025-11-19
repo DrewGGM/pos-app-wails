@@ -54,6 +54,10 @@ export function RestoreIngredientsForOrder(arg1) {
   return window['go']['services']['IngredientService']['RestoreIngredientsForOrder'](arg1);
 }
 
+export function RestoreIngredientsInTransaction(arg1, arg2) {
+  return window['go']['services']['IngredientService']['RestoreIngredientsInTransaction'](arg1, arg2);
+}
+
 export function SetProductIngredients(arg1, arg2) {
   return window['go']['services']['IngredientService']['SetProductIngredients'](arg1, arg2);
 }

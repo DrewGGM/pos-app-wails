@@ -69,6 +69,7 @@ interface CashMovement {
   amount: number;
   reason?: string;
   description?: string;
+  reference?: string;  // Added to filter out OPENING movement
   created_at: Date;
   created_by: string;
 }
@@ -142,10 +143,12 @@ const CashRegister: React.FC = () => {
             status: register.status as 'open' | 'closed',
             movements: (register.movements || []).map(m => ({
               id: m.id || 0,
-              type: m.type as 'in' | 'out',
+              // CRITICAL FIX: Convert backend types to frontend types
+              type: (m.type === 'deposit' ? 'in' : m.type === 'withdrawal' ? 'out' : m.type) as 'in' | 'out',
               amount: m.amount || 0,
               description: m.description || '',
               reason: m.reason || '',
+              reference: m.reference || '',  // Include reference to filter OPENING
               created_at: new Date(m.created_at || new Date()),
               created_by: m.created_by || ''
             })),
@@ -432,7 +435,7 @@ const CashRegister: React.FC = () => {
                     <ListItemSecondaryAction>
                       <Typography variant="body1" color="success.main">
                         +${registerStatus.movements
-                          .filter(m => m.type === 'in')
+                          .filter(m => m.type === 'in' && m.reference !== 'OPENING')
                           .reduce((sum, m) => sum + m.amount, 0)
                           .toLocaleString('es-CO')}
                       </Typography>

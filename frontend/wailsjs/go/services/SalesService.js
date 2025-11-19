@@ -10,6 +10,10 @@ export function CreatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['CreatePaymentMethod'](arg1);
 }
 
+export function DeactivatePaymentMethod(arg1) {
+  return window['go']['services']['SalesService']['DeactivatePaymentMethod'](arg1);
+}
+
 export function DeleteCustomer(arg1) {
   return window['go']['services']['SalesService']['DeleteCustomer'](arg1);
 }

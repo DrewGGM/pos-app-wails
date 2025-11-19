@@ -6,6 +6,10 @@ export function AdjustStock(arg1, arg2, arg3, arg4) {
   return window['go']['services']['ProductService']['AdjustStock'](arg1, arg2, arg3, arg4);
 }
 
+export function AdjustStockInTransaction(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['services']['ProductService']['AdjustStockInTransaction'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function AssignModifierToProduct(arg1, arg2) {
   return window['go']['services']['ProductService']['AssignModifierToProduct'](arg1, arg2);
 }

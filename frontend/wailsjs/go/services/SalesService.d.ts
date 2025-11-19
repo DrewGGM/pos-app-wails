@@ -8,6 +8,8 @@ export function CreateCustomer(arg1:models.Customer):Promise<void>;
 
 export function CreatePaymentMethod(arg1:models.PaymentMethod):Promise<void>;
 
+export function DeactivatePaymentMethod(arg1:number):Promise<void>;
+
 export function DeleteCustomer(arg1:number):Promise<void>;
 
 export function DeletePaymentMethod(arg1:number):Promise<void>;

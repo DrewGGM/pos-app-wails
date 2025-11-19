@@ -29,6 +29,8 @@ export function GetProductIngredients(arg1:number):Promise<Array<models.ProductI
 
 export function RestoreIngredientsForOrder(arg1:Array<models.OrderItem>):Promise<void>;
 
+export function RestoreIngredientsInTransaction(arg1:gorm.DB,arg2:Array<models.OrderItem>):Promise<void>;
+
 export function SetProductIngredients(arg1:number,arg2:Array<models.ProductIngredient>):Promise<void>;
 
 export function UpdateIngredient(arg1:models.Ingredient):Promise<void>;

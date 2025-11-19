@@ -122,15 +122,16 @@ func (s *OrderTypeService) GetNextSequenceNumber(orderTypeID uint) (int, error) 
 		NextNumber int
 	}
 
-	// Query to find gaps in sequence or next number
-	// Only considers pending orders (preparing/ready/delivered/paid/cancelled free up their numbers)
+	// CRITICAL FIX: Query to find gaps in sequence or next number
+	// Only considers ACTIVE orders (pending, preparing, ready, delivered)
+	// Numbers are freed ONLY when orders are paid or cancelled
 	err = s.db.Raw(`
 		WITH active_orders AS (
 			SELECT sequence_number
 			FROM orders
 			WHERE order_type_id = ?
 				AND sequence_number IS NOT NULL
-				AND status = 'pending'
+				AND status IN ('pending', 'preparing', 'ready', 'delivered')
 		),
 		numbers AS (
 			SELECT COALESCE(MAX(sequence_number), 0) + 1 as max_num
@@ -183,14 +184,16 @@ func (s *OrderTypeService) getNextSequenceNumberWithLock(tx *gorm.DB, orderTypeI
 		NextNumber int
 	}
 
-	// Query with FOR UPDATE to lock the rows being read
+	// CRITICAL FIX: Query with FOR UPDATE to lock the rows being read
+	// Only considers ACTIVE orders (pending, preparing, ready, delivered)
+	// Numbers are freed ONLY when orders are paid or cancelled
 	err = tx.Raw(`
 		WITH active_orders AS (
 			SELECT sequence_number
 			FROM orders
 			WHERE order_type_id = ?
 				AND sequence_number IS NOT NULL
-				AND status = 'pending'
+				AND status IN ('pending', 'preparing', 'ready', 'delivered')
 			FOR UPDATE
 		),
 		numbers AS (

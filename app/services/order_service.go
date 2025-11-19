@@ -173,6 +173,14 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
+	// CRITICAL FIX: Prevent updating paid or cancelled orders
+	if existingOrder.Status == models.OrderStatusPaid {
+		return nil, fmt.Errorf("cannot update paid order")
+	}
+	if existingOrder.Status == models.OrderStatusCancelled {
+		return nil, fmt.Errorf("cannot update cancelled order")
+	}
+
 	// Preserve critical fields
 	order.OrderNumber = existingOrder.OrderNumber
 	order.CreatedAt = existingOrder.CreatedAt
@@ -437,6 +445,15 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 
 	order.Status = status
 
+	// CRITICAL FIX: Free the table when order becomes paid or cancelled
+	if (status == models.OrderStatusPaid || status == models.OrderStatusCancelled) && order.TableID != nil {
+		if err := s.db.Model(&models.Table{}).
+			Where("id = ?", *order.TableID).
+			Update("status", "available").Error; err != nil {
+			log.Printf("Warning: Failed to free table %d: %v", *order.TableID, err)
+		}
+	}
+
 	// If order is ready, notify
 	if status == models.OrderStatusReady {
 		// Send notification through WebSocket
@@ -503,6 +520,14 @@ func (s *OrderService) AddItemToOrder(orderID uint, item *models.OrderItem) erro
 			return err
 		}
 
+		// CRITICAL FIX: Prevent adding items to paid or cancelled orders
+		if order.Status == models.OrderStatusPaid {
+			return fmt.Errorf("cannot add items to paid order")
+		}
+		if order.Status == models.OrderStatusCancelled {
+			return fmt.Errorf("cannot add items to cancelled order")
+		}
+
 		// Add item
 		item.OrderID = orderID
 		if err := tx.Create(item).Error; err != nil {
@@ -516,6 +541,12 @@ func (s *OrderService) AddItemToOrder(orderID uint, item *models.OrderItem) erro
 		if err := s.updateInventory(tx, item.ProductID, -item.Quantity,
 			fmt.Sprintf("Added to order %s", order.OrderNumber), 0); err != nil {
 			return err
+		}
+
+		// CRITICAL FIX: Deduct ingredients for the new item
+		itemsList := []models.OrderItem{*item}
+		if err := s.ingredientSvc.DeductIngredientsInTransaction(tx, itemsList); err != nil {
+			log.Printf("Warning: Failed to deduct ingredients for item %d: %v", item.ID, err)
 		}
 
 		// Send to kitchen if needed
@@ -536,10 +567,28 @@ func (s *OrderService) RemoveItemFromOrder(orderID uint, itemID uint) error {
 			return err
 		}
 
+		// CRITICAL FIX: Prevent removing items from paid or cancelled orders
+		var order models.Order
+		if err := tx.First(&order, orderID).Error; err != nil {
+			return err
+		}
+		if order.Status == models.OrderStatusPaid {
+			return fmt.Errorf("cannot remove items from paid order")
+		}
+		if order.Status == models.OrderStatusCancelled {
+			return fmt.Errorf("cannot remove items from cancelled order")
+		}
+
 		// Return inventory
 		if err := s.updateInventory(tx, item.ProductID, item.Quantity,
 			fmt.Sprintf("Removed from order"), 0); err != nil {
 			return err
+		}
+
+		// CRITICAL FIX: Restore ingredients for the removed item
+		itemsList := []models.OrderItem{item}
+		if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, itemsList); err != nil {
+			log.Printf("Warning: Failed to restore ingredients for item %d: %v", item.ID, err)
 		}
 
 		// Delete item
@@ -547,8 +596,7 @@ func (s *OrderService) RemoveItemFromOrder(orderID uint, itemID uint) error {
 			return err
 		}
 
-		// Update order totals
-		var order models.Order
+		// Update order totals (reload with items)
 		if err := tx.Preload("Items").First(&order, orderID).Error; err != nil {
 			return err
 		}
@@ -572,6 +620,20 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 			if err := s.updateInventory(tx, item.ProductID, item.Quantity,
 				fmt.Sprintf("Order %s cancelled", order.OrderNumber), 0); err != nil {
 				return err
+			}
+		}
+
+		// CRITICAL FIX: Restore ingredients for all items
+		if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, order.Items); err != nil {
+			log.Printf("Warning: Failed to restore ingredients for cancelled order %s: %v", order.OrderNumber, err)
+		}
+
+		// CRITICAL FIX: Free the table when order is cancelled
+		if order.TableID != nil {
+			if err := tx.Model(&models.Table{}).
+				Where("id = ?", *order.TableID).
+				Update("status", "available").Error; err != nil {
+				log.Printf("Warning: Failed to free table %d: %v", *order.TableID, err)
 			}
 		}
 
@@ -993,13 +1055,26 @@ func (s *OrderService) DeleteTableArea(id uint) error {
 func (s *OrderService) DeleteOrder(orderID uint) error {
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// Get order to check table ID
+		// Get order with items to restore inventory and ingredients
 		var order models.Order
-		if err := tx.First(&order, orderID).Error; err != nil {
+		if err := tx.Preload("Items").First(&order, orderID).Error; err != nil {
 			return fmt.Errorf("order not found: %w", err)
 		}
 
 		tableID := order.TableID
+
+		// CRITICAL FIX: Restore inventory for all items before deletion
+		for _, item := range order.Items {
+			if err := s.updateInventory(tx, item.ProductID, item.Quantity,
+				fmt.Sprintf("Order %s deleted", order.OrderNumber), 0); err != nil {
+				log.Printf("Warning: Failed to restore inventory for product %d: %v", item.ProductID, err)
+			}
+		}
+
+		// CRITICAL FIX: Restore ingredients for all items before deletion
+		if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, order.Items); err != nil {
+			log.Printf("Warning: Failed to restore ingredients for deleted order %s: %v", order.OrderNumber, err)
+		}
 
 		// First, delete order item modifiers (they reference order_items)
 		if err := tx.Where("order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)", orderID).

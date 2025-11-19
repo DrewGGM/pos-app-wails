@@ -157,6 +157,40 @@ func (s *ProductService) AdjustStock(productID uint, quantity int, reason string
 	})
 }
 
+// AdjustStockInTransaction adjusts product stock within an existing transaction
+// CRITICAL FIX: This variant works within an existing transaction to prevent nested transactions
+func (s *ProductService) AdjustStockInTransaction(tx *gorm.DB, productID uint, quantity int, reason string, employeeID uint) error {
+	var product models.Product
+	if err := tx.First(&product, productID).Error; err != nil {
+		return err
+	}
+
+	previousStock := product.Stock
+	product.Stock += quantity
+
+	// Save product
+	if err := tx.Save(&product).Error; err != nil {
+		return err
+	}
+
+	// Create inventory movement
+	movement := models.InventoryMovement{
+		ProductID:   productID,
+		Type:        "adjustment",
+		Quantity:    quantity,
+		PreviousQty: previousStock,
+		NewQty:      product.Stock,
+		Reference:   reason,
+	}
+
+	// Only set EmployeeID if it's not 0 (valid employee)
+	if employeeID != 0 {
+		movement.EmployeeID = &employeeID
+	}
+
+	return tx.Create(&movement).Error
+}
+
 // GetInventoryMovements gets inventory movements for a product
 func (s *ProductService) GetInventoryMovements(productID uint) ([]models.InventoryMovement, error) {
 	var movements []models.InventoryMovement

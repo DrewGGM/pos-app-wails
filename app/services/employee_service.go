@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -262,7 +263,10 @@ func (s *EmployeeService) GetCurrentCashRegister() (*models.CashRegister, error)
 	}
 	var register models.CashRegister
 
+	// CRITICAL FIX: Load movements to calculate expected cash correctly
 	err := s.db.Preload("Employee").
+		Preload("Movements", "type IN ?", []string{"deposit", "withdrawal", "adjustment"}).
+		Preload("Movements.Employee").
 		Where("status = ?", "open").
 		Order("opened_at DESC").
 		First(&register).Error
@@ -270,6 +274,10 @@ func (s *EmployeeService) GetCurrentCashRegister() (*models.CashRegister, error)
 	if err != nil {
 		return nil, fmt.Errorf("no open cash register found")
 	}
+
+	// Calculate expected amount
+	expectedAmount := s.calculateExpectedCash(&register)
+	register.ExpectedAmount = &expectedAmount
 
 	return &register, nil
 }
@@ -531,22 +539,30 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 // Helper methods
 
 func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) float64 {
+	log.Printf("DEBUG calculateExpectedCash: Starting calculation for register ID=%d, OpeningAmount=%.2f", register.ID, register.OpeningAmount)
 	expected := register.OpeningAmount
 
 	// Add manual cash movements only (sales are NOT movements, they're tracked via payments)
 	// Note: Movements should already be filtered to exclude "sale" type
+	movementTotal := 0.0
 	for _, movement := range register.Movements {
 		// Skip opening movement since it's already included in OpeningAmount
 		if movement.Reference == "OPENING" {
+			log.Printf("  DEBUG: Skipping OPENING movement ID=%d Amount=%.2f", movement.ID, movement.Amount)
 			continue
 		}
 
 		if movement.Type == "deposit" {
 			expected += movement.Amount
+			movementTotal += movement.Amount
+			log.Printf("  DEBUG: Adding deposit movement ID=%d Amount=+%.2f", movement.ID, movement.Amount)
 		} else if movement.Type == "withdrawal" || movement.Type == "refund" {
 			expected -= movement.Amount
+			movementTotal -= movement.Amount
+			log.Printf("  DEBUG: Subtracting %s movement ID=%d Amount=-%.2f", movement.Type, movement.ID, movement.Amount)
 		}
 	}
+	log.Printf("  DEBUG: Total from movements: %.2f", movementTotal)
 
 	// Add ALL payments that affect cash register from sales
 	// IMPORTANT: Only include payment methods where affects_cash_register = true
@@ -556,30 +572,48 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 	// NOTE: We sum payment.Amount (not sale.Total) to correctly handle split payments
 	// Example: Sale $100 paid with $60 cash + $40 card → Only $60 goes in register
 	// Backend validation ensures payment amounts always match sale total, so this is safe
+	//
+	// CRITICAL: Only count sales created AFTER the cash register was opened
+	// This prevents counting sales from previous sessions that have the same cash_register_id
 	var cashAffectingPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
 		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
+		Where("sales.created_at >= ?", register.OpenedAt).
 		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
 		Find(&cashAffectingPayments)
 
+	log.Printf("  DEBUG: Found %d cash-affecting payments for register ID=%d", len(cashAffectingPayments), register.ID)
+	paymentTotal := 0.0
 	for _, payment := range cashAffectingPayments {
 		expected += payment.Amount // Correct: handles split payments properly
+		paymentTotal += payment.Amount
+		log.Printf("    Payment ID=%d SaleID=%d Amount=+%.2f", payment.ID, payment.SaleID, payment.Amount)
 	}
+	log.Printf("  DEBUG: Total from payments: %.2f", paymentTotal)
 
 	// Subtract refunded payments that affected cash register (money returned to customer)
 	// IMPORTANT: Only include payment methods where affects_cash_register = true
+	// CRITICAL: Only count sales created AFTER the cash register was opened
 	var refundedCashAffectingPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
 		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
+		Where("sales.created_at >= ?", register.OpenedAt).
 		Where("sales.status IN ?", []string{"refunded", "partial_refund"}).
 		Find(&refundedCashAffectingPayments)
 
+	log.Printf("  DEBUG: Found %d refunded payments", len(refundedCashAffectingPayments))
+	refundTotal := 0.0
 	for _, payment := range refundedCashAffectingPayments {
 		expected -= payment.Amount
+		refundTotal += payment.Amount
+		log.Printf("    Refund Payment ID=%d SaleID=%d Amount=-%.2f", payment.ID, payment.SaleID, payment.Amount)
 	}
+	log.Printf("  DEBUG: Total from refunds: -%.2f", refundTotal)
 
+	log.Printf("DEBUG calculateExpectedCash: Final expected=%.2f (Opening=%.2f + Movements=%.2f + Payments=%.2f - Refunds=%.2f)",
+		expected, register.OpeningAmount, movementTotal, paymentTotal, refundTotal)
 	return expected
 }
 
