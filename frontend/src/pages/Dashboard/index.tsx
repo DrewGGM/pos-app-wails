@@ -43,7 +43,6 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
-import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { wailsDashboardService } from '../../services/wailsDashboardService';
 import { wailsWebSocketService, WebSocketStatus } from '../../services/wailsWebSocketService';
 import { format } from 'date-fns';
@@ -87,7 +86,6 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, cashRegisterId } = useAuth();
-  const { isOnline, syncStatus, forceSync } = useOfflineSync();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -108,7 +106,6 @@ const Dashboard: React.FC = () => {
           w.runtime.Quit();
         }
       } catch (error) {
-        console.error('Error restarting server:', error);
         alert('Error al reiniciar el servidor');
       }
     }
@@ -139,7 +136,6 @@ const Dashboard: React.FC = () => {
       const status = await wailsWebSocketService.getStatus();
       setWsStatus(status);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -228,15 +224,6 @@ const Dashboard: React.FC = () => {
           No hay caja abierta. Por favor abra la caja para realizar ventas.
           <Button size="small" onClick={() => navigate('/cash-register')} sx={{ ml: 2 }}>
             Abrir Caja
-          </Button>
-        </Alert>
-      )}
-
-      {!isOnline && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Modo offline activo. {syncStatus.pendingOrders + syncStatus.pendingSales} transacciones pendientes de sincronizar.
-          <Button size="small" onClick={forceSync} sx={{ ml: 2 }}>
-            Sincronizar Ahora
           </Button>
         </Alert>
       )}

@@ -34,10 +34,6 @@ export function GetRestaurantConfig() {
   return window['go']['services']['ConfigService']['GetRestaurantConfig']();
 }
 
-export function GetSyncConfig() {
-  return window['go']['services']['ConfigService']['GetSyncConfig']();
-}
-
 export function GetSystemConfig(arg1) {
   return window['go']['services']['ConfigService']['GetSystemConfig'](arg1);
 }
@@ -92,10 +88,6 @@ export function UpdateDIANConfig(arg1) {
 
 export function UpdateRestaurantConfig(arg1) {
   return window['go']['services']['ConfigService']['UpdateRestaurantConfig'](arg1);
-}
-
-export function UpdateSyncConfig(arg1) {
-  return window['go']['services']['ConfigService']['UpdateSyncConfig'](arg1);
 }
 
 export function UpdateUITheme(arg1) {

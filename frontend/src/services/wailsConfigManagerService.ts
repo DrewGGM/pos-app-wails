@@ -37,7 +37,6 @@ export const wailsConfigManagerService = {
       const config = await GetConfig();
       return config;
     } catch (error) {
-      console.error('Error getting config:', error);
       return null;
     }
   },
@@ -46,7 +45,6 @@ export const wailsConfigManagerService = {
     try {
       await SaveConfig(config);
     } catch (error) {
-      console.error('Error saving config:', error);
       throw error;
     }
   },
@@ -56,7 +54,6 @@ export const wailsConfigManagerService = {
       const exists = await ConfigExists();
       return exists;
     } catch (error) {
-      console.error('Error checking if config exists:', error);
       return false;
     }
   },
@@ -66,7 +63,6 @@ export const wailsConfigManagerService = {
       const firstRun = await IsFirstRun();
       return firstRun;
     } catch (error) {
-      console.error('Error checking first run:', error);
       return true;
     }
   },
@@ -76,7 +72,6 @@ export const wailsConfigManagerService = {
       const config = await CreateDefaultConfig();
       return config;
     } catch (error) {
-      console.error('Error creating default config:', error);
       return null;
     }
   },
@@ -85,7 +80,6 @@ export const wailsConfigManagerService = {
     try {
       await TestDatabaseConnection(dbConfig);
     } catch (error) {
-      console.error('Error testing database connection:', error);
       throw error;
     }
   },
@@ -94,7 +88,6 @@ export const wailsConfigManagerService = {
     try {
       await InitializeDatabase(dbConfig);
     } catch (error) {
-      console.error('Error initializing database:', error);
       throw error;
     }
   },
@@ -103,7 +96,6 @@ export const wailsConfigManagerService = {
     try {
       await CompleteSetup();
     } catch (error) {
-      console.error('Error completing setup:', error);
       throw error;
     }
   },
@@ -113,7 +105,6 @@ export const wailsConfigManagerService = {
       const path = await GetConfigPath();
       return path;
     } catch (error) {
-      console.error('Error getting config path:', error);
       return null;
     }
   },
@@ -123,7 +114,6 @@ export const wailsConfigManagerService = {
       const existingConfig = await CheckExistingConfig(dbConfig);
       return existingConfig as unknown as ExistingConfigData;
     } catch (error) {
-      console.error('Error checking existing config:', error);
       return null;
     }
   },
@@ -139,7 +129,6 @@ export const wailsConfigManagerService = {
     try {
       await SaveRestaurantConfig(name, businessName, nit, address, phone, email);
     } catch (error) {
-      console.error('Error saving restaurant config:', error);
       throw error;
     }
   },

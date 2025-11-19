@@ -5,7 +5,6 @@ type AnyObject = Record<string, any>;
 function getUpdateService(): AnyObject | null {
   const w = (window as AnyObject);
   if (!w.go || !w.go.services || !w.go.services.UpdateService) {
-    console.warn('[wailsUpdateService] Bindings not ready');
     return null;
   }
   return w.go.services.UpdateService;

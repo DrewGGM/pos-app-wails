@@ -76,7 +76,6 @@ const Tables: React.FC = () => {
       setAreas(data);
       // No establecer área por defecto - dejar en null (Todas)
     } catch (error) {
-      console.error('Error loading areas:', error);
     }
   };
 
@@ -144,7 +143,6 @@ const Tables: React.FC = () => {
       } else {
         toast.error(errorMsg);
       }
-      console.error('Error saving table:', error);
     }
   };
 

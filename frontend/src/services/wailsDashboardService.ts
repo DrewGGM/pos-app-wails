@@ -5,7 +5,6 @@ type AnyObject = Record<string, any>;
 function getDashboardService(): AnyObject | null {
   const w = (window as AnyObject);
   if (!w.go || !w.go.services || !w.go.services.DashboardService) {
-    console.warn('[wailsDashboardService] Bindings not ready');
     return null;
   }
   return w.go.services.DashboardService;

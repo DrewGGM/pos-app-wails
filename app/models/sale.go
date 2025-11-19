@@ -24,9 +24,9 @@ type Sale struct {
 	InvoiceType            string             `json:"invoice_type"`             // "none", "electronic", "pos_equivalent"
 	NeedsElectronicInvoice bool               `json:"needs_electronic_invoice"` // Flag for electronic invoice per sale
 	ElectronicInvoice      *ElectronicInvoice `gorm:"foreignKey:SaleID" json:"electronic_invoice,omitempty"`
-	EmployeeID             uint               `json:"employee_id"`
+	EmployeeID             uint               `gorm:"index" json:"employee_id"`
 	Employee               *Employee          `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
-	CashRegisterID         uint               `json:"cash_register_id"`
+	CashRegisterID         uint               `gorm:"index" json:"cash_register_id"`
 	CashRegister           *CashRegister      `gorm:"foreignKey:CashRegisterID" json:"cash_register,omitempty"`
 	Notes                  string             `json:"notes"`
 	IsSynced               bool               `gorm:"default:false" json:"is_synced"`
@@ -38,9 +38,9 @@ type Sale struct {
 // Payment represents payment details for a sale
 type Payment struct {
 	ID              uint                `gorm:"primaryKey" json:"id"`
-	SaleID          uint                `json:"sale_id"`
+	SaleID          uint                `gorm:"index" json:"sale_id"`
 	Sale            *Sale               `gorm:"foreignKey:SaleID" json:"-"`
-	PaymentMethodID uint                `json:"payment_method_id"`
+	PaymentMethodID uint                `gorm:"index" json:"payment_method_id"`
 	PaymentMethod   *PaymentMethod      `gorm:"foreignKey:PaymentMethodID" json:"payment_method,omitempty"`
 	Amount          float64             `json:"amount"`
 	Reference       string              `json:"reference"`             // Transaction ID, check number, etc.
@@ -161,16 +161,4 @@ type DebitNote struct {
 	XMLDocument         string             `json:"xml_document"`
 	CreatedAt           time.Time          `json:"created_at"`
 	UpdatedAt           time.Time          `json:"updated_at"`
-}
-
-// QueuedInvoice for offline DIAN sync
-type QueuedInvoice struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	SaleID      uint      `json:"sale_id"`
-	InvoiceData string    `json:"invoice_data"` // JSON serialized invoice
-	Type        string    `json:"type"`         // "invoice", "credit_note", "debit_note"
-	RetryCount  int       `json:"retry_count"`
-	LastError   string    `json:"last_error"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
 }

@@ -44,11 +44,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (error: any) {
-        console.error('Auth check failed:', error);
         // Clear token if database not initialized (first run) or any other error
         if (error?.message?.includes('database not initialized') ||
             error?.message?.includes('invalid memory address')) {
-          console.log('Database not initialized - clearing old session');
         }
         localStorage.removeItem('token');
       } finally {

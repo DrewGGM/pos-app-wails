@@ -41,7 +41,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ws.current.onopen = () => {
         setIsConnected(true);
         toast.success('Conectado al servidor', { toastId: 'ws-connected' });
-        console.log('WebSocket connected');
 
         // Send authentication message
         if (ws.current?.readyState === WebSocket.OPEN) {
@@ -59,7 +58,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ws.current.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          console.log('WebSocket message received:', message);
 
           // Handle heartbeat
           if (message.type === 'heartbeat') {
@@ -75,19 +73,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // Show notifications for specific events
           handleNotifications(message);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          // Error parsing WebSocket message
         }
       };
 
       ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
         toast.error('Error en la conexión WebSocket');
       };
 
       ws.current.onclose = () => {
         setIsConnected(false);
-        console.log('WebSocket disconnected');
-        
+
         // Auto-reconnect after 5 seconds if authenticated
         if (isAuthenticated) {
           toast.warning('Conexión perdida, reconectando...', { toastId: 'ws-reconnect' });
@@ -97,7 +93,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       };
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
       toast.error('No se pudo conectar al servidor');
     }
   }, [isAuthenticated]);
@@ -119,7 +114,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket is not connected');
       toast.warning('No hay conexión con el servidor');
     }
   }, []);

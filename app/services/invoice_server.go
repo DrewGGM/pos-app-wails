@@ -179,8 +179,8 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 			fmt.Printf("Warning: Could not save error electronic invoice: %v\n", saveErr)
 		}
 
-		// Queue for later retry if offline
-		s.queueInvoice(sale.ID, invoiceData, "invoice", err.Error())
+		// Queue disabled (QueuedInvoice model removed)
+		// s.queueInvoice(sale.ID, invoiceData, "invoice", err.Error())
 		return electronicInvoice, fmt.Errorf("failed to send invoice: %w", err)
 	}
 
@@ -698,19 +698,18 @@ func (s *InvoiceService) sendToDIAN(data interface{}, documentType string) (map[
 }
 
 // queueInvoice queues an invoice for later processing
-func (s *InvoiceService) queueInvoice(saleID uint, data interface{}, invoiceType, errorMsg string) {
-	jsonData, _ := json.Marshal(data)
-
-	queue := &models.QueuedInvoice{
-		SaleID:      saleID,
-		InvoiceData: string(jsonData),
-		Type:        invoiceType,
-		RetryCount:  0,
-		LastError:   errorMsg,
-	}
-
-	s.db.Create(queue)
-}
+// DISABLED: QueuedInvoice model removed (SQLite offline mode eliminated)
+// func (s *InvoiceService) queueInvoice(saleID uint, data interface{}, invoiceType, errorMsg string) {
+// 	jsonData, _ := json.Marshal(data)
+// 	queue := &models.QueuedInvoice{
+// 		SaleID:      saleID,
+// 		InvoiceData: string(jsonData),
+// 		Type:        invoiceType,
+// 		RetryCount:  0,
+// 		LastError:   errorMsg,
+// 	}
+// 	s.db.Create(queue)
+// }
 
 // getPaymentMethodCode converts payment type to DIAN code
 func (s *InvoiceService) getPaymentMethodCode(paymentMethod *models.PaymentMethod) int {
@@ -859,8 +858,8 @@ func (s *InvoiceService) SendCreditNote(electronicInvoice *models.ElectronicInvo
 	// Send to DIAN API
 	response, err := s.sendToDIAN(creditNoteData, "credit_note")
 	if err != nil {
-		// Queue for later retry if offline
-		s.queueInvoice(electronicInvoice.SaleID, creditNoteData, "credit_note", err.Error())
+		// Queue disabled (QueuedInvoice model removed)
+		// s.queueInvoice(electronicInvoice.SaleID, creditNoteData, "credit_note", err.Error())
 		return nil, fmt.Errorf("failed to send credit note: %w", err)
 	}
 
@@ -911,8 +910,8 @@ func (s *InvoiceService) SendDebitNote(electronicInvoice *models.ElectronicInvoi
 	// Send to DIAN API
 	response, err := s.sendToDIAN(debitNoteData, "debit_note")
 	if err != nil {
-		// Queue for later retry if offline
-		s.queueInvoice(electronicInvoice.SaleID, debitNoteData, "debit_note", err.Error())
+		// Queue disabled (QueuedInvoice model removed)
+		// s.queueInvoice(electronicInvoice.SaleID, debitNoteData, "debit_note", err.Error())
 		return nil, fmt.Errorf("failed to send debit note: %w", err)
 	}
 
@@ -1232,6 +1231,9 @@ func (s *InvoiceService) prepareDebitNoteLines(order *models.Order) []DebitNoteL
 }
 
 // ProcessQueuedInvoices processes queued invoices
+// DISABLED: QueuedInvoice model removed (SQLite offline mode eliminated)
+// To re-enable invoice queuing, recreate QueuedInvoice model in PostgreSQL
+/*
 func (s *InvoiceService) ProcessQueuedInvoices() error {
 	// Load DIAN config first to avoid nil pointer errors
 	var config models.DIANConfig
@@ -1274,6 +1276,7 @@ func (s *InvoiceService) ProcessQueuedInvoices() error {
 
 	return nil
 }
+*/
 
 // CompanyConfigRequest represents the data structure for company configuration
 type CompanyConfigRequest struct {

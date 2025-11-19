@@ -18,8 +18,6 @@ export function GetPrinterConfigs():Promise<Array<models.PrinterConfig>>;
 
 export function GetRestaurantConfig():Promise<models.RestaurantConfig>;
 
-export function GetSyncConfig():Promise<models.SyncConfig>;
-
 export function GetSystemConfig(arg1:string):Promise<string>;
 
 export function GetSystemConfigBool(arg1:string,arg2:boolean):Promise<boolean>;
@@ -47,8 +45,6 @@ export function SetWebSocketPort(arg1:number):Promise<void>;
 export function UpdateDIANConfig(arg1:models.DIANConfig):Promise<void>;
 
 export function UpdateRestaurantConfig(arg1:models.RestaurantConfig):Promise<void>;
-
-export function UpdateSyncConfig(arg1:models.SyncConfig):Promise<void>;
 
 export function UpdateUITheme(arg1:models.UITheme):Promise<void>;
 

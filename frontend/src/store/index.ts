@@ -4,7 +4,6 @@ import ordersReducer from './slices/ordersSlice';
 import productsReducer from './slices/productsSlice';
 import salesReducer from './slices/salesSlice';
 import uiReducer from './slices/uiSlice';
-import kitchenReducer from './slices/kitchenSlice';
 
 export const store = configureStore({
   reducer: {
@@ -13,7 +12,6 @@ export const store = configureStore({
     products: productsReducer,
     sales: salesReducer,
     ui: uiReducer,
-    kitchen: kitchenReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

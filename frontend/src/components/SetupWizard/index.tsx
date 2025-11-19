@@ -163,7 +163,6 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
         window.location.reload();
       }, 2000);
     } catch (error: any) {
-      console.error('Error completing setup:', error);
       toast.error(error?.message || 'Error al completar la configuración');
     } finally {
       setLoading(false);

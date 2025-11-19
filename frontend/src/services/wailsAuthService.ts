@@ -153,7 +153,6 @@ class WailsAuthService {
 
       return mapEmployee(employee);
     } catch (error) {
-      console.error('Token validation failed:', error);
       return null;
     }
   }
@@ -246,13 +245,11 @@ class WailsAuthService {
   async getEmployees(): Promise<Employee[]> {
     try {
       if (!(window as any).go) {
-        console.warn('[wailsAuthService] Bindings not ready');
         return [];
       }
       const employees = await GetEmployees();
       return employees.map(mapEmployee);
     } catch (error) {
-      console.error('Error getting employees:', error);
       return [];
     }
   }

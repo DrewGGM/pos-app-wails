@@ -161,7 +161,6 @@ const Products: React.FC = () => {
       const data = await wailsIngredientService.getIngredients();
       setIngredients(data);
     } catch (error) {
-      console.error('Error loading ingredients:', error);
     }
   };
 
@@ -173,7 +172,6 @@ const Products: React.FC = () => {
         quantity: pi.quantity
       })));
     } catch (error) {
-      console.error('Error loading product ingredients:', error);
       setProductIngredients([]);
     }
   };
@@ -239,7 +237,6 @@ const Products: React.FC = () => {
       const mods = await GetModifiers();
       setModifiers(mods || []);
     } catch (error) {
-      console.error('Error loading modifiers:', error);
     }
     setProductDialog(true);
   };
@@ -275,7 +272,6 @@ const Products: React.FC = () => {
 
     } catch (error: any) {
       toast.error(error.message || 'Error al cargar la imagen');
-      console.error('Error uploading image:', error);
     } finally {
       setIsUploadingImage(false);
       // Reset input
@@ -319,7 +315,6 @@ const Products: React.FC = () => {
         try {
           await AssignModifierToProduct(productId, modifierId);
         } catch (error) {
-          console.error('Error assigning modifier:', error);
         }
       }
 
@@ -328,7 +323,6 @@ const Products: React.FC = () => {
         try {
           await RemoveModifierFromProduct(productId, modifierId);
         } catch (error) {
-          console.error('Error removing modifier:', error);
         }
       }
 
@@ -343,7 +337,6 @@ const Products: React.FC = () => {
           }))
         );
       } catch (error) {
-        console.error('Error saving recipe ingredients:', error);
         toast.warning('Producto guardado pero hubo un error al guardar la receta');
       }
 
@@ -456,7 +449,6 @@ const Products: React.FC = () => {
       setModifierGroups(groups || []);
       setModifiers(mods || []);
     } catch (error) {
-      console.error('Error loading modifiers:', error);
       toast.error('Error al cargar modificadores');
     }
   };

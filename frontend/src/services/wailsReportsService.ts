@@ -5,7 +5,6 @@ type AnyObject = Record<string, any>;
 function getReportsService(): AnyObject | null {
   const w = (window as AnyObject);
   if (!w.go || !w.go.services || !w.go.services.ReportsService) {
-    console.warn('[wailsReportsService] Bindings not ready');
     return null;
   }
   return w.go.services.ReportsService;

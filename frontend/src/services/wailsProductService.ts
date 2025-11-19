@@ -97,13 +97,11 @@ class WailsProductService {
   async getProducts(): Promise<Product[]> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsProductService] Wails bindings not ready, returning empty array');
         return [];
       }
       const products = await GetProducts();
       return products.map(mapProduct);
     } catch (error) {
-      console.error('Error getting products:', error);
       return [];
     }
   }
@@ -113,7 +111,6 @@ class WailsProductService {
       const product = await GetProductById(id);
       return mapProduct(product);
     } catch (error) {
-      console.error('Error getting product:', error);
       throw new Error('Error al obtener producto');
     }
   }
@@ -122,7 +119,6 @@ class WailsProductService {
     try {
       await CreateProduct(product as any);
     } catch (error) {
-      console.error('Error creating product:', error);
       throw new Error('Error al crear producto');
     }
   }
@@ -131,7 +127,6 @@ class WailsProductService {
     try {
       await UpdateProduct(product as any);
     } catch (error) {
-      console.error('Error updating product:', error);
       throw new Error('Error al actualizar producto');
     }
   }
@@ -140,7 +135,6 @@ class WailsProductService {
     try {
       await DeleteProduct(id);
     } catch (error) {
-      console.error('Error deleting product:', error);
       throw new Error('Error al eliminar producto');
     }
   }
@@ -149,13 +143,11 @@ class WailsProductService {
   async getCategories(): Promise<Category[]> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsProductService] Wails bindings not ready, returning empty array');
         return [];
       }
       const categories = await GetCategories();
       return categories.map(mapCategory);
     } catch (error) {
-      console.error('Error getting categories:', error);
       return [];
     }
   }
@@ -165,7 +157,6 @@ class WailsProductService {
       const created = await CreateCategory(category as any);
       return mapCategory(created as any);
     } catch (error) {
-      console.error('Error creating category:', error);
       throw new Error('Error al crear categoría');
     }
   }
@@ -175,7 +166,6 @@ class WailsProductService {
       const updated = await UpdateCategory(category as any);
       return mapCategory(updated as any);
     } catch (error) {
-      console.error('Error updating category:', error);
       throw new Error('Error al actualizar categoría');
     }
   }
@@ -184,7 +174,6 @@ class WailsProductService {
     try {
       await DeleteCategory(id);
     } catch (error) {
-      console.error('Error deleting category:', error);
       throw new Error('Error al eliminar categoría');
     }
   }
@@ -195,7 +184,6 @@ class WailsProductService {
       const groups = await GetModifierGroups();
       return groups.map(mapModifierGroup);
     } catch (error) {
-      console.error('Error getting modifier groups:', error);
       throw new Error('Error al obtener grupos de modificadores');
     }
   }
@@ -205,7 +193,6 @@ class WailsProductService {
       const created = await CreateModifierGroup(group as any);
       return mapModifierGroup(created as any);
     } catch (error) {
-      console.error('Error creating modifier group:', error);
       throw new Error('Error al crear grupo de modificadores');
     }
   }
@@ -215,7 +202,6 @@ class WailsProductService {
       const updated = await UpdateModifierGroup(group as any);
       return mapModifierGroup(updated as any);
     } catch (error) {
-      console.error('Error updating modifier group:', error);
       throw new Error('Error al actualizar grupo de modificadores');
     }
   }
@@ -224,7 +210,6 @@ class WailsProductService {
     try {
       await DeleteModifierGroup(id);
     } catch (error) {
-      console.error('Error deleting modifier group:', error);
       throw new Error('Error al eliminar grupo de modificadores');
     }
   }
@@ -235,7 +220,6 @@ class WailsProductService {
       const modifiers = await GetModifiers();
       return modifiers.map(mapModifier);
     } catch (error) {
-      console.error('Error getting modifiers:', error);
       throw new Error('Error al obtener modificadores');
     }
   }
@@ -245,7 +229,6 @@ class WailsProductService {
       const created = await CreateModifier(modifier as any);
       return mapModifier(created as any);
     } catch (error) {
-      console.error('Error creating modifier:', error);
       throw new Error('Error al crear modificador');
     }
   }
@@ -255,7 +238,6 @@ class WailsProductService {
       const updated = await UpdateModifier(modifier as any);
       return mapModifier(updated as any);
     } catch (error) {
-      console.error('Error updating modifier:', error);
       throw new Error('Error al actualizar modificador');
     }
   }
@@ -264,7 +246,6 @@ class WailsProductService {
     try {
       await DeleteModifier(id);
     } catch (error) {
-      console.error('Error deleting modifier:', error);
       throw new Error('Error al eliminar modificador');
     }
   }
@@ -277,7 +258,6 @@ class WailsProductService {
         .map(mapProduct)
         .filter(product => product.stock <= (product.min_stock || 0));
     } catch (error) {
-      console.error('Error getting low stock products:', error);
       throw new Error('Error al obtener productos con stock bajo');
     }
   }
@@ -291,7 +271,6 @@ class WailsProductService {
       const updatedProduct = await GetProductById(productId);
       return mapProduct(updatedProduct as any);
     } catch (error) {
-      console.error('Error adjusting stock:', error);
       throw new Error('Error al ajustar stock');
     }
   }

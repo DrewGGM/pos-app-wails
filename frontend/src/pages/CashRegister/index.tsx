@@ -128,7 +128,7 @@ const CashRegister: React.FC = () => {
               }
             });
           } catch (e) {
-            console.error('Error loading sales summary:', e);
+            // Error loading sales summary
           }
 
           setRegisterStatus({
@@ -159,7 +159,7 @@ const CashRegister: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Error loading cash register:', error);
+      // Error loading cash register
     }
   };
 

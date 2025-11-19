@@ -92,7 +92,6 @@ const InventoryManagement: React.FC = () => {
       const data = await wailsProductService.getProducts();
       setProducts(data);
     } catch (error) {
-      console.error('Error loading products:', error);
       toast.error('Error al cargar productos');
     }
   };
@@ -183,7 +182,6 @@ const InventoryManagement: React.FC = () => {
       handleCloseAdjustDialog();
       loadProducts();
     } catch (error) {
-      console.error('Error adjusting stock:', error);
       toast.error('Error al ajustar inventario');
     }
   };
@@ -208,7 +206,6 @@ const InventoryManagement: React.FC = () => {
       setMovements(mappedMovements);
       setHistoryDialogOpen(true);
     } catch (error) {
-      console.error('Error loading movements:', error);
       toast.error('Error al cargar historial de movimientos');
     }
   };

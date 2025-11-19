@@ -66,13 +66,11 @@ class WailsIngredientService {
   async getIngredients(): Promise<Ingredient[]> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsIngredientService] Wails bindings not ready, returning empty array');
         return [];
       }
       const ingredients = await GetAllIngredients();
       return ingredients.map(mapIngredient);
     } catch (error) {
-      console.error('Error getting ingredients:', error);
       return [];
     }
   }
@@ -82,7 +80,6 @@ class WailsIngredientService {
       const ingredient = await GetIngredient(id);
       return mapIngredient(ingredient);
     } catch (error) {
-      console.error('Error getting ingredient:', error);
       throw new Error('Error al obtener ingrediente');
     }
   }
@@ -91,7 +88,6 @@ class WailsIngredientService {
     try {
       await CreateIngredient(ingredient as any);
     } catch (error) {
-      console.error('Error creating ingredient:', error);
       throw new Error('Error al crear ingrediente');
     }
   }
@@ -100,7 +96,6 @@ class WailsIngredientService {
     try {
       await UpdateIngredient(ingredient as any);
     } catch (error) {
-      console.error('Error updating ingredient:', error);
       throw new Error('Error al actualizar ingrediente');
     }
   }
@@ -109,7 +104,6 @@ class WailsIngredientService {
     try {
       await DeleteIngredient(id);
     } catch (error) {
-      console.error('Error deleting ingredient:', error);
       throw new Error('Error al eliminar ingrediente');
     }
   }
@@ -123,7 +117,6 @@ class WailsIngredientService {
       const updatedIngredient = await GetIngredient(ingredientId);
       return mapIngredient(updatedIngredient as any);
     } catch (error) {
-      console.error('Error adjusting ingredient stock:', error);
       throw new Error('Error al ajustar stock de ingrediente');
     }
   }
@@ -133,7 +126,6 @@ class WailsIngredientService {
       const movements = await GetIngredientMovements(ingredientId);
       return movements.map(mapIngredientMovement);
     } catch (error) {
-      console.error('Error getting ingredient movements:', error);
       throw new Error('Error al obtener movimientos de ingrediente');
     }
   }
@@ -144,7 +136,6 @@ class WailsIngredientService {
       const productIngredients = await GetProductIngredients(productId);
       return productIngredients.map(mapProductIngredient);
     } catch (error) {
-      console.error('Error getting product ingredients:', error);
       return [];
     }
   }
@@ -153,7 +144,6 @@ class WailsIngredientService {
     try {
       await AddProductIngredient(productIngredient as any);
     } catch (error) {
-      console.error('Error adding product ingredient:', error);
       throw new Error('Error al agregar ingrediente al producto');
     }
   }
@@ -162,7 +152,6 @@ class WailsIngredientService {
     try {
       await UpdateProductIngredient(productIngredient as any);
     } catch (error) {
-      console.error('Error updating product ingredient:', error);
       throw new Error('Error al actualizar ingrediente del producto');
     }
   }
@@ -171,7 +160,6 @@ class WailsIngredientService {
     try {
       await DeleteProductIngredient(id);
     } catch (error) {
-      console.error('Error deleting product ingredient:', error);
       throw new Error('Error al eliminar ingrediente del producto');
     }
   }
@@ -180,7 +168,6 @@ class WailsIngredientService {
     try {
       await SetProductIngredients(productId, ingredients as any);
     } catch (error) {
-      console.error('Error setting product ingredients:', error);
       throw new Error('Error al configurar ingredientes del producto');
     }
   }
@@ -193,7 +180,6 @@ class WailsIngredientService {
         .map(mapIngredient)
         .filter(ingredient => ingredient.stock <= ingredient.min_stock);
     } catch (error) {
-      console.error('Error getting low stock ingredients:', error);
       throw new Error('Error al obtener ingredientes con stock bajo');
     }
   }

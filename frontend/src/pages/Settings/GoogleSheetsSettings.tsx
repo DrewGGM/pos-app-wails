@@ -90,7 +90,6 @@ const GoogleSheetsSettings: React.FC = () => {
       const data = await wailsGoogleSheetsService.getConfig();
       setConfig(data);
     } catch (error: any) {
-      console.error('Error loading config:', error);
       toast.error('Error al cargar la configuración: ' + (error.message || error));
     } finally {
       setInitialLoading(false);
@@ -102,7 +101,6 @@ const GoogleSheetsSettings: React.FC = () => {
       const status = await wailsReportSchedulerService.getStatus();
       setSchedulerStatus(status);
     } catch (error: any) {
-      console.error('Error loading scheduler status:', error);
     }
   };
 
@@ -119,7 +117,6 @@ const GoogleSheetsSettings: React.FC = () => {
       await wailsReportSchedulerService.restart();
       await loadSchedulerStatus();
     } catch (error: any) {
-      console.error('Error saving config:', error);
       toast.error('Error al guardar: ' + (error.message || error));
     } finally {
       setLoading(false);
@@ -137,7 +134,6 @@ const GoogleSheetsSettings: React.FC = () => {
       await wailsGoogleSheetsService.testConnection(config);
       toast.success('Conexión exitosa! Google Sheets está configurado correctamente');
     } catch (error: any) {
-      console.error('Error testing connection:', error);
       toast.error('Error de conexión: ' + (error.message || error));
     } finally {
       setTesting(false);
@@ -152,7 +148,6 @@ const GoogleSheetsSettings: React.FC = () => {
       await loadConfig();
       await loadSchedulerStatus();
     } catch (error: any) {
-      console.error('Error syncing:', error);
       toast.error('Error al enviar reporte: ' + (error.message || error));
     } finally {
       setSyncing(false);

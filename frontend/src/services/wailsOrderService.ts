@@ -150,7 +150,6 @@ class WailsOrderService {
       const order = await CreateOrder(orderData as any);
       return mapOrder(order as any);
     } catch (error) {
-      console.error('Error creating order:', error);
       throw new Error('Error al crear orden');
     }
   }
@@ -160,7 +159,6 @@ class WailsOrderService {
       const order = await GetOrder(id);
       return mapOrder(order);
     } catch (error) {
-      console.error('Error getting order:', error);
       throw new Error('Error al obtener orden');
     }
   }
@@ -175,7 +173,6 @@ class WailsOrderService {
       const order = await UpdateOrder(orderWithId as any);
       return mapOrder(order as any);
     } catch (error) {
-      console.error('Error updating order:', error);
       throw new Error('Error al actualizar orden');
     }
   }
@@ -184,7 +181,6 @@ class WailsOrderService {
     try {
       await DeleteOrder(id);
     } catch (error) {
-      console.error('Error deleting order:', error);
       throw new Error('Error al eliminar orden');
     }
   }
@@ -193,7 +189,6 @@ class WailsOrderService {
     try {
       await CancelOrder(id, reason);
     } catch (error) {
-      console.error('Error cancelling order:', error);
       throw new Error('Error al cancelar orden');
     }
   }
@@ -203,7 +198,6 @@ class WailsOrderService {
       const orders = await GetPendingOrders();
       return orders.map(mapOrder);
     } catch (error) {
-      console.error('Error getting orders:', error);
       throw new Error('Error al obtener órdenes');
     }
   }
@@ -213,7 +207,6 @@ class WailsOrderService {
       const orders = await GetOrderByTable(tableId);
       return orders.length > 0 ? mapOrder(orders[0]) : null;
     } catch (error) {
-      console.error('Error getting order by table:', error);
       return null;
     }
   }
@@ -224,7 +217,6 @@ class WailsOrderService {
       const tables = await GetTables();
       return tables.map(mapTable);
     } catch (error) {
-      console.error('Error getting tables:', error);
       throw new Error('Error al obtener mesas');
     }
   }
@@ -233,7 +225,6 @@ class WailsOrderService {
     try {
       await CreateTable(table as any);
     } catch (error) {
-      console.error('Error creating table:', error);
       throw new Error('Error al crear mesa');
     }
   }
@@ -243,7 +234,6 @@ class WailsOrderService {
       const updated = await UpdateTable(table as any);
       return mapTable(updated as any);
     } catch (error) {
-      console.error('Error updating table:', error);
       throw new Error('Error al actualizar mesa');
     }
   }
@@ -252,7 +242,6 @@ class WailsOrderService {
     try {
       await DeleteTable(id);
     } catch (error) {
-      console.error('Error deleting table:', error);
       throw new Error('Error al eliminar mesa');
     }
   }
@@ -261,7 +250,6 @@ class WailsOrderService {
     try {
       await UpdateTableStatus(tableId, status);
     } catch (error) {
-      console.error('Error updating table status:', error);
       throw new Error('Error al actualizar estado de mesa');
     }
   }
@@ -271,7 +259,6 @@ class WailsOrderService {
       const areas = await GetTableAreas();
       return areas || [];
     } catch (error) {
-      console.error('Error getting table areas:', error);
       throw new Error('Error al obtener áreas de mesas');
     }
   }
@@ -280,7 +267,6 @@ class WailsOrderService {
     try {
       return await CreateTableArea(area);
     } catch (error) {
-      console.error('Error creating table area:', error);
       throw new Error('Error al crear área de mesas');
     }
   }
@@ -289,7 +275,6 @@ class WailsOrderService {
     try {
       return await UpdateTableArea(area);
     } catch (error) {
-      console.error('Error updating table area:', error);
       throw new Error('Error al actualizar área de mesas');
     }
   }
@@ -298,7 +283,6 @@ class WailsOrderService {
     try {
       await DeleteTableArea(id);
     } catch (error) {
-      console.error('Error deleting table area:', error);
       throw new Error('Error al eliminar área de mesas');
     }
   }
@@ -309,7 +293,6 @@ class WailsOrderService {
       const orders = await GetTodayOrders();
       return orders.map(mapOrder);
     } catch (error) {
-      console.error('Error getting today orders:', error);
       throw new Error('Error al obtener órdenes del día');
     }
   }
@@ -319,7 +302,6 @@ class WailsOrderService {
       const orders = await GetPendingOrders();
       return orders.map(mapOrder);
     } catch (error) {
-      console.error('Error getting pending orders:', error);
       throw new Error('Error al obtener órdenes pendientes');
     }
   }
@@ -329,7 +311,6 @@ class WailsOrderService {
       const orders = await GetOrdersByStatus(status);
       return orders.map(mapOrder);
     } catch (error) {
-      console.error('Error getting orders by status:', error);
       throw new Error('Error al obtener órdenes por estado');
     }
   }
@@ -340,7 +321,6 @@ class WailsOrderService {
       const updatedOrder = { ...order, status };
       return mapOrder(updatedOrder as any);
     } catch (error) {
-      console.error('Error updating order status:', error);
       throw new Error('Error al actualizar estado de orden');
     }
   }
@@ -349,7 +329,6 @@ class WailsOrderService {
     try {
       await SendToKitchen(orderId);
     } catch (error) {
-      console.error('Error sending order to kitchen:', error);
       throw new Error('Error al enviar orden a cocina');
     }
   }

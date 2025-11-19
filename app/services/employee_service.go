@@ -548,35 +548,35 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 		}
 	}
 
-	// Add only CASH payments from sales in this register
-	// Only physical cash should affect the cash register balance
-	// Cards, digital payments, etc. do NOT go into the physical cash drawer
+	// Add ALL payments that affect cash register from sales
 	// IMPORTANT: Only include payment methods where affects_cash_register = true
+	// This includes cash, but also digital payments that are deposited as cash, etc.
+	// Do NOT filter by payment type - only by affects_cash_register flag
 	//
 	// NOTE: We sum payment.Amount (not sale.Total) to correctly handle split payments
 	// Example: Sale $100 paid with $60 cash + $40 card → Only $60 goes in register
 	// Backend validation ensures payment amounts always match sale total, so this is safe
-	var cashPayments []models.Payment
+	var cashAffectingPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
-		Where("sales.cash_register_id = ? AND payment_methods.type = ? AND payment_methods.affects_cash_register = ?", register.ID, "cash", true).
+		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
 		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
-		Find(&cashPayments)
+		Find(&cashAffectingPayments)
 
-	for _, payment := range cashPayments {
+	for _, payment := range cashAffectingPayments {
 		expected += payment.Amount // Correct: handles split payments properly
 	}
 
-	// Subtract refunded cash payments (money returned to customer)
+	// Subtract refunded payments that affected cash register (money returned to customer)
 	// IMPORTANT: Only include payment methods where affects_cash_register = true
-	var refundedCashPayments []models.Payment
+	var refundedCashAffectingPayments []models.Payment
 	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
-		Where("sales.cash_register_id = ? AND payment_methods.type = ? AND payment_methods.affects_cash_register = ?", register.ID, "cash", true).
+		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
 		Where("sales.status IN ?", []string{"refunded", "partial_refund"}).
-		Find(&refundedCashPayments)
+		Find(&refundedCashAffectingPayments)
 
-	for _, payment := range refundedCashPayments {
+	for _, payment := range refundedCashAffectingPayments {
 		expected -= payment.Amount
 	}
 

@@ -89,13 +89,6 @@ func (a *App) startup(ctx context.Context) {
 			}
 		}()
 
-		// Start sync worker for offline queue
-		a.LoggerService.LogInfo("Starting sync worker for offline queue")
-		go func() {
-			defer a.LoggerService.RecoverPanic()
-			services.StartSyncWorker()
-		}()
-
 		// Start DIAN validation worker
 		a.LoggerService.LogInfo("Starting DIAN validation worker")
 		go func() {
@@ -252,7 +245,6 @@ func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
 	}()
 
 	// Start background workers
-	go services.StartSyncWorker()
 	go services.StartValidationWorker()
 
 	return nil

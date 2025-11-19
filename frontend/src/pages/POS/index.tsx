@@ -56,7 +56,6 @@ import {
 import { toast } from 'react-toastify';
 
 import { useAuth,useWebSocket } from '../../hooks';
-import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { wailsProductService } from '../../services/wailsProductService';
 import { wailsCustomPageService } from '../../services/wailsCustomPageService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
@@ -81,7 +80,6 @@ const POS: React.FC = () => {
   // Context hooks
   const { user, cashRegisterId } = useAuth();
   const { sendMessage, subscribe } = useWebSocket();
-  const { isOnline } = useOfflineSync();
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
@@ -177,7 +175,6 @@ const POS: React.FC = () => {
       const pageExists = customPages.some(p => p.id === selectedCustomPage);
       if (!pageExists) {
         // Saved page doesn't exist anymore, clear it
-        console.warn(`Selected custom page ID ${selectedCustomPage} not found, resetting selection`);
         setSelectedCustomPage(null);
         localStorage.removeItem('pos_selected_custom_page');
       }
@@ -196,7 +193,6 @@ const POS: React.FC = () => {
               const pageProducts = await wailsCustomPageService.getPageWithProducts(selectedCustomPage);
               setProducts(pageProducts as any);
             } catch (error) {
-              console.error('Error loading page products:', error);
               toast.error('Error al cargar productos de la página');
             }
           }
@@ -231,51 +227,27 @@ const POS: React.FC = () => {
     if (order) {
       // Prevent loading the same order twice (React Strict Mode can cause double execution)
       if (loadedOrderIdRef.current === order.id) {
-        console.log('⚠️ [LOAD ORDER] SKIPPED: Order already loaded:', order.id);
         return;
       }
 
       const isEditing = !!state?.editOrder;
-      console.log('🔵 [LOAD ORDER] Starting to load order from navigation:', {
-        orderId: order.id,
-        orderNumber: order.order_number,
-        orderTypeId: order.order_type_id,
-        orderTypeName: order.order_type?.name,
-        orderTypeCode: order.order_type?.code,
-        tableId: order.table?.id,
-        tableNumber: order.table?.number,
-        isEditing
-      });
 
       // Mark this order as loaded
       loadedOrderIdRef.current = order.id ?? null;
 
       // IMPORTANT: Set currentOrder FIRST to trigger the protection in auto-switch useEffect
-      console.log('🔵 [LOAD ORDER] Step 1: Setting currentOrder...');
       setCurrentOrder(order);
 
       // Then restore the order type BEFORE setting table (to avoid auto-switch interference)
       if (order.order_type_id && order.order_type) {
-        console.log('🔵 [LOAD ORDER] Step 2: Setting selectedOrderType to:', {
-          id: order.order_type.id,
-          name: order.order_type.name,
-          code: order.order_type.code
-        });
         setSelectedOrderType(order.order_type as unknown as models.OrderType);
-      } else {
-        console.log('⚠️ [LOAD ORDER] Step 2: NO ORDER TYPE to restore!', {
-          order_type_id: order.order_type_id,
-          order_type: order.order_type
-        });
       }
 
       // Now set the rest of the order data
-      console.log('🔵 [LOAD ORDER] Step 3: Setting other order data...');
       setOrderItems(order.items || []);
       setSelectedTable(order.table || null);
       setSelectedCustomer(order.customer || null);
 
-      console.log('🔵 [LOAD ORDER] Order loading complete');
 
       toast.info(`Orden ${order.order_number} ${isEditing ? 'lista para editar' : 'cargada'}`);
 
@@ -286,63 +258,40 @@ const POS: React.FC = () => {
 
   // Track all changes to selectedOrderType
   useEffect(() => {
-    console.log('🟣 [ORDER TYPE CHANGED]:', {
-      id: selectedOrderType?.id,
-      name: selectedOrderType?.name,
-      code: selectedOrderType?.code,
-      currentOrderId: currentOrder?.id
-    });
+    // No logging needed
   }, [selectedOrderType]);
 
   // Set default order type when orderTypes are loaded (only for brand new orders)
   useEffect(() => {
     if (orderTypes.length > 0 && !selectedOrderType && !currentOrder && orderItems.length === 0) {
-      console.log('📝 [SET DEFAULT ORDER TYPE] Setting to:', orderTypes[0].name);
       setSelectedOrderType(orderTypes[0]);
-    } else if (orderTypes.length > 0) {
-      console.log('📝 [SET DEFAULT ORDER TYPE] NOT setting. selectedOrderType:', selectedOrderType?.name, 'currentOrder:', currentOrder?.id, 'orderItems:', orderItems.length);
     }
   }, [orderTypes, selectedOrderType, currentOrder, orderItems]);
 
   // Update order type when table is selected/deselected (only for new orders)
   useEffect(() => {
-    console.log('🟡 [AUTO-SWITCH] useEffect triggered:', {
-      hasCurrentOrder: !!currentOrder,
-      currentOrderId: currentOrder?.id,
-      currentOrderTypeId: currentOrder?.order_type_id,
-      selectedTable: selectedTable?.number,
-      selectedOrderTypeCode: selectedOrderType?.code,
-      selectedOrderTypeName: selectedOrderType?.name,
-      hasOrderItems: orderItems.length > 0
-    });
-
     // NEVER auto-switch if there's an existing order loaded (has an ID)
     if (currentOrder && currentOrder.id) {
-      console.log('🟢 [AUTO-SWITCH] BLOCKED: Existing order detected, not switching');
       return; // Don't touch order type when editing an existing order
     }
 
     // Don't auto-switch if we have order items (editing mode without currentOrder ID yet)
     if (orderItems.length > 0) {
-      console.log('🟢 [AUTO-SWITCH] BLOCKED: Has order items, not a brand new order');
       return;
     }
 
     // Only auto-switch for brand new orders (no currentOrder at all)
     if (selectedTable && selectedOrderType?.code !== 'dine-in') {
-      console.log('🔴 [AUTO-SWITCH] SWITCHING to dine-in because table selected');
       const dineInType = orderTypes.find(ot => ot.code === 'dine-in');
       if (dineInType) {
         setSelectedOrderType(dineInType);
       }
     } else if (!selectedTable && selectedOrderType?.code === 'dine-in') {
-      console.log('🔴 [AUTO-SWITCH] SWITCHING away from dine-in because no table');
       // When deselecting table, go back to first order type in list (not hardcoded to takeout)
       if (orderTypes.length > 0) {
         setSelectedOrderType(orderTypes[0]);
       }
     } else {
-      console.log('🟢 [AUTO-SWITCH] No switch needed');
     }
   }, [selectedTable, orderTypes, currentOrder, orderItems]);
 
@@ -404,7 +353,6 @@ const POS: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Error loading from params:', error);
         toast.error('Error al cargar datos');
       }
     };
@@ -448,7 +396,6 @@ const POS: React.FC = () => {
       setOrderTypes(data);
       // Note: Default order type is set in a useEffect below, not here
     } catch (error) {
-      console.error('Error loading order types:', error);
       toast.error('Error al cargar tipos de pedido');
     }
   };
@@ -460,7 +407,6 @@ const POS: React.FC = () => {
         setCompanyLiabilityId(config.type_liability_id || null);
       }
     } catch (error) {
-      console.error('Error loading company config:', error);
       // Don't show error toast to user, just log it
     }
   };
@@ -470,7 +416,6 @@ const POS: React.FC = () => {
       const data = await wailsCustomPageService.getAllPages();
       setCustomPages(data);
     } catch (error) {
-      console.error('Error loading custom pages:', error);
     }
   };
 
@@ -482,7 +427,6 @@ const POS: React.FC = () => {
       }
     } catch (error) {
       // If config doesn't exist, use default value (true)
-      console.log('Print auto-print config not found, using default');
     }
   };
 
@@ -533,9 +477,6 @@ const POS: React.FC = () => {
 
   // Add product to order
   const addProductToOrder = useCallback((product: Product) => {
-    console.log('addProductToOrder called with product:', product);
-    console.log('Product has_variable_price:', product.has_variable_price);
-    console.log('Product modifiers:', product.modifiers);
 
     // Check if cash register is open
     if (!cashRegisterId) {
@@ -553,7 +494,6 @@ const POS: React.FC = () => {
 
     // Check if product has variable price - show price input dialog first
     if (product.has_variable_price === true) {
-      console.log('Opening price input dialog for variable price product');
       setSelectedProductForPrice(product);
       setPriceInputDialogOpen(true);
       return;
@@ -561,13 +501,11 @@ const POS: React.FC = () => {
 
     // Check if product has modifiers
     if (product.modifiers && product.modifiers.length > 0) {
-      console.log('Opening modifier dialog, modifiers:', product.modifiers);
       setSelectedProductForModifier(product);
       setModifierDialogOpen(true);
       return;
     }
 
-    console.log('Adding product directly to cart (no modifiers, no variable price)');
 
     // Create new item
     const newItem: OrderItem = {
@@ -668,12 +606,10 @@ const POS: React.FC = () => {
         toast.success('Pedido eliminado y mesa liberada');
       } else if (!skipDelete && currentOrder?.status === 'paid') {
         // Order was already paid, just clear local state
-        console.log('Order already paid, not deleting from database');
       } else if (!skipDelete) {
         toast.info('Orden cancelada');
       }
     } catch (error: any) {
-      console.error('Error deleting order:', error);
       toast.error('Error al eliminar pedido: ' + (error.message || 'Error desconocido'));
     }
 
@@ -700,8 +636,6 @@ const POS: React.FC = () => {
       return;
     }
 
-    console.log('🔍 saveOrder: deliveryInfo state =', deliveryInfo);
-    console.log('🔍 saveOrder: selectedOrderType =', selectedOrderType);
 
     setIsSavingOrder(true);
     try {
@@ -829,7 +763,6 @@ const POS: React.FC = () => {
         try {
           await wailsOrderService.updateTableStatus(selectedTable.id!, 'available');
         } catch (error) {
-          console.error('Error updating table status:', error);
           // Don't fail the entire payment if table update fails
         }
       }
@@ -854,7 +787,6 @@ const POS: React.FC = () => {
   const handlePaymentClick = useCallback(() => {
     // Check if order type has skip_payment_dialog enabled
     if (selectedOrderType?.skip_payment_dialog && selectedOrderType?.default_payment_method_id) {
-      console.log('Auto-processing payment for order type:', selectedOrderType.name);
 
       // Create payment data with default payment method
       const paymentData = {
@@ -1066,13 +998,6 @@ const POS: React.FC = () => {
                 size="small"
               />
             )}
-            {!isOnline && (
-              <Chip
-                label="Offline"
-                color="warning"
-                size="small"
-              />
-            )}
           </Box>
         </Box>
 
@@ -1174,9 +1099,7 @@ const POS: React.FC = () => {
               onRemoveItem={removeItem}
               onEditNotes={handleEditNotes}
               onEditItem={(item) => {
-                console.log('onEditItem called with item:', item);
                 const product = products.find(p => p.id === item.product_id);
-                console.log('Found product for editing:', product);
                 if (product) {
                   setSelectedItemForModifierEdit(item);
                   setSelectedProductForModifier(product);
@@ -1301,7 +1224,6 @@ const POS: React.FC = () => {
 
             if (selectedItemForModifierEdit) {
               // Editing existing item - update it
-              console.log('Updating existing item with new modifiers');
               const quantity = selectedItemForModifierEdit.quantity;
               const subtotal = (basePrice * quantity) + (modifiersPriceChange * quantity);
 
@@ -1322,7 +1244,6 @@ const POS: React.FC = () => {
               ));
             } else {
               // Adding new product with modifiers
-              console.log('Adding new product with modifiers');
               const subtotal = basePrice + modifiersPriceChange;
 
               const newItem: OrderItem = {
@@ -1507,7 +1428,6 @@ const POS: React.FC = () => {
         open={deliveryDialogOpen}
         onClose={() => setDeliveryDialogOpen(false)}
         onConfirm={(info) => {
-          console.log('✅ DeliveryInfoDialog: Setting delivery info =', info);
           setDeliveryInfo(info);
           setDeliveryDialogOpen(false);
         }}

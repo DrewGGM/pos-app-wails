@@ -24,13 +24,11 @@ import Ingredients from './pages/Ingredients';
 
 // Hooks
 import { useAuth,useWebSocket } from './hooks';
-import { useOfflineSync } from './hooks/useOfflineSync';
 
 // Components
 import ProtectedRoute from './components/ProtectedRoute';
 import CashRegisterGuard from './components/CashRegisterGuard';
 import LoadingScreen from './components/LoadingScreen';
-import OfflineIndicator from './components/OfflineIndicator';
 import SetupWizard from './components/SetupWizard';
 
 // Services
@@ -39,7 +37,6 @@ import { wailsConfigManagerService } from './services/wailsConfigManagerService'
 const App: React.FC = () => {
   const { isAuthenticated, loading, cashRegisterId } = useAuth();
   const { connect, disconnect } = useWebSocket();
-  const { isOnline, syncStatus } = useOfflineSync();
   const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -48,7 +45,6 @@ const App: React.FC = () => {
         const firstRun = await wailsConfigManagerService.isFirstRun();
         setIsFirstRun(firstRun);
       } catch (error) {
-        console.error('Error checking first run:', error);
         setIsFirstRun(false);
       }
     };
@@ -79,8 +75,6 @@ const App: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {!isOnline && <OfflineIndicator syncStatus={syncStatus} />}
-      
       <Routes>
         {/* Auth Routes */}
         <Route element={<AuthLayout />}>

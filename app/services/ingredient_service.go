@@ -213,74 +213,7 @@ func (s *IngredientService) DeductIngredientsForOrder(orderItems []models.OrderI
 	var warnings []string
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		for _, item := range orderItems {
-			// Get product ingredients
-			var productIngredients []models.ProductIngredient
-			if err := tx.Preload("Ingredient").
-				Where("product_id = ?", item.ProductID).
-				Find(&productIngredients).Error; err != nil {
-				log.Printf("Error loading ingredients for product %d: %v", item.ProductID, err)
-				continue
-			}
-
-			// Deduct each ingredient
-			for _, prodIng := range productIngredients {
-				if prodIng.Ingredient == nil {
-					continue
-				}
-
-				// Calculate total quantity to deduct
-				totalQuantity := prodIng.Quantity * float64(item.Quantity)
-
-				// Get current ingredient stock
-				var ingredient models.Ingredient
-				if err := tx.First(&ingredient, prodIng.IngredientID).Error; err != nil {
-					log.Printf("Error loading ingredient %d: %v", prodIng.IngredientID, err)
-					continue
-				}
-
-				previousStock := ingredient.Stock
-				ingredient.Stock -= totalQuantity
-
-				// Check if stock is low or negative (warning only)
-				if ingredient.Stock <= 0 {
-					warnings = append(warnings, fmt.Sprintf(
-						"⚠️ AGOTADO: %s (quedan %.2f %s)",
-						ingredient.Name,
-						ingredient.Stock,
-						ingredient.Unit,
-					))
-				} else if ingredient.Stock <= ingredient.MinStock {
-					warnings = append(warnings, fmt.Sprintf(
-						"⚠️ STOCK BAJO: %s (quedan %.2f %s)",
-						ingredient.Name,
-						ingredient.Stock,
-						ingredient.Unit,
-					))
-				}
-
-				// Update stock
-				if err := tx.Save(&ingredient).Error; err != nil {
-					log.Printf("Error updating ingredient stock %d: %v", ingredient.ID, err)
-					continue
-				}
-
-				// Create movement
-				movement := models.IngredientMovement{
-					IngredientID: ingredient.ID,
-					Type:         "sale",
-					Quantity:     -totalQuantity,
-					PreviousQty:  previousStock,
-					NewQty:       ingredient.Stock,
-					Reference:    fmt.Sprintf("Order - %d units of product ID %d", item.Quantity, item.ProductID),
-				}
-
-				if err := tx.Create(&movement).Error; err != nil {
-					log.Printf("Error creating ingredient movement: %v", err)
-				}
-			}
-		}
-
+		warnings = s.deductIngredientsInTransaction(tx, orderItems)
 		return nil
 	})
 
@@ -291,60 +224,152 @@ func (s *IngredientService) DeductIngredientsForOrder(orderItems []models.OrderI
 	return warnings
 }
 
-// RestoreIngredientsForOrder restores ingredients when an order is cancelled/refunded
-func (s *IngredientService) RestoreIngredientsForOrder(orderItems []models.OrderItem) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		for _, item := range orderItems {
-			// Get product ingredients
-			var productIngredients []models.ProductIngredient
-			if err := tx.Preload("Ingredient").
-				Where("product_id = ?", item.ProductID).
-				Find(&productIngredients).Error; err != nil {
-				log.Printf("Error loading ingredients for product %d: %v", item.ProductID, err)
+// DeductIngredientsInTransaction deducts ingredients within an existing transaction
+// This ensures atomicity when called from order creation or other transactional operations
+func (s *IngredientService) DeductIngredientsInTransaction(tx *gorm.DB, orderItems []models.OrderItem) []string {
+	return s.deductIngredientsInTransaction(tx, orderItems)
+}
+
+// deductIngredientsInTransaction is the internal implementation
+func (s *IngredientService) deductIngredientsInTransaction(tx *gorm.DB, orderItems []models.OrderItem) []string {
+	var warnings []string
+
+	for _, item := range orderItems {
+		// Get product ingredients
+		var productIngredients []models.ProductIngredient
+		if err := tx.Preload("Ingredient").
+			Where("product_id = ?", item.ProductID).
+			Find(&productIngredients).Error; err != nil {
+			log.Printf("Error loading ingredients for product %d: %v", item.ProductID, err)
+			continue
+		}
+
+		// Deduct each ingredient
+		for _, prodIng := range productIngredients {
+			if prodIng.Ingredient == nil {
 				continue
 			}
 
-			// Restore each ingredient
-			for _, prodIng := range productIngredients {
-				if prodIng.Ingredient == nil {
-					continue
-				}
+			// Calculate total quantity to deduct
+			totalQuantity := prodIng.Quantity * float64(item.Quantity)
 
-				// Calculate total quantity to restore
-				totalQuantity := prodIng.Quantity * float64(item.Quantity)
+			// Get current ingredient stock
+			var ingredient models.Ingredient
+			if err := tx.First(&ingredient, prodIng.IngredientID).Error; err != nil {
+				log.Printf("Error loading ingredient %d: %v", prodIng.IngredientID, err)
+				continue
+			}
 
-				// Get current ingredient stock
-				var ingredient models.Ingredient
-				if err := tx.First(&ingredient, prodIng.IngredientID).Error; err != nil {
-					log.Printf("Error loading ingredient %d: %v", prodIng.IngredientID, err)
-					continue
-				}
+			previousStock := ingredient.Stock
+			ingredient.Stock -= totalQuantity
 
-				previousStock := ingredient.Stock
-				ingredient.Stock += totalQuantity
+			// Check if stock is low or negative (warning only)
+			if ingredient.Stock <= 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"⚠️ AGOTADO: %s (quedan %.2f %s)",
+					ingredient.Name,
+					ingredient.Stock,
+					ingredient.Unit,
+				))
+			} else if ingredient.Stock <= ingredient.MinStock {
+				warnings = append(warnings, fmt.Sprintf(
+					"⚠️ STOCK BAJO: %s (quedan %.2f %s)",
+					ingredient.Name,
+					ingredient.Stock,
+					ingredient.Unit,
+				))
+			}
 
-				// Update stock
-				if err := tx.Save(&ingredient).Error; err != nil {
-					log.Printf("Error restoring ingredient stock %d: %v", ingredient.ID, err)
-					continue
-				}
+			// Update stock
+			if err := tx.Save(&ingredient).Error; err != nil {
+				log.Printf("Error updating ingredient stock %d: %v", ingredient.ID, err)
+				continue
+			}
 
-				// Create movement
-				movement := models.IngredientMovement{
-					IngredientID: ingredient.ID,
-					Type:         "adjustment",
-					Quantity:     totalQuantity,
-					PreviousQty:  previousStock,
-					NewQty:       ingredient.Stock,
-					Reference:    fmt.Sprintf("Refund - %d units of product ID %d", item.Quantity, item.ProductID),
-				}
+			// Create movement
+			movement := models.IngredientMovement{
+				IngredientID: ingredient.ID,
+				Type:         "sale",
+				Quantity:     -totalQuantity,
+				PreviousQty:  previousStock,
+				NewQty:       ingredient.Stock,
+				Reference:    fmt.Sprintf("Order - %d units of product ID %d", item.Quantity, item.ProductID),
+			}
 
-				if err := tx.Create(&movement).Error; err != nil {
-					log.Printf("Error creating ingredient movement: %v", err)
-				}
+			if err := tx.Create(&movement).Error; err != nil {
+				log.Printf("Error creating ingredient movement: %v", err)
 			}
 		}
+	}
 
-		return nil
+	return warnings
+}
+
+// RestoreIngredientsForOrder restores ingredients when an order is cancelled/refunded
+func (s *IngredientService) RestoreIngredientsForOrder(orderItems []models.OrderItem) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		return s.restoreIngredientsInTransaction(tx, orderItems)
 	})
+}
+
+// RestoreIngredientsInTransaction restores ingredients within an existing transaction
+// This is used when ingredients need to be restored as part of a larger transaction
+func (s *IngredientService) RestoreIngredientsInTransaction(tx *gorm.DB, orderItems []models.OrderItem) error {
+	return s.restoreIngredientsInTransaction(tx, orderItems)
+}
+
+// restoreIngredientsInTransaction is the internal implementation that works within a transaction
+func (s *IngredientService) restoreIngredientsInTransaction(tx *gorm.DB, orderItems []models.OrderItem) error {
+	for _, item := range orderItems {
+		// Get product ingredients
+		var productIngredients []models.ProductIngredient
+		if err := tx.Preload("Ingredient").
+			Where("product_id = ?", item.ProductID).
+			Find(&productIngredients).Error; err != nil {
+			log.Printf("Error loading ingredients for product %d: %v", item.ProductID, err)
+			continue
+		}
+
+		// Restore each ingredient
+		for _, prodIng := range productIngredients {
+			if prodIng.Ingredient == nil {
+				continue
+			}
+
+			// Calculate total quantity to restore
+			totalQuantity := prodIng.Quantity * float64(item.Quantity)
+
+			// Get current ingredient stock
+			var ingredient models.Ingredient
+			if err := tx.First(&ingredient, prodIng.IngredientID).Error; err != nil {
+				log.Printf("Error loading ingredient %d: %v", prodIng.IngredientID, err)
+				continue
+			}
+
+			previousStock := ingredient.Stock
+			ingredient.Stock += totalQuantity
+
+			// Update stock
+			if err := tx.Save(&ingredient).Error; err != nil {
+				log.Printf("Error restoring ingredient stock %d: %v", ingredient.ID, err)
+				continue
+			}
+
+			// Create movement
+			movement := models.IngredientMovement{
+				IngredientID: ingredient.ID,
+				Type:         "adjustment",
+				Quantity:     totalQuantity,
+				PreviousQty:  previousStock,
+				NewQty:       ingredient.Stock,
+				Reference:    fmt.Sprintf("Refund - %d units of product ID %d", item.Quantity, item.ProductID),
+			}
+
+			if err := tx.Create(&movement).Error; err != nil {
+				log.Printf("Error creating ingredient movement: %v", err)
+			}
+		}
+	}
+
+	return nil
 }

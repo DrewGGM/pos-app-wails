@@ -82,7 +82,6 @@ const Orders: React.FC = () => {
       }
       setOrders(data);
     } catch (error) {
-      console.error('Error loading orders:', error);
       toast.error('Error al cargar órdenes');
     } finally {
       setLoading(false);
@@ -128,7 +127,6 @@ const Orders: React.FC = () => {
         toast.success(`Orden #${order.order_number} enviada a impresora`);
       }
     } catch (error: any) {
-      console.error('Error printing order:', error);
       toast.error(`Error al imprimir orden: ${error.message || 'Error desconocido'}`);
     }
     handleMenuClose();
@@ -153,7 +151,6 @@ const Orders: React.FC = () => {
         toast.success(`Orden #${order.order_number} enviada a cocina`);
       }
     } catch (error) {
-      console.error('Error sending order to kitchen:', error);
       toast.error('Error al enviar orden a cocina');
     }
     handleMenuClose();
@@ -172,7 +169,6 @@ const Orders: React.FC = () => {
         loadOrders(); // Reload orders after deletion
       }
     } catch (error) {
-      console.error('Error deleting order:', error);
       toast.error('Error al eliminar orden');
     }
     handleMenuClose();

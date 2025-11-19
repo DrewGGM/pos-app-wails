@@ -493,26 +493,6 @@ export interface InventoryMovement extends BaseModel {
   employee?: Employee;
 }
 
-// Queued invoice model
-export interface QueuedInvoice extends BaseModel {
-  sale_id: number;
-  type: 'invoice' | 'credit_note' | 'debit_note';
-  retry_count: number;
-  max_retries: number;
-  last_error?: string;
-  next_retry?: string;
-}
-
-// Sync status model
-export interface SyncStatus extends BaseModel {
-  last_sync_at?: string;
-  status: 'syncing' | 'completed' | 'failed';
-  pending_orders: number;
-  pending_sales: number;
-  pending_invoices: number;
-  last_error?: string;
-}
-
 // Ingredient model
 export interface Ingredient extends BaseModel {
   name: string;

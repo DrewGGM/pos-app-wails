@@ -99,7 +99,6 @@ const Sales: React.FC = () => {
         setCompanyLiabilityId(config.type_liability_id || null);
       }
     } catch (error) {
-      console.error('Error loading company config:', error);
     }
   };
 
@@ -157,7 +156,6 @@ const Sales: React.FC = () => {
       loadSalesHistory();
     } catch (error: any) {
       toast.error(error?.message || 'Error al enviar factura electrónica');
-      console.error('Error sending electronic invoice:', error);
     }
   };
 
@@ -206,7 +204,6 @@ const Sales: React.FC = () => {
       handleMenuClose();
       loadSalesHistory();
     } catch (error: any) {
-      console.error('Error deleting sale:', error);
       toast.error(error?.message || 'Error al eliminar venta');
     }
   };

@@ -17,7 +17,6 @@ import {
   Avatar,
   Menu,
   MenuItem,
-  Badge,
   Chip,
   Collapse,
 } from '@mui/material';
@@ -43,7 +42,7 @@ import {
   AccountCircle,
   Kitchen as KitchenIcon,
 } from '@mui/icons-material';
-import { useAuth, useOfflineSync, useWebSocket } from '../hooks';
+import { useAuth, useWebSocket } from '../hooks';
 
 const drawerWidth = 240;
 
@@ -141,7 +140,6 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, cashRegisterId } = useAuth();
-  const { isOnline, getPendingCount } = useOfflineSync();
   const { isConnected } = useWebSocket();
   
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -331,19 +329,6 @@ const MainLayout: React.FC = () => {
               sx={{ cursor: 'pointer' }}
             />
           )}
-          {isOnline ? (
-            <Chip
-              label="Online"
-              color="success"
-              size="small"
-            />
-          ) : (
-            <Chip
-              label="Offline"
-              color="warning"
-              size="small"
-            />
-          )}
           {!isConnected && (
             <Chip
               label="Desconectado"
@@ -355,8 +340,6 @@ const MainLayout: React.FC = () => {
       </Box>
     </div>
   );
-
-  const pendingCount = getPendingCount();
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -384,13 +367,11 @@ const MainLayout: React.FC = () => {
           </Typography>
 
           {/* Notifications */}
-          <IconButton 
+          <IconButton
             color="inherit"
             onClick={handleNotificationClick}
           >
-            <Badge badgeContent={pendingCount} color="error">
-              <NotificationsIcon />
-            </Badge>
+            <NotificationsIcon />
           </IconButton>
 
           {/* User Menu */}
@@ -436,19 +417,11 @@ const MainLayout: React.FC = () => {
         open={Boolean(notificationAnchor)}
         onClose={handleNotificationClose}
       >
-        {pendingCount > 0 ? (
-          <MenuItem>
-            <Typography variant="body2">
-              {pendingCount} transacciones pendientes de sincronizar
-            </Typography>
-          </MenuItem>
-        ) : (
-          <MenuItem>
-            <Typography variant="body2" color="text.secondary">
-              No hay notificaciones
-            </Typography>
-          </MenuItem>
-        )}
+        <MenuItem>
+          <Typography variant="body2" color="text.secondary">
+            No hay notificaciones
+          </Typography>
+        </MenuItem>
       </Menu>
 
       {/* Drawer */}

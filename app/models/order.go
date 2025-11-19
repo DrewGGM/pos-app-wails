@@ -56,15 +56,15 @@ type OrderType struct {
 type Order struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
 	OrderNumber   string         `gorm:"unique;not null" json:"order_number"`
-	OrderTypeID   *uint          `json:"order_type_id,omitempty"`
+	OrderTypeID   *uint          `gorm:"index" json:"order_type_id,omitempty"`
 	OrderType     *OrderType     `gorm:"foreignKey:OrderTypeID" json:"order_type,omitempty"`
 	Type          string         `json:"type"` // Deprecated: kept for backward compatibility, use OrderType instead
-	Status        OrderStatus    `json:"status"`
+	Status        OrderStatus    `gorm:"index" json:"status"`
 	SequenceNumber *int          `gorm:"default:null" json:"sequence_number,omitempty"` // Sequential number for order types that require it (1,2,3...), reuses freed numbers
 	TakeoutNumber *int           `gorm:"default:null" json:"takeout_number,omitempty"` // Deprecated: use SequenceNumber instead
-	TableID       *uint          `json:"table_id,omitempty"`
+	TableID       *uint          `gorm:"index" json:"table_id,omitempty"`
 	Table         *Table         `gorm:"foreignKey:TableID" json:"table,omitempty"`
-	CustomerID   *uint          `json:"customer_id,omitempty"`
+	CustomerID   *uint          `gorm:"index" json:"customer_id,omitempty"`
 	Customer     *Customer      `gorm:"foreignKey:CustomerID" json:"customer,omitempty"`
 	// Delivery information (optional, for delivery orders)
 	DeliveryCustomerName string `json:"delivery_customer_name,omitempty"`
@@ -76,7 +76,7 @@ type Order struct {
 	Discount     float64        `json:"discount"`
 	Total        float64        `json:"total"`
 	Notes        string         `json:"notes"`
-	EmployeeID   uint           `json:"employee_id"`
+	EmployeeID   uint           `gorm:"index" json:"employee_id"`
 	Employee     *Employee      `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
 	SaleID       *uint          `json:"sale_id,omitempty"`
 	Source       string         `json:"source"` // "pos", "waiter_app", "online"
@@ -89,9 +89,9 @@ type Order struct {
 // OrderItem represents an item in an order
 type OrderItem struct {
 	ID              uint                `gorm:"primaryKey" json:"id"`
-	OrderID         uint                `json:"order_id"`
+	OrderID         uint                `gorm:"index" json:"order_id"`
 	Order           *Order              `gorm:"foreignKey:OrderID" json:"-"`
-	ProductID       uint                `json:"product_id"`
+	ProductID       uint                `gorm:"index" json:"product_id"`
 	Product         *Product            `gorm:"foreignKey:ProductID" json:"product,omitempty"`
 	Quantity        int                 `json:"quantity"`
 	UnitPrice       float64             `json:"unit_price"`
@@ -146,15 +146,4 @@ type Table struct {
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-}
-
-// QueuedOrder for offline sync
-type QueuedOrder struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	OrderData  string    `json:"order_data"` // JSON serialized order
-	Action     string    `json:"action"`     // "create", "update", "delete"
-	RetryCount int       `json:"retry_count"`
-	LastError  string    `json:"last_error"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
 }

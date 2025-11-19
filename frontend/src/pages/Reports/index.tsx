@@ -155,7 +155,6 @@ const Reports: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Error loading reports:', error);
       toast.error('Error al cargar reportes');
     } finally {
       setLoading(false);
@@ -226,7 +225,6 @@ const Reports: React.FC = () => {
         toast.success('Reporte exportado');
       }
     } catch (error) {
-      console.error('Error exporting report:', error);
       toast.error('Error al exportar reporte');
     }
   };

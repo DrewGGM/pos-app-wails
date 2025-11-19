@@ -67,7 +67,6 @@ export const wailsCustomPageService = {
       const pages = await GetAllPages();
       return pages || [];
     } catch (error) {
-      console.error('Error getting custom pages:', error);
       throw error;
     }
   },
@@ -76,7 +75,6 @@ export const wailsCustomPageService = {
     try {
       return await GetPage(id);
     } catch (error) {
-      console.error('Error getting custom page:', error);
       throw error;
     }
   },
@@ -87,7 +85,6 @@ export const wailsCustomPageService = {
       // Transform Wails models to frontend models (modifier_group -> group)
       return products.map(mapProduct);
     } catch (error) {
-      console.error('Error getting page with products:', error);
       throw error;
     }
   },
@@ -97,7 +94,6 @@ export const wailsCustomPageService = {
       const newPage = new models.CustomPage(page);
       return await CreatePage(newPage);
     } catch (error) {
-      console.error('Error creating custom page:', error);
       throw error;
     }
   },
@@ -106,7 +102,6 @@ export const wailsCustomPageService = {
     try {
       await UpdatePage(new models.CustomPage(page));
     } catch (error) {
-      console.error('Error updating custom page:', error);
       throw error;
     }
   },
@@ -115,7 +110,6 @@ export const wailsCustomPageService = {
     try {
       await DeletePage(id);
     } catch (error) {
-      console.error('Error deleting custom page:', error);
       throw error;
     }
   },
@@ -124,7 +118,6 @@ export const wailsCustomPageService = {
     try {
       await AddProductToPage(pageId, productId, position);
     } catch (error) {
-      console.error('Error adding product to page:', error);
       throw error;
     }
   },
@@ -133,7 +126,6 @@ export const wailsCustomPageService = {
     try {
       await RemoveProductFromPage(pageId, productId);
     } catch (error) {
-      console.error('Error removing product from page:', error);
       throw error;
     }
   },
@@ -142,7 +134,6 @@ export const wailsCustomPageService = {
     try {
       await SetPageProducts(pageId, productIds);
     } catch (error) {
-      console.error('Error setting page products:', error);
       throw error;
     }
   },

@@ -194,7 +194,7 @@ class WailsSalesService {
           const customer = await GetCustomer(saleData.customer_id);
           customerData = customer as any;
         } catch (err) {
-          console.warn('Could not fetch customer data:', err);
+          // Could not fetch customer data
         }
       }
 
@@ -210,7 +210,6 @@ class WailsSalesService {
       );
       return mapSale(sale);
     } catch (error: any) {
-      console.error('Error processing sale:', error);
       const errorMessage = error?.message || 'Error al procesar venta';
       throw new Error(errorMessage);
     }
@@ -221,7 +220,6 @@ class WailsSalesService {
       const sale = await GetSale(id);
       return mapSale(sale);
     } catch (error) {
-      console.error('Error getting sale:', error);
       throw new Error('Error al obtener venta');
     }
   }
@@ -231,7 +229,6 @@ class WailsSalesService {
       const sales = await GetSales();
       return sales.map(mapSale);
     } catch (error) {
-      console.error('Error getting sales:', error);
       throw new Error('Error al obtener ventas');
     }
   }
@@ -239,15 +236,10 @@ class WailsSalesService {
   async getSalesHistory(limit: number = 100, offset: number = 0): Promise<{ sales: Sale[]; total: number }> {
     try {
       const result = await GetSalesHistory(limit, offset);
-      console.log('🔍 [SALES HISTORY] Raw result from backend:', result);
-      console.log('🔍 [SALES HISTORY] First sale items:', (result as any).sales?.[0]?.order?.items);
       const sales = (result as any).sales?.map(mapSale) || [];
-      console.log('🔍 [SALES HISTORY] Mapped sales:', sales);
-      console.log('🔍 [SALES HISTORY] First mapped sale items:', sales[0]?.order?.items);
       const total = (result as any).total || 0;
       return { sales, total };
     } catch (error) {
-      console.error('Error getting sales history:', error);
       throw new Error('Error al obtener historial de ventas');
     }
   }
@@ -256,7 +248,6 @@ class WailsSalesService {
     try {
       await ResendElectronicInvoice(saleId);
     } catch (error) {
-      console.error('Error resending electronic invoice:', error);
       throw new Error('Error al reenviar factura electrónica');
     }
   }
@@ -264,12 +255,10 @@ class WailsSalesService {
   async getSalesReport(startDate?: string, endDate?: string): Promise<any> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsSalesService] Bindings not ready for getSalesReport');
         return { sales: [], total_sales: 0, count: 0 };
       }
       return await GetSalesReport(startDate || '', endDate || '');
     } catch (error) {
-      console.error('Error getting sales report:', error);
       return { sales: [], total_sales: 0, count: 0 };
     }
   }
@@ -278,13 +267,11 @@ class WailsSalesService {
   async getPaymentMethods(): Promise<PaymentMethod[]> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsSalesService] Wails bindings not ready, returning empty array');
         return [];
       }
       const methods = await GetPaymentMethods();
       return methods.map(mapPaymentMethod);
     } catch (error) {
-      console.error('Error getting payment methods:', error);
       return [];
     }
   }
@@ -293,7 +280,6 @@ class WailsSalesService {
     try {
       await CreatePaymentMethod(method as any);
     } catch (error) {
-      console.error('Error creating payment method:', error);
       throw error;
     }
   }
@@ -302,7 +288,6 @@ class WailsSalesService {
     try {
       await UpdatePaymentMethod(method as any);
     } catch (error) {
-      console.error('Error updating payment method:', error);
       throw error;
     }
   }
@@ -311,7 +296,6 @@ class WailsSalesService {
     try {
       await DeletePaymentMethod(id);
     } catch (error) {
-      console.error('Error deleting payment method:', error);
       throw error;
     }
   }
@@ -324,13 +308,11 @@ class WailsSalesService {
   async getCustomers(): Promise<Customer[]> {
     try {
       if (!areBindingsReady()) {
-        console.warn('[wailsSalesService] Bindings not ready');
         return [];
       }
       const customers = await GetCustomers();
       return customers.map(mapCustomer);
     } catch (error) {
-      console.error('Error getting customers:', error);
       return [];
     }
   }
@@ -340,7 +322,6 @@ class WailsSalesService {
       const customer = await GetCustomer(id);
       return mapCustomer(customer);
     } catch (error) {
-      console.error('Error getting customer:', error);
       throw new Error('Error al obtener cliente');
     }
   }
@@ -349,7 +330,6 @@ class WailsSalesService {
     try {
       await CreateCustomer(customer as any);
     } catch (error) {
-      console.error('Error creating customer:', error);
       throw new Error('Error al crear cliente');
     }
   }
@@ -358,7 +338,6 @@ class WailsSalesService {
     try {
       await UpdateCustomer(customer as any);
     } catch (error) {
-      console.error('Error updating customer:', error);
       throw new Error('Error al actualizar cliente');
     }
   }
@@ -367,7 +346,6 @@ class WailsSalesService {
     try {
       await DeleteCustomer(id);
     } catch (error) {
-      console.error('Error deleting customer:', error);
       throw new Error('Error al eliminar cliente');
     }
   }
@@ -399,7 +377,6 @@ class WailsSalesService {
       // Printing is handled by the backend after sale completion
       await PrintReceipt(saleId);
     } catch (error) {
-      console.error('Error printing invoice:', error);
       throw new Error('Error al imprimir factura');
     }
   }
@@ -414,7 +391,6 @@ class WailsSalesService {
       // Convert to blob (this is a simplified implementation)
       return new Blob([JSON.stringify(report)], { type: 'application/json' });
     } catch (error) {
-      console.error('Error exporting sales report:', error);
       throw new Error('Error al exportar reporte de ventas');
     }
   }
@@ -428,7 +404,6 @@ class WailsSalesService {
         .map(mapSale)
         .filter(sale => sale.created_at?.startsWith(today));
     } catch (error) {
-      console.error('Error getting today sales:', error);
       throw new Error('Error al obtener ventas del día');
     }
   }
@@ -438,7 +413,6 @@ class WailsSalesService {
     try {
       await RefundSale(saleId, amount, reason, employeeId);
     } catch (error) {
-      console.error('Error refunding sale:', error);
       throw new Error('Error al reembolsar venta');
     }
   }
@@ -447,7 +421,6 @@ class WailsSalesService {
     try {
       await DeleteSale(saleId, employeeId);
     } catch (error) {
-      console.error('Error deleting sale:', error);
       throw new Error('Error al eliminar venta');
     }
   }
@@ -463,7 +436,6 @@ class WailsSalesService {
           customer.email?.toLowerCase().includes(query.toLowerCase())
         );
     } catch (error) {
-      console.error('Error searching customers:', error);
       throw new Error('Error al buscar clientes');
     }
   }
@@ -472,7 +444,6 @@ class WailsSalesService {
     try {
       await ResendElectronicInvoice(saleId);
     } catch (error: any) {
-      console.error('Error sending electronic invoice:', error);
       throw new Error(error?.message || 'Error al enviar factura electrónica a DIAN');
     }
   }

@@ -3,7 +3,6 @@ package services
 import (
 	"PosApp/app/database"
 	"PosApp/app/models"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -14,23 +13,23 @@ import (
 
 // SalesService handles sales operations
 type SalesService struct {
-	db         *gorm.DB
-	localDB    *database.LocalDB
-	orderSvc   *OrderService
-	invoiceSvc *InvoiceService
-	printerSvc *PrinterService
-	productSvc *ProductService
+	db            *gorm.DB
+	orderSvc      *OrderService
+	invoiceSvc    *InvoiceService
+	printerSvc    *PrinterService
+	productSvc    *ProductService
+	ingredientSvc *IngredientService
 }
 
 // NewSalesService creates a new sales service
 func NewSalesService() *SalesService {
 	return &SalesService{
-		db:         database.GetDB(),
-		localDB:    database.GetLocalDB(),
-		orderSvc:   NewOrderService(),
-		invoiceSvc: NewInvoiceService(),
-		printerSvc: NewPrinterService(),
-		productSvc: NewProductService(),
+		db:            database.GetDB(),
+		orderSvc:      NewOrderService(),
+		invoiceSvc:    NewInvoiceService(),
+		printerSvc:    NewPrinterService(),
+		productSvc:    NewProductService(),
+		ingredientSvc: NewIngredientService(),
 	}
 }
 
@@ -121,20 +120,6 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.InvoiceType = "electronic"
 	}
 
-	// Check if online or offline
-	if s.localDB.IsOfflineMode() {
-		// Save locally
-		if err := s.localDB.SaveSale(sale, needsElectronicInvoice); err != nil {
-			return nil, fmt.Errorf("failed to save sale locally: %w", err)
-		}
-
-		// Update order status locally
-		order.Status = models.OrderStatusPaid
-		s.localDB.SaveOrder(order)
-
-		return sale, nil
-	}
-
 	// CRITICAL: Validate payment data BEFORE creating sale
 	totalPaymentAmount := 0.0
 	for _, payment := range paymentData {
@@ -145,12 +130,15 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		totalPaymentAmount += payment.Amount
 	}
 
-	// Ensure payments match sale total (with small tolerance for rounding)
-	tolerance := 0.01
-	if math.Abs(totalPaymentAmount-sale.Total) > tolerance {
+	// Ensure payments match sale total
+	// Round both amounts to handle floating-point precision and Colombian Peso (no decimals)
+	roundedPaymentTotal := math.Round(totalPaymentAmount)
+	roundedSaleTotal := math.Round(sale.Total)
+
+	if roundedPaymentTotal != roundedSaleTotal {
 		return nil, fmt.Errorf(
-			"payment total ($%.2f) does not match sale total ($%.2f)",
-			totalPaymentAmount, sale.Total,
+			"payment total ($%.0f) does not match sale total ($%.0f) - difference: $%.2f",
+			roundedPaymentTotal, roundedSaleTotal, math.Abs(roundedPaymentTotal-roundedSaleTotal),
 		)
 	}
 
@@ -296,9 +284,17 @@ func (s *SalesService) RefundSale(saleID uint, amount float64, reason string, em
 			return err
 		}
 
+		// CRITICAL FIX: Restore product inventory
 		for _, item := range order.Items {
 			s.productSvc.AdjustStock(item.ProductID, item.Quantity,
 				fmt.Sprintf("Refund - Sale %s", sale.SaleNumber), employeeID)
+		}
+
+		// CRITICAL FIX: Restore ingredient stocks
+		// Previously this was missing, causing ingredient stock inconsistency
+		if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, order.Items); err != nil {
+			log.Printf("Warning: Failed to restore ingredients for refunded sale %s: %v", sale.SaleNumber, err)
+			// Continue despite error - don't fail the refund
 		}
 
 		// Record cash movement (negative)
@@ -380,7 +376,6 @@ func (s *SalesService) DeleteSale(saleID uint, employeeID uint) error {
 			return fmt.Errorf("failed to delete sale: %w", err)
 		}
 
-		log.Printf("DeleteSale: Successfully deleted sale %s and all related data", sale.SaleNumber)
 		return nil
 	})
 }
@@ -435,11 +430,6 @@ func (s *SalesService) GetTodaySales() ([]models.Sale, error) {
 	var sales []models.Sale
 
 	today := time.Now().Format("2006-01-02")
-
-	// Check if offline
-	if s.localDB.IsOfflineMode() {
-		return s.getLocalTodaySales(today)
-	}
 
 	// IMPORTANT: Load relationships in hierarchical order
 	err := s.db.Preload("Customer").
@@ -624,9 +614,6 @@ func (s *SalesService) createOrUpdateCustomer(customerData *models.Customer) (*m
 		}
 	}
 
-	// Cache customer locally
-	s.cacheCustomer(&customer)
-
 	return &customer, nil
 }
 
@@ -634,23 +621,11 @@ func (s *SalesService) createOrUpdateCustomer(customerData *models.Customer) (*m
 func (s *SalesService) GetCustomers() ([]models.Customer, error) {
 	var customers []models.Customer
 
-	// Try main database first
-	if !s.localDB.IsOfflineMode() {
-		err := s.db.Where("is_active = ?", true).
-			Order("name").
-			Find(&customers).Error
+	err := s.db.Where("is_active = ?", true).
+		Order("name").
+		Find(&customers).Error
 
-		if err == nil {
-			// Cache customers
-			for _, customer := range customers {
-				s.cacheCustomer(&customer)
-			}
-			return customers, nil
-		}
-	}
-
-	// Fallback to local cache
-	return s.getCustomersFromCache()
+	return customers, err
 }
 
 // SearchCustomers searches customers by name or identification
@@ -667,20 +642,12 @@ func (s *SalesService) SearchCustomers(query string) ([]models.Customer, error) 
 
 // CreateCustomer creates a new customer
 func (s *SalesService) CreateCustomer(customer *models.Customer) error {
-	if err := s.db.Create(customer).Error; err != nil {
-		return err
-	}
-	s.cacheCustomer(customer)
-	return nil
+	return s.db.Create(customer).Error
 }
 
 // UpdateCustomer updates a customer
 func (s *SalesService) UpdateCustomer(customer *models.Customer) error {
-	if err := s.db.Save(customer).Error; err != nil {
-		return err
-	}
-	s.cacheCustomer(customer)
-	return nil
+	return s.db.Save(customer).Error
 }
 
 // DeleteCustomer soft deletes a customer
@@ -717,147 +684,34 @@ func (s *SalesService) recordCashMovement(tx *gorm.DB, cashRegisterID uint, amou
 	return tx.Create(&movement).Error
 }
 
-func (s *SalesService) getLocalTodaySales(today string) ([]models.Sale, error) {
-	var localSales []database.LocalSale
-	if err := s.localDB.GetDB().Where("DATE(created_at) = ?", today).Find(&localSales).Error; err != nil {
-		return nil, err
-	}
-
-	var sales []models.Sale
-	for _, ls := range localSales {
-		var sale models.Sale
-		if err := json.Unmarshal([]byte(ls.SaleData), &sale); err != nil {
-			continue
-		}
-		sales = append(sales, sale)
-	}
-
-	return sales, nil
-}
-
-func (s *SalesService) cacheCustomer(customer *models.Customer) {
-	if s.localDB == nil {
-		return
-	}
-
-	customerData, _ := json.Marshal(customer)
-	localCustomer := database.LocalCustomer{
-		ID:                   customer.ID,
-		IdentificationNumber: customer.IdentificationNumber,
-		CustomerData:         string(customerData),
-		LastSynced:           time.Now(),
-	}
-
-	s.localDB.GetDB().Save(&localCustomer)
-}
-
-func (s *SalesService) getCustomersFromCache() ([]models.Customer, error) {
-	var localCustomers []database.LocalCustomer
-	if err := s.localDB.GetDB().Find(&localCustomers).Error; err != nil {
-		return nil, err
-	}
-
-	var customers []models.Customer
-	for _, lc := range localCustomers {
-		var customer models.Customer
-		if err := json.Unmarshal([]byte(lc.CustomerData), &customer); err != nil {
-			continue
-		}
-		customers = append(customers, customer)
-	}
-
-	return customers, nil
-}
-
 // GetPaymentMethods gets all active payment methods
 func (s *SalesService) GetPaymentMethods() ([]models.PaymentMethod, error) {
 	var methods []models.PaymentMethod
 
-	// Try main database first
-	if !s.localDB.IsOfflineMode() {
-		err := s.db.Where("is_active = ?", true).
-			Order("display_order").
-			Find(&methods).Error
+	err := s.db.Where("is_active = ?", true).
+		Order("display_order").
+		Find(&methods).Error
 
-		if err == nil {
-			// Cache payment methods
-			s.cachePaymentMethods(methods)
-			return methods, nil
-		}
-	}
-
-	// Fallback to local cache
-	return s.getPaymentMethodsFromCache()
+	return methods, err
 }
 
 // GetAllPaymentMethods gets all payment methods including inactive ones (for settings management)
 func (s *SalesService) GetAllPaymentMethods() ([]models.PaymentMethod, error) {
 	var methods []models.PaymentMethod
 
-	// Try main database first
-	if !s.localDB.IsOfflineMode() {
-		err := s.db.Order("display_order").Find(&methods).Error
+	err := s.db.Order("display_order").Find(&methods).Error
 
-		if err == nil {
-			return methods, nil
-		}
-	}
-
-	// Fallback to local cache
-	return s.getPaymentMethodsFromCache()
-}
-
-func (s *SalesService) cachePaymentMethods(methods []models.PaymentMethod) {
-	if s.localDB == nil {
-		return
-	}
-
-	for _, method := range methods {
-		methodData, _ := json.Marshal(method)
-		localMethod := database.LocalPaymentMethod{
-			ID:                method.ID,
-			PaymentMethodData: string(methodData),
-			LastSynced:        time.Now(),
-		}
-
-		s.localDB.GetDB().Save(&localMethod)
-	}
-}
-
-func (s *SalesService) getPaymentMethodsFromCache() ([]models.PaymentMethod, error) {
-	var localMethods []database.LocalPaymentMethod
-	if err := s.localDB.GetDB().Find(&localMethods).Error; err != nil {
-		return nil, err
-	}
-
-	var methods []models.PaymentMethod
-	for _, lm := range localMethods {
-		var method models.PaymentMethod
-		if err := json.Unmarshal([]byte(lm.PaymentMethodData), &method); err != nil {
-			continue
-		}
-		methods = append(methods, method)
-	}
-
-	return methods, nil
+	return methods, err
 }
 
 // CreatePaymentMethod creates a new payment method
 func (s *SalesService) CreatePaymentMethod(method *models.PaymentMethod) error {
-	if err := s.db.Create(method).Error; err != nil {
-		return err
-	}
-	s.cachePaymentMethods([]models.PaymentMethod{*method})
-	return nil
+	return s.db.Create(method).Error
 }
 
 // UpdatePaymentMethod updates a payment method
 func (s *SalesService) UpdatePaymentMethod(method *models.PaymentMethod) error {
-	if err := s.db.Save(method).Error; err != nil {
-		return err
-	}
-	s.cachePaymentMethods([]models.PaymentMethod{*method})
-	return nil
+	return s.db.Save(method).Error
 }
 
 // GetPaymentMethodSalesCount returns the number of sales associated with a payment method
@@ -877,68 +731,59 @@ func (s *SalesService) GetPaymentMethodSalesCount(id uint) (int64, error) {
 }
 
 // DeletePaymentMethod deletes a payment method and all associated sales in cascade
+// CRITICAL FIX: This function was EXTREMELY DESTRUCTIVE - it deleted all sales using the payment method
+// New implementation: Validates and rejects deletion if there are any associated payments
 func (s *SalesService) DeletePaymentMethod(id uint) error {
-	// Start a transaction
-	tx := s.db.Begin()
-	if tx.Error != nil {
-		return tx.Error
+	// Get the payment method to check if it's a system default
+	var paymentMethod models.PaymentMethod
+	if err := s.db.First(&paymentMethod, id).Error; err != nil {
+		return fmt.Errorf("payment method not found: %w", err)
 	}
 
-	// Rollback in case of error
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// Find all payments that use this payment method
-	var payments []models.Payment
-	if err := tx.Where("payment_method_id = ?", id).Find(&payments).Error; err != nil {
-		tx.Rollback()
-		return err
+	// SAFETY CHECK 1: Cannot delete system default payment methods
+	if paymentMethod.IsSystemDefault {
+		return fmt.Errorf("cannot delete system default payment method '%s'", paymentMethod.Name)
 	}
 
-	// Extract unique sale IDs
-	saleIDs := make(map[uint]bool)
-	for _, payment := range payments {
-		saleIDs[payment.SaleID] = true
+	// SAFETY CHECK 2: Check if there are any payments using this payment method
+	var paymentCount int64
+	if err := s.db.Model(&models.Payment{}).Where("payment_method_id = ?", id).Count(&paymentCount).Error; err != nil {
+		return fmt.Errorf("failed to check payment usage: %w", err)
 	}
 
-	// Delete all sales (this will cascade delete payments due to foreign key)
-	for saleID := range saleIDs {
-		// Delete electronic invoice if exists
-		if err := tx.Where("sale_id = ?", saleID).Delete(&models.ElectronicInvoice{}).Error; err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		// Delete payment allocations first
-		if err := tx.Where("payment_id IN (SELECT id FROM payments WHERE sale_id = ?)", saleID).Delete(&models.PaymentAllocation{}).Error; err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		// Delete payments
-		if err := tx.Where("sale_id = ?", saleID).Delete(&models.Payment{}).Error; err != nil {
-			tx.Rollback()
-			return err
-		}
-
-		// Delete the sale
-		if err := tx.Delete(&models.Sale{}, saleID).Error; err != nil {
-			tx.Rollback()
-			return err
-		}
+	if paymentCount > 0 {
+		return fmt.Errorf("cannot delete payment method '%s': it is used in %d payment(s). Consider marking it as inactive instead",
+			paymentMethod.Name, paymentCount)
 	}
 
-	// Finally, delete the payment method
-	if err := tx.Delete(&models.PaymentMethod{}, id).Error; err != nil {
-		tx.Rollback()
-		return err
+	// Safe to delete - no payments are using this method
+	if err := s.db.Delete(&models.PaymentMethod{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete payment method: %w", err)
 	}
 
-	// Commit the transaction
-	return tx.Commit().Error
+	log.Printf("DeletePaymentMethod: Successfully deleted payment method ID=%d, Name=%s", id, paymentMethod.Name)
+	return nil
+}
+
+// DeactivatePaymentMethod marks a payment method as inactive instead of deleting it
+// This is the recommended approach for payment methods that have been used in sales
+func (s *SalesService) DeactivatePaymentMethod(id uint) error {
+	var paymentMethod models.PaymentMethod
+	if err := s.db.First(&paymentMethod, id).Error; err != nil {
+		return fmt.Errorf("payment method not found: %w", err)
+	}
+
+	if paymentMethod.IsSystemDefault {
+		return fmt.Errorf("cannot deactivate system default payment method '%s'", paymentMethod.Name)
+	}
+
+	paymentMethod.IsActive = false
+	if err := s.db.Save(&paymentMethod).Error; err != nil {
+		return fmt.Errorf("failed to deactivate payment method: %w", err)
+	}
+
+	log.Printf("DeactivatePaymentMethod: Deactivated payment method ID=%d, Name=%s", id, paymentMethod.Name)
+	return nil
 }
 
 // PrintReceipt prints a receipt for an existing sale

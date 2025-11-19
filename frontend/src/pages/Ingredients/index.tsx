@@ -115,7 +115,6 @@ const Ingredients: React.FC = () => {
       setIngredients(data);
       setFilteredIngredients(data);
     } catch (error) {
-      console.error('Error loading ingredients:', error);
       toast.error('Error al cargar ingredientes');
     } finally {
       setLoading(false);
@@ -178,7 +177,6 @@ const Ingredients: React.FC = () => {
       handleCloseIngredientDialog();
       loadIngredients();
     } catch (error) {
-      console.error('Error saving ingredient:', error);
       toast.error('Error al guardar ingrediente');
     } finally {
       setLoading(false);
@@ -196,7 +194,6 @@ const Ingredients: React.FC = () => {
       toast.success('Ingrediente eliminado correctamente');
       loadIngredients();
     } catch (error) {
-      console.error('Error deleting ingredient:', error);
       toast.error('Error al eliminar ingrediente');
     } finally {
       setLoading(false);
@@ -246,7 +243,6 @@ const Ingredients: React.FC = () => {
       handleCloseStockDialog();
       loadIngredients();
     } catch (error) {
-      console.error('Error adjusting stock:', error);
       toast.error('Error al ajustar stock');
     } finally {
       setLoading(false);
@@ -261,7 +257,6 @@ const Ingredients: React.FC = () => {
       setMovements(data);
       setMovementsDialog(true);
     } catch (error) {
-      console.error('Error loading movements:', error);
       toast.error('Error al cargar movimientos');
     } finally {
       setLoading(false);

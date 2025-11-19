@@ -5,22 +5,19 @@ import (
 	"PosApp/app/models"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"gorm.io/gorm"
 )
 
 // ProductService handles product operations
 type ProductService struct {
-	db      *gorm.DB
-	localDB *database.LocalDB
+	db *gorm.DB
 }
 
 // NewProductService creates a new product service
 func NewProductService() *ProductService {
 	return &ProductService{
-		db:      database.GetDB(),
-		localDB: database.GetLocalDB(),
+		db: database.GetDB(),
 	}
 }
 
@@ -28,24 +25,12 @@ func NewProductService() *ProductService {
 func (s *ProductService) GetAllProducts() ([]models.Product, error) {
 	var products []models.Product
 
-	// ALWAYS try main database first (don't use cache to avoid stale stock data)
 	err := s.db.Preload("Category").Preload("Modifiers.ModifierGroup").
 		Where("is_active = ?", true).
 		Order("category_id, name").
 		Find(&products).Error
 
-	if err == nil {
-		// Cache products locally (but prefer fresh data from DB)
-		s.cacheProducts(products)
-		return products, nil
-	}
-
-	// Only fallback to cache if DB is completely unavailable
-	if s.localDB != nil && s.localDB.IsOfflineMode() {
-		return s.getProductsFromCache()
-	}
-
-	return nil, err
+	return products, err
 }
 
 // GetProductsByCategory gets products by category
@@ -125,9 +110,6 @@ func (s *ProductService) UpdateProduct(product *models.Product) error {
 			}
 		}
 
-		// Update local cache
-		s.cacheProducts([]models.Product{*product})
-
 		return nil
 	})
 }
@@ -193,21 +175,11 @@ func (s *ProductService) GetInventoryMovements(productID uint) ([]models.Invento
 func (s *ProductService) GetAllCategories() ([]models.Category, error) {
 	var categories []models.Category
 
-	// Try main database first
-	if !s.localDB.IsOfflineMode() {
-		err := s.db.Where("is_active = ?", true).
-			Order("display_order, name").
-			Find(&categories).Error
+	err := s.db.Where("is_active = ?", true).
+		Order("display_order, name").
+		Find(&categories).Error
 
-		if err == nil {
-			// Cache categories locally
-			s.cacheCategories(categories)
-			return categories, nil
-		}
-	}
-
-	// Fallback to local cache
-	return s.getCategoriesFromCache()
+	return categories, err
 }
 
 // CreateCategory creates a new category
@@ -216,8 +188,6 @@ func (s *ProductService) CreateCategory(category *models.Category) (*models.Cate
 		return nil, err
 	}
 
-	// Update cache
-	s.cacheCategories([]models.Category{*category})
 	return category, nil
 }
 
@@ -227,8 +197,6 @@ func (s *ProductService) UpdateCategory(category *models.Category) (*models.Cate
 		return nil, err
 	}
 
-	// Update cache
-	s.cacheCategories([]models.Category{*category})
 	return category, nil
 }
 
@@ -345,79 +313,6 @@ func (s *ProductService) GetLowStockProducts(threshold int) ([]models.Product, e
 		Find(&products).Error
 
 	return products, err
-}
-
-// Cache methods
-
-func (s *ProductService) cacheProducts(products []models.Product) {
-	if s.localDB == nil {
-		return
-	}
-
-	for _, product := range products {
-		productData, _ := json.Marshal(product)
-		localProduct := database.LocalProduct{
-			ID:          product.ID,
-			ProductData: string(productData),
-			LastSynced:  time.Now(),
-			IsModified:  false,
-		}
-
-		s.localDB.GetDB().Save(&localProduct)
-	}
-}
-
-func (s *ProductService) getProductsFromCache() ([]models.Product, error) {
-	var localProducts []database.LocalProduct
-	if err := s.localDB.GetDB().Find(&localProducts).Error; err != nil {
-		return nil, err
-	}
-
-	var products []models.Product
-	for _, lp := range localProducts {
-		var product models.Product
-		if err := json.Unmarshal([]byte(lp.ProductData), &product); err != nil {
-			continue
-		}
-		products = append(products, product)
-	}
-
-	return products, nil
-}
-
-func (s *ProductService) cacheCategories(categories []models.Category) {
-	if s.localDB == nil {
-		return
-	}
-
-	for _, category := range categories {
-		categoryData, _ := json.Marshal(category)
-		localCategory := database.LocalCategory{
-			ID:           category.ID,
-			CategoryData: string(categoryData),
-			LastSynced:   time.Now(),
-		}
-
-		s.localDB.GetDB().Save(&localCategory)
-	}
-}
-
-func (s *ProductService) getCategoriesFromCache() ([]models.Category, error) {
-	var localCategories []database.LocalCategory
-	if err := s.localDB.GetDB().Find(&localCategories).Error; err != nil {
-		return nil, err
-	}
-
-	var categories []models.Category
-	for _, lc := range localCategories {
-		var category models.Category
-		if err := json.Unmarshal([]byte(lc.CategoryData), &category); err != nil {
-			continue
-		}
-		categories = append(categories, category)
-	}
-
-	return categories, nil
 }
 
 // ImportProducts imports products from CSV or JSON

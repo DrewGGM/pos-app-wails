@@ -16,7 +16,6 @@ export interface DetectedPrinter {
 function getPrinterService(): AnyObject | null {
   const w = (window as AnyObject);
   if (!w.go || !w.go.services || !w.go.services.PrinterService) {
-    console.warn('[wailsPrinterService] Bindings not ready');
     return null;
   }
   return w.go.services.PrinterService;
@@ -31,7 +30,6 @@ export const wailsPrinterService = {
       const printers = await svc.GetAvailablePrinters();
       return printers || [];
     } catch (error) {
-      console.error('Error detecting printers:', error);
       return [];
     }
   },
@@ -43,7 +41,6 @@ export const wailsPrinterService = {
       const ports = await svc.GetAvailableSerialPorts();
       return ports || [];
     } catch (error) {
-      console.error('Error detecting serial ports:', error);
       return [];
     }
   },

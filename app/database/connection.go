@@ -182,7 +182,6 @@ func RunMigrations() error {
 		&models.Order{},
 		&models.OrderItem{},
 		&models.OrderItemModifier{},
-		&models.QueuedOrder{},
 
 		// Sale models
 		&models.PaymentMethod{},
@@ -192,7 +191,6 @@ func RunMigrations() error {
 		&models.ElectronicInvoice{},
 		&models.CreditNote{},
 		&models.DebitNote{},
-		&models.QueuedInvoice{},
 
 		// Employee models
 		&models.Employee{},
@@ -207,7 +205,6 @@ func RunMigrations() error {
 		&models.RestaurantConfig{},
 		&models.DIANConfig{},
 		&models.PrinterConfig{},
-		&models.SyncConfig{},
 		&models.TableLayout{},
 		&models.UITheme{},
 		&models.GoogleSheetsConfig{},

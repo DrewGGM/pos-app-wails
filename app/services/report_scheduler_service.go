@@ -131,7 +131,6 @@ func (s *ReportSchedulerService) run() {
 			if config.SyncMode == "daily" {
 				s.ticker.Stop()
 				newInterval := s.getTimeUntilDailySync(config.SyncTime)
-				log.Printf("Daily sync completed, next sync in %v", newInterval)
 				s.ticker = time.NewTicker(newInterval)
 			}
 

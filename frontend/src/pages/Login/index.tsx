@@ -64,7 +64,6 @@ const Login: React.FC = () => {
           setRestaurantConfig(config);
         }
       } catch (error) {
-        console.error('Error loading restaurant config:', error);
       }
     };
     loadRestaurantConfig();

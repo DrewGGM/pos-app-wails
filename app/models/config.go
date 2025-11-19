@@ -174,22 +174,6 @@ type PrinterConfig struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// SyncConfig represents sync configuration
-type SyncConfig struct {
-	ID              uint       `gorm:"primaryKey" json:"id"`
-	EnableAutoSync  bool       `json:"enable_auto_sync"`
-	SyncInterval    int        `json:"sync_interval"` // Minutes
-	RetryAttempts   int        `json:"retry_attempts"`
-	RetryDelay      int        `json:"retry_delay"` // Seconds
-	LastSyncAt      *time.Time `json:"last_sync_at,omitempty"`
-	LastSyncStatus  string     `json:"last_sync_status"`
-	LastSyncError   string     `json:"last_sync_error"`
-	PendingOrders   int        `json:"pending_orders"`
-	PendingInvoices int        `json:"pending_invoices"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-}
-
 // TableLayout for storing table positions
 type TableLayout struct {
 	ID        uint            `gorm:"primaryKey" json:"id"`

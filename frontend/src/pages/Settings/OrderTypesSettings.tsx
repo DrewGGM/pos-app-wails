@@ -80,7 +80,6 @@ const OrderTypesSettings: React.FC = () => {
       const types = await GetAllOrderTypes();
       setOrderTypes(types || []);
     } catch (error) {
-      console.error('Error loading order types:', error);
       toast.error('Error al cargar tipos de pedido');
     }
   };
@@ -90,7 +89,6 @@ const OrderTypesSettings: React.FC = () => {
       const methods = await GetPaymentMethods();
       setPaymentMethods(methods || []);
     } catch (error) {
-      console.error('Error loading payment methods:', error);
       toast.error('Error al cargar métodos de pago');
     }
   };
@@ -186,7 +184,6 @@ const OrderTypesSettings: React.FC = () => {
       handleCloseDialog();
       loadOrderTypes();
     } catch (error: any) {
-      console.error('Error saving order type:', error);
       toast.error(error.message || 'Error al guardar tipo de pedido');
     }
   };
@@ -201,7 +198,6 @@ const OrderTypesSettings: React.FC = () => {
       toast.success('Tipo de pedido eliminado');
       loadOrderTypes();
     } catch (error: any) {
-      console.error('Error deleting order type:', error);
       toast.error(error.message || 'Error al eliminar tipo de pedido');
     }
   };

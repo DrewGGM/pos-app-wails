@@ -18,6 +18,10 @@ export function DeductIngredientsForOrder(arg1) {
   return window['go']['services']['IngredientService']['DeductIngredientsForOrder'](arg1);
 }
 
+export function DeductIngredientsInTransaction(arg1, arg2) {
+  return window['go']['services']['IngredientService']['DeductIngredientsInTransaction'](arg1, arg2);
+}
+
 export function DeleteIngredient(arg1) {
   return window['go']['services']['IngredientService']['DeleteIngredient'](arg1);
 }

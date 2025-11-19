@@ -4,10 +4,6 @@ export { useAuth } from './useAuth';
 // useWebSocket.ts
 export { useWebSocket } from './useWebSocket';
 
-// useOfflineSync.ts
-export { useOfflineSync } from './useOfflineSync';
-
-
 // Utility functions for handling optional IDs
 export const useIdGenerator = () => {
   const generateTempId = () => {

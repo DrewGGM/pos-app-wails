@@ -266,37 +266,6 @@ func (s *ConfigService) DeletePrinterConfig(id uint) error {
 	return s.db.Delete(&models.PrinterConfig{}, id).Error
 }
 
-// GetSyncConfig gets sync configuration
-func (s *ConfigService) GetSyncConfig() (*models.SyncConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
-	}
-	var config models.SyncConfig
-	err := s.db.First(&config).Error
-	if err == gorm.ErrRecordNotFound {
-		// Return default config
-		config = models.SyncConfig{
-			EnableAutoSync: true,
-			SyncInterval:   5,
-			RetryAttempts:  3,
-			RetryDelay:     30,
-		}
-		s.db.Create(&config)
-	}
-	return &config, err
-}
-
-// UpdateSyncConfig updates sync configuration
-func (s *ConfigService) UpdateSyncConfig(config *models.SyncConfig) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
-	}
-	if config.ID == 0 {
-		return s.db.Create(config).Error
-	}
-	return s.db.Save(config).Error
-}
-
 // GetUITheme gets UI theme configuration
 func (s *ConfigService) GetUITheme() (*models.UITheme, error) {
 	if s.db == nil {
@@ -400,12 +369,6 @@ func (s *ConfigService) GetDatabaseConfig() (map[string]string, error) {
 	config["db_user"], _ = s.GetSystemConfig("db_user")
 	config["db_password"], _ = s.GetSystemConfig("db_password")
 
-	// SQLite local path
-	config["sqlite_path"], _ = s.GetSystemConfig("sqlite_path")
-	if config["sqlite_path"] == "" {
-		config["sqlite_path"] = "./data/local.db"
-	}
-
 	return config, nil
 }
 
@@ -413,18 +376,11 @@ func (s *ConfigService) GetDatabaseConfig() (map[string]string, error) {
 func (s *ConfigService) InitializeDefaultConfig() error {
 	// System configs
 	configs := map[string][]string{
-		"websocket_port":      {"8080", "number", "network"},
-		"sqlite_path":         {"./data/local.db", "string", "database"},
-		"enable_auto_sync":    {"true", "boolean", "sync"},
-		"sync_interval":       {"5", "number", "sync"},
-		"retry_attempts":      {"3", "number", "sync"},
-		"retry_delay":         {"30", "number", "sync"},
-		"default_tax_rate":    {"19", "number", "tax"},
-		"currency":            {"COP", "string", "general"},
-		"currency_symbol":     {"$", "string", "general"},
-		"decimal_places":      {"0", "number", "general"},
-		"enable_offline_mode": {"true", "boolean", "general"},
-		"max_offline_days":    {"7", "number", "general"},
+		"websocket_port":   {"8080", "number", "network"},
+		"default_tax_rate": {"19", "number", "tax"},
+		"currency":         {"COP", "string", "general"},
+		"currency_symbol":  {"$", "string", "general"},
+		"decimal_places":   {"0", "number", "general"},
 	}
 
 	for key, values := range configs {

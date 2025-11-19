@@ -76,7 +76,6 @@ const PaymentMethodsSettings: React.FC = () => {
       const methods = await GetAllPaymentMethods();
       setPaymentMethods((methods || []) as unknown as PaymentMethod[]);
     } catch (error) {
-      console.error('Error loading payment methods:', error);
       toast.error('Error al cargar métodos de pago');
     }
   };
@@ -88,7 +87,6 @@ const PaymentMethodsSettings: React.FC = () => {
       const methods = await GetPaymentMethods();
       setDIANPaymentMethods(methods || []);
     } catch (error) {
-      console.error('Error loading DIAN payment methods:', error);
     }
   };
 
@@ -152,7 +150,6 @@ const PaymentMethodsSettings: React.FC = () => {
       handleCloseDialog();
       loadPaymentMethods();
     } catch (error: any) {
-      console.error('Error saving payment method:', error);
       toast.error(error.message || 'Error al guardar método de pago');
     }
   };
@@ -181,7 +178,6 @@ const PaymentMethodsSettings: React.FC = () => {
       toast.success('Método de pago eliminado correctamente');
       loadPaymentMethods();
     } catch (error: any) {
-      console.error('Error deleting payment method:', error);
       toast.error(error.message || 'Error al eliminar método de pago');
     }
   };

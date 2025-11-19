@@ -15,7 +15,6 @@ import (
 // OrderService handles order operations
 type OrderService struct {
 	db            *gorm.DB
-	localDB       *database.LocalDB
 	productSvc    *ProductService
 	printerSvc    *PrinterService
 	ingredientSvc *IngredientService
@@ -27,7 +26,6 @@ type OrderService struct {
 func NewOrderService() *OrderService {
 	return &OrderService{
 		db:            database.GetDB(),
-		localDB:       database.GetLocalDB(),
 		productSvc:    NewProductService(),
 		printerSvc:    NewPrinterService(),
 		ingredientSvc: NewIngredientService(),
@@ -38,53 +36,45 @@ func NewOrderService() *OrderService {
 
 // SetWebSocketServer sets the WebSocket server instance
 func (s *OrderService) SetWebSocketServer(server *websocket.Server) {
-	log.Printf("OrderService: Setting WebSocket server (server=%v)", server != nil)
 	s.wsServer = server
 }
 
 // CreateOrder creates a new order
 func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	// LOG: Input data
-	log.Printf("\n🔵 ========== CREATE ORDER ==========")
-	log.Printf("Type (deprecated): %s", order.Type)
 	if order.OrderTypeID != nil {
-		log.Printf("OrderTypeID: %d", *order.OrderTypeID)
 	} else {
-		log.Printf("OrderTypeID: nil")
 	}
-	log.Printf("🚚 Delivery Info:")
-	log.Printf("  - Customer Name: '%s'", order.DeliveryCustomerName)
-	log.Printf("  - Address: '%s'", order.DeliveryAddress)
-	log.Printf("  - Phone: '%s'", order.DeliveryPhone)
-	log.Printf("=====================================\n")
 
 	// Generate order number
 	order.OrderNumber = s.generateOrderNumber()
 	order.Status = models.OrderStatusPending
 	order.IsSynced = false
 
-	// Assign sequence number if the order type requires it
+	// Validate order type requirements
 	if order.OrderTypeID != nil && *order.OrderTypeID > 0 {
 		orderType, err := s.orderTypeSvc.GetOrderType(*order.OrderTypeID)
-		if err == nil && orderType.RequiresSequentialNumber {
-			nextNumber, err := s.orderTypeSvc.GetNextSequenceNumber(*order.OrderTypeID)
-			if err != nil {
-				log.Printf("Error getting next sequence number for order type %d: %v", *order.OrderTypeID, err)
-			} else {
-				order.SequenceNumber = &nextNumber
-				log.Printf("✅ Assigned sequence number %d to order type '%s'", nextNumber, orderType.Name)
+		if err != nil {
+			return nil, fmt.Errorf("invalid order type: %w", err)
+		}
+
+		// Check if this order type requires a table (e.g., dine-in)
+		// Dine-in orders (code "dine_in" or similar) should have a table assigned
+		if orderType.Code == "dine_in" || orderType.Code == "mesa" {
+			if order.TableID == nil || *order.TableID == 0 {
+				return nil, fmt.Errorf("order type '%s' requires a table assignment", orderType.Name)
 			}
 		}
-	}
 
-	// DEPRECATED: Legacy support for old takeout number system
-	// This can be removed after migration is complete
-	if order.Type == "takeout" && order.SequenceNumber == nil {
-		nextNumber, err := s.getNextAvailableTakeoutNumber()
-		if err != nil {
-			log.Printf("Error getting next takeout number: %v", err)
-		} else {
-			order.TakeoutNumber = &nextNumber
+		// Check if table is available
+		if order.TableID != nil && *order.TableID > 0 {
+			var table models.Table
+			if err := s.db.First(&table, *order.TableID).Error; err != nil {
+				return nil, fmt.Errorf("table not found: %w", err)
+			}
+			if !table.IsActive {
+				return nil, fmt.Errorf("table '%s' is not active", table.Number)
+			}
 		}
 	}
 
@@ -93,24 +83,28 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		return nil, err
 	}
 
-	// Check if online or offline
-	if s.localDB.IsOfflineMode() {
-		// Save locally
-		if err := s.localDB.SaveOrder(order); err != nil {
-			return nil, err
-		}
-		return order, nil
-	}
-
 	// Save to main database
+	var ingredientWarnings []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Assign sequence number if the order type requires it (inside transaction with lock)
+		if order.OrderTypeID != nil && *order.OrderTypeID > 0 {
+			orderType, err := s.orderTypeSvc.GetOrderType(*order.OrderTypeID)
+			if err == nil && orderType.RequiresSequentialNumber {
+				nextNumber, err := s.orderTypeSvc.getNextSequenceNumberWithLock(tx, *order.OrderTypeID)
+				if err != nil {
+					log.Printf("Error getting next sequence number for order type %d: %v", *order.OrderTypeID, err)
+				} else {
+					order.SequenceNumber = &nextNumber
+				}
+			}
+		}
+
 		// Create order
 		if err := tx.Create(order).Error; err != nil {
 			return err
 		}
 
 		// LOG: Verify order was saved with order_type_id
-		log.Printf("✅ Order created with ID: %d, OrderTypeID: %v", order.ID, order.OrderTypeID)
 
 		// Update table status to occupied if this is a dine-in order
 		if order.TableID != nil && *order.TableID > 0 {
@@ -129,6 +123,9 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			}
 		}
 
+		// Deduct ingredients (now inside transaction for atomicity)
+		ingredientWarnings = s.ingredientSvc.DeductIngredientsInTransaction(tx, order.Items)
+
 		return nil
 	})
 
@@ -136,10 +133,8 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		return nil, err
 	}
 
-	// Deduct ingredients (happens outside transaction, warnings only)
-	ingredientWarnings := s.ingredientSvc.DeductIngredientsForOrder(order.Items)
+	// Log ingredient warnings after successful transaction
 	if len(ingredientWarnings) > 0 {
-		log.Printf("⚠️ Ingredient warnings for order %s:", order.OrderNumber)
 		for _, warning := range ingredientWarnings {
 			log.Println(warning)
 		}
@@ -161,7 +156,6 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 
 // UpdateOrder updates an existing order
 func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
-	log.Printf("UpdateOrder: Received order ID=%d with %d items", order.ID, len(order.Items))
 	for i, item := range order.Items {
 		log.Printf("  Item %d: ProductID=%d, Quantity=%d, UnitPrice=%.2f, Modifiers=%d",
 			i, item.ProductID, item.Quantity, item.UnitPrice, len(item.Modifiers))
@@ -172,32 +166,51 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 		return nil, err
 	}
 
-	if s.localDB.IsOfflineMode() {
-		if err := s.localDB.SaveOrder(order); err != nil {
-			return nil, err
-		}
-		return order, nil
-	}
-
 	// Get existing order to preserve order_number and other fields
+	// Load with Items to restore inventory
 	var existingOrder models.Order
-	if err := s.db.Preload("Items").First(&existingOrder, order.ID).Error; err != nil {
+	if err := s.db.Preload("Items").Preload("Table").First(&existingOrder, order.ID).Error; err != nil {
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
-
-	log.Printf("UpdateOrder: Existing order has %d items", len(existingOrder.Items))
 
 	// Preserve critical fields
 	order.OrderNumber = existingOrder.OrderNumber
 	order.CreatedAt = existingOrder.CreatedAt
+
 	// Preserve status if incoming status is empty (frontend doesn't send status on update)
 	if order.Status == "" {
 		order.Status = existingOrder.Status
-		log.Printf("UpdateOrder: Preserving existing status: %s", existingOrder.Status)
+	} else if order.Status != existingOrder.Status {
+		// Validate status transition if status is changing
+		if !s.isValidStatusTransition(existingOrder.Status, order.Status) {
+			return nil, fmt.Errorf("invalid status transition from '%s' to '%s'", existingOrder.Status, order.Status)
+		}
 	}
 
 	// Use transaction to update order and items
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// CRITICAL FIX: Restore inventory for existing items BEFORE deleting them
+		// This prevents inventory leaks when items are removed or modified
+		if len(existingOrder.Items) > 0 {
+			log.Printf("UpdateOrder: Restoring inventory for %d existing items", len(existingOrder.Items))
+
+			// Restore product inventory
+			for _, item := range existingOrder.Items {
+				// Restore product stock (positive quantity = restore)
+				if err := s.updateInventory(tx, item.ProductID, item.Quantity,
+					fmt.Sprintf("Update - Order %s (item removed/modified)", order.OrderNumber), 0); err != nil {
+					log.Printf("Warning: Failed to restore product inventory for item %d: %v", item.ID, err)
+					// Continue despite error - don't fail the whole update
+				}
+			}
+
+			// Restore ingredient stocks
+			if err := s.ingredientSvc.RestoreIngredientsInTransaction(tx, existingOrder.Items); err != nil {
+				log.Printf("Warning: Failed to restore ingredients: %v", err)
+				// Continue despite error
+			}
+		}
+
 		// First, get all existing order item IDs
 		var existingItemIDs []uint
 		if err := tx.Model(&models.OrderItem{}).Where("order_id = ?", order.ID).Pluck("id", &existingItemIDs).Error; err != nil {
@@ -216,10 +229,34 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 			return fmt.Errorf("failed to delete existing items: %w", err)
 		}
 
-		// Set order_id for all new items
-		for i := range order.Items {
-			order.Items[i].OrderID = order.ID
-			order.Items[i].ID = 0 // Ensure new items are created
+		// CRITICAL FIX: Handle table status changes
+		// If table changed, free the old table and occupy the new one
+		oldTableID := existingOrder.TableID
+		newTableID := order.TableID
+
+		if oldTableID != nil && newTableID != nil && *oldTableID != *newTableID {
+			// Table changed - free the old table
+			log.Printf("UpdateOrder: Table changed from %d to %d, freeing old table", *oldTableID, *newTableID)
+			if err := tx.Model(&models.Table{}).Where("id = ?", *oldTableID).Update("status", "available").Error; err != nil {
+				log.Printf("Warning: Failed to free old table %d: %v", *oldTableID, err)
+			}
+
+			// Occupy the new table
+			if err := tx.Model(&models.Table{}).Where("id = ?", *newTableID).Update("status", "occupied").Error; err != nil {
+				return fmt.Errorf("failed to occupy new table: %w", err)
+			}
+		} else if oldTableID != nil && newTableID == nil {
+			// Table removed - free the old table
+			log.Printf("UpdateOrder: Table removed (was %d), freeing table", *oldTableID)
+			if err := tx.Model(&models.Table{}).Where("id = ?", *oldTableID).Update("status", "available").Error; err != nil {
+				log.Printf("Warning: Failed to free table %d: %v", *oldTableID, err)
+			}
+		} else if oldTableID == nil && newTableID != nil {
+			// Table added - occupy the new table
+			log.Printf("UpdateOrder: Table added (%d), occupying table", *newTableID)
+			if err := tx.Model(&models.Table{}).Where("id = ?", *newTableID).Update("status", "occupied").Error; err != nil {
+				return fmt.Errorf("failed to occupy table: %w", err)
+			}
 		}
 
 		// Update order (without items first)
@@ -240,12 +277,29 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 			return fmt.Errorf("failed to update order: %w", err)
 		}
 
+		// Set order_id for all new items
+		for i := range order.Items {
+			order.Items[i].OrderID = order.ID
+			order.Items[i].ID = 0 // Ensure new items are created
+		}
+
 		// Create new items
 		for i := range order.Items {
 			if err := tx.Create(&order.Items[i]).Error; err != nil {
 				return fmt.Errorf("failed to create item: %w", err)
 			}
 		}
+
+		// Deduct inventory for new items
+		for _, item := range order.Items {
+			if err := s.updateInventory(tx, item.ProductID, -item.Quantity,
+				fmt.Sprintf("Update - Order %s (new item)", order.OrderNumber), 0); err != nil {
+				return fmt.Errorf("failed to deduct inventory for new item: %w", err)
+			}
+		}
+
+		// Deduct ingredients for new items
+		s.ingredientSvc.DeductIngredientsInTransaction(tx, order.Items)
 
 		return nil
 	})
@@ -268,7 +322,6 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 		go s.sendToKitchen(updatedOrder)
 	}
 
-	log.Printf("✅ UpdateOrder completed successfully for order ID=%d with %d items", updatedOrder.ID, len(updatedOrder.Items))
 	return updatedOrder, nil
 }
 
@@ -316,11 +369,6 @@ func (s *OrderService) GetOrderByNumber(orderNumber string) (*models.Order, erro
 // GetPendingOrders gets all pending orders
 func (s *OrderService) GetPendingOrders() ([]models.Order, error) {
 	var orders []models.Order
-
-	// Check if offline
-	if s.localDB.IsOfflineMode() {
-		return s.getLocalPendingOrders()
-	}
 
 	err := s.db.Preload("Items.Product").
 		Preload("Items.Modifiers.Modifier").
@@ -382,6 +430,11 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 		return err
 	}
 
+	// Validate status transition
+	if !s.isValidStatusTransition(order.Status, status) {
+		return fmt.Errorf("invalid status transition from '%s' to '%s'", order.Status, status)
+	}
+
 	order.Status = status
 
 	// If order is ready, notify
@@ -391,6 +444,54 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 	}
 
 	return s.db.Save(order).Error
+}
+
+// isValidStatusTransition checks if a status transition is valid
+func (s *OrderService) isValidStatusTransition(from, to models.OrderStatus) bool {
+	// Allow same status (no-op)
+	if from == to {
+		return true
+	}
+
+	// Define valid transitions
+	validTransitions := map[models.OrderStatus][]models.OrderStatus{
+		models.OrderStatusPending: {
+			models.OrderStatusPreparing,
+			models.OrderStatusReady,
+			models.OrderStatusCancelled,
+			models.OrderStatusPaid,
+		},
+		models.OrderStatusPreparing: {
+			models.OrderStatusReady,
+			models.OrderStatusCancelled,
+			models.OrderStatusPaid,
+		},
+		models.OrderStatusReady: {
+			models.OrderStatusDelivered,
+			models.OrderStatusPaid,
+			models.OrderStatusCancelled,
+		},
+		models.OrderStatusDelivered: {
+			models.OrderStatusPaid,
+			models.OrderStatusCancelled,
+		},
+		// Terminal states - no transitions allowed
+		models.OrderStatusPaid:      {},
+		models.OrderStatusCancelled: {},
+	}
+
+	allowedNextStates, exists := validTransitions[from]
+	if !exists {
+		return false
+	}
+
+	for _, allowed := range allowedNextStates {
+		if allowed == to {
+			return true
+		}
+	}
+
+	return false
 }
 
 // AddItemToOrder adds an item to an order
@@ -511,28 +612,22 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 func (s *OrderService) GetTables() ([]models.Table, error) {
 	var tables []models.Table
 
-	// Try main database first
-	if !s.localDB.IsOfflineMode() {
-		err := s.db.Where("is_active = ?", true).
-			Order("zone, number").
-			Find(&tables).Error
+	err := s.db.Where("is_active = ?", true).
+		Order("zone, number").
+		Find(&tables).Error
 
-		if err == nil {
-			// Get current orders for each table
-			for i := range tables {
-				s.db.Where("table_id = ? AND status NOT IN ?", tables[i].ID,
-					[]models.OrderStatus{models.OrderStatusPaid, models.OrderStatusCancelled}).
-					First(&tables[i].CurrentOrder)
-			}
-
-			// Cache tables
-			s.cacheTables(tables)
-			return tables, nil
-		}
+	if err != nil {
+		return nil, err
 	}
 
-	// Fallback to local cache
-	return s.getTablesFromCache()
+	// Get current orders for each table
+	for i := range tables {
+		s.db.Where("table_id = ? AND status NOT IN ?", tables[i].ID,
+			[]models.OrderStatus{models.OrderStatusPaid, models.OrderStatusCancelled}).
+			First(&tables[i].CurrentOrder)
+	}
+
+	return tables, nil
 }
 
 // GetTable gets a specific table
@@ -589,52 +684,6 @@ func (s *OrderService) generateOrderNumber() string {
 	// Generate order number based on timestamp and random suffix
 	timestamp := time.Now().Format("20060102150405")
 	return fmt.Sprintf("ORD-%s", timestamp)
-}
-
-// getNextAvailableTakeoutNumber finds the next available takeout number
-// It reuses freed numbers (when orders are completed) instead of continuing sequence
-func (s *OrderService) getNextAvailableTakeoutNumber() (int, error) {
-	// Get all active takeout orders (not paid or cancelled)
-	var activeOrders []models.Order
-	err := s.db.Select("takeout_number").
-		Where("type = ? AND status IN ? AND takeout_number IS NOT NULL",
-			"takeout",
-			[]models.OrderStatus{models.OrderStatusPending, models.OrderStatusPreparing, models.OrderStatusReady}).
-		Order("takeout_number ASC").
-		Find(&activeOrders).Error
-
-	if err != nil {
-		return 0, err
-	}
-
-	// If no active orders, start from 1
-	if len(activeOrders) == 0 {
-		return 1, nil
-	}
-
-	// Build map of used numbers
-	usedNumbers := make(map[int]bool)
-	maxNumber := 0
-
-	for _, order := range activeOrders {
-		if order.TakeoutNumber != nil {
-			num := *order.TakeoutNumber
-			usedNumbers[num] = true
-			if num > maxNumber {
-				maxNumber = num
-			}
-		}
-	}
-
-	// Find first available number starting from 1
-	for i := 1; i <= maxNumber; i++ {
-		if !usedNumbers[i] {
-			return i, nil
-		}
-	}
-
-	// If all numbers 1 to maxNumber are used, return maxNumber + 1
-	return maxNumber + 1, nil
 }
 
 func (s *OrderService) calculateOrderTotals(order *models.Order) error {
@@ -884,62 +933,6 @@ func (s *OrderService) SendToKitchen(orderID uint) error {
 	return nil
 }
 
-// Local cache methods
-
-func (s *OrderService) getLocalPendingOrders() ([]models.Order, error) {
-	var localOrders []database.LocalOrder
-	if err := s.localDB.GetDB().Where("status IN ?", []string{"pending", "preparing", "ready"}).
-		Find(&localOrders).Error; err != nil {
-		return nil, err
-	}
-
-	var orders []models.Order
-	for _, lo := range localOrders {
-		var order models.Order
-		if err := json.Unmarshal([]byte(lo.OrderData), &order); err != nil {
-			continue
-		}
-		orders = append(orders, order)
-	}
-
-	return orders, nil
-}
-
-func (s *OrderService) cacheTables(tables []models.Table) {
-	if s.localDB == nil {
-		return
-	}
-
-	for _, table := range tables {
-		tableData, _ := json.Marshal(table)
-		localTable := database.LocalTable{
-			ID:         table.ID,
-			TableData:  string(tableData),
-			LastSynced: time.Now(),
-		}
-
-		s.localDB.GetDB().Save(&localTable)
-	}
-}
-
-func (s *OrderService) getTablesFromCache() ([]models.Table, error) {
-	var localTables []database.LocalTable
-	if err := s.localDB.GetDB().Find(&localTables).Error; err != nil {
-		return nil, err
-	}
-
-	var tables []models.Table
-	for _, lt := range localTables {
-		var table models.Table
-		if err := json.Unmarshal([]byte(lt.TableData), &table); err != nil {
-			continue
-		}
-		tables = append(tables, table)
-	}
-
-	return tables, nil
-}
-
 // GetTodayOrders gets all orders from today (excluding paid orders which are now sales)
 func (s *OrderService) GetTodayOrders() ([]models.Order, error) {
 	var orders []models.Order
@@ -998,8 +991,6 @@ func (s *OrderService) DeleteTableArea(id uint) error {
 
 // DeleteOrder permanently deletes an order and updates table status
 func (s *OrderService) DeleteOrder(orderID uint) error {
-	log.Printf("⚠️ DeleteOrder called for order ID=%d", orderID)
-	log.Printf("⚠️ THIS SHOULD NOT BE CALLED DURING UPDATE!")
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Get order to check table ID
@@ -1041,7 +1032,6 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 			}
 		}
 
-		log.Printf("Order %d deleted successfully", orderID)
 		return nil
 	})
 

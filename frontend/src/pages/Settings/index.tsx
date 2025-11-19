@@ -236,12 +236,6 @@ const Settings: React.FC = () => {
   });
 
   // Sync Settings
-  const [syncSettings, setSyncSettings] = useState({
-    enableAutoSync: true,
-    syncInterval: 5,
-    retryAttempts: 3,
-    retryDelay: 30,
-  });
 
   // Printer Settings
   const [printerConfigs, setPrinterConfigs] = useState<any[]>([]);
@@ -285,7 +279,6 @@ const Settings: React.FC = () => {
     loadDianConfig();
     loadPrinterConfigs();
     loadPrintSettings();
-    loadSyncConfig();
     loadWebSocketStatus();
   }, []);
 
@@ -336,7 +329,6 @@ const Settings: React.FC = () => {
         });
       }
     } catch (e) {
-      console.error('Error loading business config:', e);
     }
   };
 
@@ -345,7 +337,6 @@ const Settings: React.FC = () => {
       const deps = await GetDepartments();
       setDepartments(deps);
     } catch (e) {
-      console.error('Error loading departments:', e);
     }
   };
 
@@ -354,7 +345,6 @@ const Settings: React.FC = () => {
       const muns = await GetMunicipalitiesByDepartment(departmentId);
       setMunicipalities(muns);
     } catch (e) {
-      console.error('Error loading municipalities:', e);
     }
   };
 
@@ -371,7 +361,6 @@ const Settings: React.FC = () => {
       setDocumentTypes(docs);
       setOrganizationTypes(orgs);
     } catch (e) {
-      console.error('Error loading parametric data:', e);
     }
   };
 
@@ -444,25 +433,9 @@ const Settings: React.FC = () => {
         });
       }
     } catch (e) {
-      console.error('Error loading DIAN config:', e);
     }
   };
 
-  const loadSyncConfig = async () => {
-    try {
-      const config = await wailsConfigService.getSyncConfig();
-      if (config) {
-        setSyncSettings({
-          enableAutoSync: config.enable_auto_sync ?? true,
-          syncInterval: config.sync_interval || 5,
-          retryAttempts: config.retry_attempts || 3,
-          retryDelay: config.retry_delay || 30,
-        });
-      }
-    } catch (e) {
-      console.error('Error loading sync config:', e);
-    }
-  };
 
   const loadPrintSettings = async () => {
     try {
@@ -475,7 +448,6 @@ const Settings: React.FC = () => {
       }
     } catch (e) {
       // If config doesn't exist, it will use the default value (true)
-      console.log('Print auto-print config not found, using default');
     }
   };
 
@@ -484,7 +456,6 @@ const Settings: React.FC = () => {
       await wailsConfigService.setSystemConfig('printer_auto_print', String(value), 'boolean', 'printer');
       toast.success('Configuración de impresión guardada');
     } catch (e) {
-      console.error('Error saving print auto-print config:', e);
       toast.error('Error al guardar configuración de impresión');
     }
   };
@@ -499,7 +470,6 @@ const Settings: React.FC = () => {
         setWsClients(clients);
       }
     } catch (e) {
-      console.error('Error loading WebSocket status:', e);
       setWsStatus({ running: false, error: 'Failed to load status' });
     }
   };
@@ -548,7 +518,6 @@ const Settings: React.FC = () => {
       setBusinessSettings({ ...businessSettings, logo: base64 });
       toast.success('Logo cargado correctamente');
     } catch (err) {
-      console.error('Error processing image:', err);
       toast.error('Error al procesar la imagen');
     }
   };
@@ -607,7 +576,6 @@ const Settings: React.FC = () => {
       setEditMode(false);
     } catch (e: any) {
       toast.error(e?.message || 'Error al guardar configuración');
-      console.error('Error saving business settings:', e);
     }
   };
 
@@ -691,7 +659,6 @@ const Settings: React.FC = () => {
       } else {
         toast.error(`Error al imprimir: ${errorMsg}`);
       }
-      console.error('Error testing printer:', e);
     }
   };
 
@@ -700,7 +667,6 @@ const Settings: React.FC = () => {
       const printers = await wailsConfigService.getPrinterConfigs();
       setPrinterConfigs(printers || []);
     } catch (e) {
-      console.error('Error loading printers:', e);
     }
   };
 
@@ -728,7 +694,6 @@ const Settings: React.FC = () => {
       }
     } catch (e: any) {
       toast.error(e?.message || 'Error detectando impresoras');
-      console.error('Error detecting printers:', e);
     } finally {
       setDetectingPrinters(false);
     }
@@ -865,7 +830,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e: any) {
       toast.error(e?.message || 'Error configurando empresa. Verifica que hayas completado la configuración de empresa y DIAN.');
-      console.error('Error configuring company:', e);
     }
   };
 
@@ -903,7 +867,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e: any) {
       toast.error(e?.message || 'Error configurando software');
-      console.error('Error configuring software:', e);
     }
   };
 
@@ -938,7 +901,6 @@ const Settings: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (error) {
       toast.error('Error al cargar el certificado');
-      console.error('Error loading certificate:', error);
     }
   };
 
@@ -976,7 +938,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e: any) {
       toast.error(e?.message || 'Error configurando certificado');
-      console.error('Error configuring certificate:', e);
     }
   };
 
@@ -1021,7 +982,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e:any) {
       toast.error(e?.message || 'Error configurando resolución');
-      console.error('Error configuring resolution:', e);
     }
   };
 
@@ -1061,7 +1021,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e:any) {
       toast.error(e?.message || 'Error configurando resolución de NC');
-      console.error('Error configuring credit note resolution:', e);
     }
   };
 
@@ -1101,7 +1060,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e:any) {
       toast.error(e?.message || 'Error configurando resolución de ND');
-      console.error('Error configuring debit note resolution:', e);
     }
   };
 
@@ -1133,7 +1091,6 @@ const Settings: React.FC = () => {
       await loadDianConfig();
     } catch (e: any) {
       toast.error(e?.message || 'Error migrando a producción');
-      console.error('Error migrating to production:', e);
     }
   };
 
@@ -1154,7 +1111,6 @@ const Settings: React.FC = () => {
         setCurrentVersion(version);
       }
     } catch (error) {
-      console.error('Error loading current version:', error);
     }
   };
 
@@ -1172,7 +1128,6 @@ const Settings: React.FC = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error checking for updates:', error);
       toast.error(error?.message || 'Error al verificar actualizaciones');
     } finally {
       setCheckingUpdate(false);
@@ -1194,7 +1149,6 @@ const Settings: React.FC = () => {
       toast.success('Actualización instalada correctamente. Por favor, reinicia la aplicación.');
       setUpdateProgress('Actualización completada. Reinicia la aplicación.');
     } catch (error: any) {
-      console.error('Error downloading/installing update:', error);
       toast.error(error?.message || 'Error al instalar la actualización');
       setUpdateProgress('');
     } finally {
@@ -1232,7 +1186,6 @@ const Settings: React.FC = () => {
           <Tab icon={<CategoryIcon />} label="Tipos de Pedido" />
           <Tab icon={<ViewModuleIcon />} label="Páginas POS" />
           <Tab icon={<PrintIcon />} label="Impresión" />
-          <Tab icon={<SyncIcon />} label="Sincronización" />
           <Tab icon={<CloudSyncIcon />} label="Google Sheets" />
           <Tab icon={<NotificationsIcon />} label="Notificaciones" />
           <Tab icon={<SecurityIcon />} label="Sistema" />
@@ -2644,147 +2597,11 @@ const Settings: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={selectedTab} index={6}>
-          {/* Sync Settings */}
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Configuración de sincronización offline y cola de reintentos
-          </Alert>
-
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Sincronización Automática
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={syncSettings.enableAutoSync}
-                            onChange={(e) => setSyncSettings({
-                              ...syncSettings,
-                              enableAutoSync: e.target.checked,
-                            })}
-                          />
-                        }
-                        label="Habilitar sincronización automática"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Intervalo de sincronización (minutos)"
-                        type="number"
-                        value={syncSettings.syncInterval}
-                        onChange={(e) => setSyncSettings({
-                          ...syncSettings,
-                          syncInterval: Number(e.target.value),
-                        })}
-                        disabled={!syncSettings.enableAutoSync}
-                        helperText="Tiempo entre intentos de sincronización"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Intentos de reenvío"
-                        type="number"
-                        value={syncSettings.retryAttempts}
-                        onChange={(e) => setSyncSettings({
-                          ...syncSettings,
-                          retryAttempts: Number(e.target.value),
-                        })}
-                        helperText="Número de reintentos antes de marcar como fallido"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        label="Demora entre reintentos (segundos)"
-                        type="number"
-                        value={syncSettings.retryDelay}
-                        onChange={(e) => setSyncSettings({
-                          ...syncSettings,
-                          retryDelay: Number(e.target.value),
-                        })}
-                        helperText="Tiempo de espera entre cada reintento"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={async () => {
-                          try {
-                            await wailsConfigService.updateSyncConfig(syncSettings as any);
-                            toast.success('Configuración de sincronización guardada');
-                          } catch (e: any) {
-                            toast.error(e?.message || 'Error guardando configuración');
-                          }
-                        }}
-                      >
-                        Guardar Configuración
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Estado de Sincronización
-                  </Typography>
-                  <List>
-                    <ListItem>
-                      <ListItemText
-                        primary="Última sincronización"
-                        secondary="Hace 5 minutos"
-                      />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemText
-                        primary="Órdenes pendientes"
-                        secondary="0"
-                      />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemText
-                        primary="Facturas pendientes"
-                        secondary="0"
-                      />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemText
-                        primary="Estado"
-                        secondary="Sincronizado"
-                      />
-                    </ListItem>
-                  </List>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    startIcon={<SyncIcon />}
-                    onClick={() => toast.info('Sincronizando...')}
-                    sx={{ mt: 2 }}
-                  >
-                    Sincronizar Ahora
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
-
-        <TabPanel value={selectedTab} index={7}>
           {/* Google Sheets Settings */}
           <GoogleSheetsSettings />
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={8}>
+        <TabPanel value={selectedTab} index={7}>
           {/* Notification Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2914,7 +2731,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={9}>
+        <TabPanel value={selectedTab} index={8}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -3080,7 +2897,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={10}>
+        <TabPanel value={selectedTab} index={9}>
           {/* WebSocket Management */}
           <Grid container spacing={3}>
             {/* Server Status */}
