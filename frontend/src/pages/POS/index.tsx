@@ -52,6 +52,7 @@ import {
   Fastfood as FastfoodIcon,
   Save as SaveIcon,
   DeliveryDining as DeliveryIcon,
+  SplitscreenOutlined as SplitIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 
@@ -75,6 +76,7 @@ import TableSelector from '../../components/pos/TableSelector';
 import QuickPad from '../../components/pos/QuickPad';
 import OrderList from '../../components/pos/OrderList';
 import DeliveryInfoDialog, { DeliveryInfo } from '../../components/pos/DeliveryInfoDialog';
+import SplitBillDialog, { BillSplit } from '../../components/pos/SplitBillDialog';
 
 const POS: React.FC = () => {
   // Context hooks
@@ -117,6 +119,9 @@ const POS: React.FC = () => {
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [orderTypeDialogOpen, setOrderTypeDialogOpen] = useState(false);
   const [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false);
+  const [splitBillDialogOpen, setSplitBillDialogOpen] = useState(false);
+  const [billSplits, setBillSplits] = useState<BillSplit[]>([]);
+  const [activeSplitIndex, setActiveSplitIndex] = useState(0);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
   const [selectedProductForPrice, setSelectedProductForPrice] = useState<Product | null>(null);
   const [selectedItemForModifierEdit, setSelectedItemForModifierEdit] = useState<OrderItem | null>(null);
@@ -264,7 +269,9 @@ const POS: React.FC = () => {
   // Set default order type when orderTypes are loaded (only for brand new orders)
   useEffect(() => {
     if (orderTypes.length > 0 && !selectedOrderType && !currentOrder && orderItems.length === 0) {
-      setSelectedOrderType(orderTypes[0]);
+      // Try to find "takeout" (Para Llevar) as default, otherwise use first available
+      const takeoutType = orderTypes.find(ot => ot.code === 'takeout');
+      setSelectedOrderType(takeoutType || orderTypes[0]);
     }
   }, [orderTypes, selectedOrderType, currentOrder, orderItems]);
 
@@ -702,7 +709,7 @@ const POS: React.FC = () => {
   }, [selectedTable, selectedCustomer, orderItems, user, sendMessage, currentOrder, selectedOrderType, deliveryInfo]);
 
   // Process payment
-  const processPayment = useCallback(async (paymentData: any) => {
+  const processPayment = useCallback(async (paymentData: any, splitItems?: { itemId: number; quantity: number }[]) => {
     if (!cashRegisterId) {
       toast.error('No hay caja abierta');
       return;
@@ -718,20 +725,39 @@ const POS: React.FC = () => {
     try {
       let orderToProcess: Order;
 
+      // Determine which items to process
+      let itemsToProcess = orderItems;
+      if (splitItems && splitItems.length > 0) {
+        // Create items for this split only
+        itemsToProcess = splitItems.map(splitItem => {
+          const originalItem = orderItems.find(item => item.id === splitItem.itemId);
+          if (!originalItem) throw new Error('Item not found');
+
+          const unitPrice = (originalItem.subtotal || 0) / originalItem.quantity;
+          return {
+            ...originalItem,
+            quantity: splitItem.quantity,
+            subtotal: unitPrice * splitItem.quantity,
+            // Don't include the ID so it creates a new item
+            id: undefined,
+          };
+        });
+      }
+
       // Check if we're continuing an existing order or creating a new one
-      if (currentOrder && currentOrder.id) {
-        // Use existing order
+      if (currentOrder && currentOrder.id && !splitItems) {
+        // Use existing order (only if NOT processing a split)
         orderToProcess = currentOrder;
       } else {
-        // Create new order
+        // Create new order (always for splits, or if no current order)
         const orderData: CreateOrderData = {
           type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
           order_type_id: selectedOrderType?.id as unknown as number,
           table_id: selectedTable?.id,
           customer_id: selectedCustomer?.id,
           employee_id: user?.id,
-          items: orderItems,
-          notes: '',
+          items: itemsToProcess,
+          notes: splitItems ? 'Cuenta dividida' : '',
           source: 'pos',
           // Include delivery info if exists (check for actual data, not just order type)
           ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
@@ -769,9 +795,12 @@ const POS: React.FC = () => {
 
       toast.success('Venta procesada exitosamente');
 
-      // Clear order (skip delete since it was already paid)
-      clearOrder(true);
-      setPaymentDialogOpen(false);
+      // Only clear order and close dialog if NOT processing a split
+      // When processing splits, the parent handler will manage these
+      if (!splitItems) {
+        clearOrder(true);
+        setPaymentDialogOpen(false);
+      }
 
       // Note: Receipt printing is now controlled by the printReceipt checkbox
       // The checkbox has priority over system configuration
@@ -1057,22 +1086,33 @@ const POS: React.FC = () => {
             </IconButton>
           )}
           {orderItems.length > 0 && (
-            <IconButton
-              onClick={() => {
-                if (window.confirm('¿Vaciar el carrito? Esto eliminará todos los productos.')) {
-                  setOrderItems([]);
-                  setCurrentOrder(null);
-                  setSelectedTable(null);
-                  setSelectedCustomer(null);
-                  toast.info('Carrito vaciado');
-                }
-              }}
-              size="small"
-              color="error"
-              title="Vaciar carrito"
-            >
-              <ClearIcon />
-            </IconButton>
+            <>
+              <IconButton
+                onClick={() => setSplitBillDialogOpen(true)}
+                size="small"
+                color="info"
+                title="Dividir Cuenta"
+                disabled={isSavingOrder || isProcessingPayment}
+              >
+                <SplitIcon />
+              </IconButton>
+              <IconButton
+                onClick={() => {
+                  if (window.confirm('¿Vaciar el carrito? Esto eliminará todos los productos.')) {
+                    setOrderItems([]);
+                    setCurrentOrder(null);
+                    setSelectedTable(null);
+                    setSelectedCustomer(null);
+                    toast.info('Carrito vaciado');
+                  }
+                }}
+                size="small"
+                color="error"
+                title="Vaciar carrito"
+              >
+                <ClearIcon />
+              </IconButton>
+            </>
           )}
         </Box>
 
@@ -1170,7 +1210,7 @@ const POS: React.FC = () => {
               </Button>
             </Box>
 
-            {/* Row 2: Payment Action (Primary) */}
+            {/* Payment Action (Primary) */}
             <Button
               fullWidth
               variant="contained"
@@ -1433,6 +1473,102 @@ const POS: React.FC = () => {
         }}
         initialData={deliveryInfo}
       />
+
+      {/* Split Bill Dialog */}
+      <SplitBillDialog
+        open={splitBillDialogOpen}
+        onClose={() => setSplitBillDialogOpen(false)}
+        orderItems={orderItems}
+        onProcessSplit={(splits) => {
+          setBillSplits(splits);
+          setSplitBillDialogOpen(false);
+          setActiveSplitIndex(0);
+          // Open payment dialog for the first split
+          if (splits.length > 0) {
+            toast.info(`Procesando pago de ${splits[0].name} ($${splits[0].total.toLocaleString('es-CO')})`);
+            setPaymentDialogOpen(true);
+          }
+        }}
+      />
+
+      {/* Payment Dialog for Split Bill */}
+      {billSplits.length > 0 && activeSplitIndex < billSplits.length && (
+        <Dialog
+          open={paymentDialogOpen && billSplits.length > 0}
+          onClose={() => setPaymentDialogOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <PaymentIcon />
+              <Typography variant="h6">
+                Pago de {billSplits[activeSplitIndex]?.name}
+              </Typography>
+              <Chip
+                label={`${activeSplitIndex + 1} de ${billSplits.length}`}
+                color="primary"
+              />
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                Procesando pagos divididos. Productos incluidos en esta cuenta:
+              </Typography>
+              <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+                {billSplits[activeSplitIndex]?.items.map(splitItem => {
+                  const orderItem = orderItems.find(item => item.id === splitItem.itemId);
+                  if (!orderItem) return null;
+                  const unitPrice = (orderItem.subtotal || 0) / orderItem.quantity;
+                  const itemTotal = unitPrice * splitItem.quantity;
+                  return (
+                    <li key={splitItem.itemId}>
+                      {splitItem.quantity}x {orderItem.product?.name || 'Producto'} - ${itemTotal.toLocaleString('es-CO')}
+                    </li>
+                  );
+                })}
+              </Box>
+            </Alert>
+
+            <PaymentDialog
+              open={true}
+              onClose={() => setPaymentDialogOpen(false)}
+              total={billSplits[activeSplitIndex]?.total || 0}
+              paymentMethods={paymentMethods}
+              onConfirm={async (paymentData) => {
+                try {
+                  // Get items for current split
+                  const currentSplit = billSplits[activeSplitIndex];
+
+                  // Process payment for this split with specific items
+                  await processPayment(paymentData, currentSplit.items);
+
+                  // Move to next split
+                  const nextIndex = activeSplitIndex + 1;
+                  if (nextIndex < billSplits.length) {
+                    setActiveSplitIndex(nextIndex);
+                    toast.info(`Procesando pago de ${billSplits[nextIndex].name} ($${billSplits[nextIndex].total.toLocaleString('es-CO')})`);
+                  } else {
+                    // All splits paid, clear everything
+                    setBillSplits([]);
+                    setActiveSplitIndex(0);
+                    setPaymentDialogOpen(false);
+                    clearOrder(true); // Clear the order after all splits are paid
+                    toast.success('¡Todos los pagos divididos procesados correctamente!');
+                  }
+                } catch (error) {
+                  console.error('Error processing split payment:', error);
+                  toast.error('Error al procesar el pago');
+                }
+              }}
+              customer={selectedCustomer}
+              needsElectronicInvoice={needsElectronicInvoice}
+              defaultPrintReceipt={autoPrintReceipt}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </Box>
   );
 };

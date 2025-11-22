@@ -409,7 +409,8 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                                     product = product,
                                     quantity = orderItem.quantity,
                                     notes = orderItem.notes ?: "",
-                                    modifiers = modifiers
+                                    modifiers = modifiers,
+                                    customPrice = if (product.hasVariablePrice) orderItem.unitPrice else null
                                 )
                             }
                         }

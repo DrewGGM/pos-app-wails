@@ -53,14 +53,15 @@ type ModifierResponse struct {
 
 // ProductResponse represents the product data for mobile apps
 type ProductResponse struct {
-	ID        uint               `json:"id"`
-	Name      string             `json:"name"`
-	Price     float64            `json:"price"`
-	Category  string             `json:"category"`
-	ImageURL  string             `json:"image_url,omitempty"`
-	Stock     float64            `json:"stock"`
-	Available bool               `json:"available"`
-	Modifiers []ModifierResponse `json:"modifiers,omitempty"`
+	ID               uint               `json:"id"`
+	Name             string             `json:"name"`
+	Price            float64            `json:"price"`
+	Category         string             `json:"category"`
+	ImageURL         string             `json:"image_url,omitempty"`
+	Stock            float64            `json:"stock"`
+	Available        bool               `json:"available"`
+	HasVariablePrice bool               `json:"has_variable_price"`
+	Modifiers        []ModifierResponse `json:"modifiers,omitempty"`
 }
 
 // OrderItemModifierRequest represents a modifier for an order item from mobile app
@@ -164,14 +165,15 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 		}
 
 		response[i] = ProductResponse{
-			ID:        p.ID,
-			Name:      p.Name,
-			Price:     p.Price,
-			Category:  categoryName,
-			ImageURL:  imageURL,
-			Stock:     float64(p.Stock),
-			Available: p.IsActive && p.Stock > 0,
-			Modifiers: modifiers,
+			ID:               p.ID,
+			Name:             p.Name,
+			Price:            p.Price,
+			Category:         categoryName,
+			ImageURL:         imageURL,
+			Stock:            float64(p.Stock),
+			Available:        p.IsActive && p.Stock > 0,
+			HasVariablePrice: p.HasVariablePrice,
+			Modifiers:        modifiers,
 		}
 	}
 

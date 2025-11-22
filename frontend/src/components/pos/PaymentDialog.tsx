@@ -299,10 +299,41 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
                   startAdornment: <InputAdornment position="start">$</InputAdornment>,
                 }}
                 disabled={!selectedMethod || isComplete}
-                sx={{ mb: 2 }}
+                sx={{ mb: 1 }}
               />
 
-              {selectedMethod && 
+              {/* Quick cash denomination buttons */}
+              {selectedMethod &&
+               paymentMethods.find(m => m.id === selectedMethod)?.type === 'cash' && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                    Denominaciones (click para sumar):
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {[100000, 50000, 20000, 10000, 5000, 2000, 1000, 500].map(value => (
+                      <Button
+                        key={value}
+                        size="small"
+                        variant="outlined"
+                        onClick={() => {
+                          const currentAmount = parseFloat(amount) || 0;
+                          setAmount((currentAmount + value).toString());
+                        }}
+                        disabled={isComplete}
+                        sx={{
+                          minWidth: 'auto',
+                          px: 1,
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {value >= 1000 ? `${value / 1000}k` : value}
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {selectedMethod &&
                paymentMethods.find(m => m.id === selectedMethod)?.requires_reference && (
                 <TextField
                   fullWidth
@@ -338,13 +369,12 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
                     secondary={line.reference}
                   />
                   <ListItemSecondaryAction>
-                    <Typography variant="subtitle1" sx={{ mr: 1 }}>
+                    <Typography variant="subtitle1" sx={{ mr: 1, display: 'inline' }}>
                       ${line.amount.toLocaleString('es-CO')}
                     </Typography>
-                    <IconButton 
-                      edge="end" 
+                    <IconButton
+                      edge="end"
                       onClick={() => removePaymentLine(index)}
-                      disabled={isComplete}
                     >
                       <DeleteIcon />
                     </IconButton>
