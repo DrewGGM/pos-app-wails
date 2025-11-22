@@ -64,6 +64,7 @@ import {
   Payment as PaymentIcon,
   Category as CategoryIcon,
   ViewModule as ViewModuleIcon,
+  Smartphone as SmartphoneIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
@@ -85,6 +86,7 @@ import GoogleSheetsSettings from './GoogleSheetsSettings';
 import PaymentMethodsSettings from './PaymentMethodsSettings';
 import OrderTypesSettings from './OrderTypesSettings';
 import CustomPagesSettings from './CustomPagesSettings';
+import RappiSettings from './RappiSettings';
 
 interface Department {
   id: number;
@@ -1187,6 +1189,7 @@ const Settings: React.FC = () => {
           <Tab icon={<ViewModuleIcon />} label="Páginas POS" />
           <Tab icon={<PrintIcon />} label="Impresión" />
           <Tab icon={<CloudSyncIcon />} label="Google Sheets" />
+          <Tab icon={<SmartphoneIcon />} label="Rappi POS" />
           <Tab icon={<NotificationsIcon />} label="Notificaciones" />
           <Tab icon={<SecurityIcon />} label="Sistema" />
           <Tab icon={<WifiIcon />} label="WebSocket" />
@@ -2602,6 +2605,11 @@ const Settings: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={selectedTab} index={7}>
+          {/* Rappi Settings */}
+          <RappiSettings />
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={8}>
           {/* Notification Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2731,7 +2739,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={8}>
+        <TabPanel value={selectedTab} index={9}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -2897,7 +2905,7 @@ const Settings: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={selectedTab} index={9}>
+        <TabPanel value={selectedTab} index={10}>
           {/* WebSocket Management */}
           <Grid container spacing={3}>
             {/* Server Status */}

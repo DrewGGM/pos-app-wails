@@ -208,6 +208,12 @@ func RunMigrations() error {
 		&models.TableLayout{},
 		&models.UITheme{},
 		&models.GoogleSheetsConfig{},
+
+		// Rappi integration models
+		&models.RappiConfig{},
+		&models.RappiOrder{},
+		&models.RappiMenuSync{},
+		&models.RappiWebhook{},
 	)
 
 	if err != nil {

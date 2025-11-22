@@ -75,7 +75,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [error, setError] = useState('');
   const [change, setChange] = useState(0);
 
-  // Reset all state when dialog opens
+  // Reset all state when dialog opens or total changes (for split payments)
   useEffect(() => {
     if (open) {
       setPaymentLines([]);
@@ -88,7 +88,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       setError('');
       setChange(0);
     }
-  }, [open, customer?.email, defaultPrintReceipt]);
+  }, [open, total, customer?.email, defaultPrintReceipt]);
 
   useEffect(() => {
     // Set initial amount to remaining balance

@@ -42,6 +42,7 @@ type App struct {
 	UpdateService           *services.UpdateService
 	GoogleSheetsService     *services.GoogleSheetsService
 	ReportSchedulerService  *services.ReportSchedulerService
+	RappiConfigService      *services.RappiConfigService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -194,6 +195,9 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 	a.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), a.GoogleSheetsService)
 
+	// Initialize Rappi service
+	a.RappiConfigService = services.NewRappiConfigService()
+
 	// Initialize default system configurations
 	if err := a.ConfigService.InitializeDefaultSystemConfigs(); err != nil {
 		return fmt.Errorf("failed to initialize system configs: %w", err)
@@ -309,6 +313,7 @@ func main() {
 	app.WSManagementService = services.NewWebSocketManagementService(nil)
 	app.GoogleSheetsService = services.NewGoogleSheetsService(nil)
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
+	app.RappiConfigService = services.NewRappiConfigService()
 
 	if !isFirstRun {
 		loggerService.LogInfo("Loading configuration from config.json")
@@ -346,6 +351,9 @@ func main() {
 			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 			app.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), app.GoogleSheetsService)
 
+			// Initialize Rappi service
+			app.RappiConfigService = services.NewRappiConfigService()
+
 			loggerService.LogInfo("Initializing default system configurations")
 			app.ConfigService.InitializeDefaultSystemConfigs()
 		}
@@ -375,6 +383,7 @@ func main() {
 		app.DashboardService,
 		app.GoogleSheetsService,
 		app.ReportSchedulerService,
+		app.RappiConfigService,
 		app.WSManagementService,
 	}
 

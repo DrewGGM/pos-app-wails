@@ -2522,6 +2522,92 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class RappiConfig {
+	    id: number;
+	    is_enabled: boolean;
+	    environment: string;
+	    client_id: string;
+	    client_secret: string;
+	    store_ids: string;
+	    use_webhooks: boolean;
+	    webhook_base_url: string;
+	    webhook_port: number;
+	    webhook_secret: string;
+	    auto_sync_menu: boolean;
+	    sync_menu_on_startup: boolean;
+	    default_cooking_time: number;
+	    auto_accept_orders: boolean;
+	    base_url: string;
+	    auth_url: string;
+	    last_connection_test?: time.Time;
+	    last_connection_status: string;
+	    last_connection_error: string;
+	    current_token: string;
+	    token_expires_at?: time.Time;
+	    total_orders_received: number;
+	    total_orders_accepted: number;
+	    total_orders_rejected: number;
+	    last_menu_sync?: time.Time;
+	    last_menu_sync_status: string;
+	    last_order_received?: time.Time;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new RappiConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.is_enabled = source["is_enabled"];
+	        this.environment = source["environment"];
+	        this.client_id = source["client_id"];
+	        this.client_secret = source["client_secret"];
+	        this.store_ids = source["store_ids"];
+	        this.use_webhooks = source["use_webhooks"];
+	        this.webhook_base_url = source["webhook_base_url"];
+	        this.webhook_port = source["webhook_port"];
+	        this.webhook_secret = source["webhook_secret"];
+	        this.auto_sync_menu = source["auto_sync_menu"];
+	        this.sync_menu_on_startup = source["sync_menu_on_startup"];
+	        this.default_cooking_time = source["default_cooking_time"];
+	        this.auto_accept_orders = source["auto_accept_orders"];
+	        this.base_url = source["base_url"];
+	        this.auth_url = source["auth_url"];
+	        this.last_connection_test = this.convertValues(source["last_connection_test"], time.Time);
+	        this.last_connection_status = source["last_connection_status"];
+	        this.last_connection_error = source["last_connection_error"];
+	        this.current_token = source["current_token"];
+	        this.token_expires_at = this.convertValues(source["token_expires_at"], time.Time);
+	        this.total_orders_received = source["total_orders_received"];
+	        this.total_orders_accepted = source["total_orders_accepted"];
+	        this.total_orders_rejected = source["total_orders_rejected"];
+	        this.last_menu_sync = this.convertValues(source["last_menu_sync"], time.Time);
+	        this.last_menu_sync_status = source["last_menu_sync_status"];
+	        this.last_order_received = this.convertValues(source["last_order_received"], time.Time);
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RestaurantConfig {
 	    id: number;
 	    name: string;
@@ -3222,6 +3308,58 @@ export namespace services {
 	        this.previous_sales = source["previous_sales"];
 	        this.growth_percent = source["growth_percent"];
 	    }
+	}
+	export class ConnectionStatus {
+	    is_configured: boolean;
+	    is_enabled: boolean;
+	    environment: string;
+	    has_valid_token: boolean;
+	    token_expires_at?: time.Time;
+	    last_connection_test?: time.Time;
+	    last_connection_status: string;
+	    store_count: number;
+	    total_orders_received: number;
+	    total_orders_accepted: number;
+	    last_menu_sync?: time.Time;
+	    last_menu_sync_status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.is_configured = source["is_configured"];
+	        this.is_enabled = source["is_enabled"];
+	        this.environment = source["environment"];
+	        this.has_valid_token = source["has_valid_token"];
+	        this.token_expires_at = this.convertValues(source["token_expires_at"], time.Time);
+	        this.last_connection_test = this.convertValues(source["last_connection_test"], time.Time);
+	        this.last_connection_status = source["last_connection_status"];
+	        this.store_count = source["store_count"];
+	        this.total_orders_received = source["total_orders_received"];
+	        this.total_orders_accepted = source["total_orders_accepted"];
+	        this.last_menu_sync = this.convertValues(source["last_menu_sync"], time.Time);
+	        this.last_menu_sync_status = source["last_menu_sync_status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CustomerStatsData {
 	    total_customers: number;
@@ -3988,6 +4126,48 @@ export namespace services {
 	        this.top_products = this.convertValues(source["top_products"], ProductSalesData);
 	        this.hourly_sales = this.convertValues(source["hourly_sales"], HourlySalesData);
 	        this.daily_sales = this.convertValues(source["daily_sales"], DailySalesData);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TestConnectionResponse {
+	    success: boolean;
+	    message: string;
+	    token?: string;
+	    expires_in?: number;
+	    expires_at?: time.Time;
+	    environment: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TestConnectionResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.message = source["message"];
+	        this.token = source["token"];
+	        this.expires_in = source["expires_in"];
+	        this.expires_at = this.convertValues(source["expires_at"], time.Time);
+	        this.environment = source["environment"];
+	        this.error = source["error"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

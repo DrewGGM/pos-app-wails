@@ -746,8 +746,34 @@ const POS: React.FC = () => {
 
       // Check if we're continuing an existing order or creating a new one
       if (currentOrder && currentOrder.id && !splitItems) {
-        // Use existing order (only if NOT processing a split)
-        orderToProcess = currentOrder;
+        // Check if order has been modified (items changed)
+        const itemsChanged = JSON.stringify(currentOrder.items) !== JSON.stringify(orderItems);
+
+        if (itemsChanged) {
+          // Order has been modified, update it first before processing payment
+          const orderData: CreateOrderData = {
+            type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
+            order_type_id: selectedOrderType?.id as unknown as number,
+            table_id: selectedTable?.id,
+            customer_id: selectedCustomer?.id,
+            employee_id: user?.id,
+            items: orderItems,
+            notes: '',
+            source: 'pos',
+            ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
+              delivery_customer_name: deliveryInfo.customerName,
+              delivery_address: deliveryInfo.address,
+              delivery_phone: deliveryInfo.phone,
+            }),
+          };
+
+          orderToProcess = await wailsOrderService.updateOrder(currentOrder.id, orderData);
+          // Update currentOrder so it has the latest items
+          setCurrentOrder(orderToProcess);
+        } else {
+          // Use existing order as-is
+          orderToProcess = currentOrder;
+        }
       } else {
         // Create new order (always for splits, or if no current order)
         const orderData: CreateOrderData = {
@@ -1495,7 +1521,14 @@ const POS: React.FC = () => {
       {billSplits.length > 0 && activeSplitIndex < billSplits.length && (
         <Dialog
           open={paymentDialogOpen && billSplits.length > 0}
-          onClose={() => setPaymentDialogOpen(false)}
+          onClose={() => {
+            // When closing split payment dialog, ask for confirmation
+            if (window.confirm('¿Cancelar división de cuentas? Se perderá el progreso de los pagos.')) {
+              setPaymentDialogOpen(false);
+              setBillSplits([]);
+              setActiveSplitIndex(0);
+            }
+          }}
           maxWidth="md"
           fullWidth
         >
@@ -1533,7 +1566,14 @@ const POS: React.FC = () => {
 
             <PaymentDialog
               open={true}
-              onClose={() => setPaymentDialogOpen(false)}
+              onClose={() => {
+                // Same confirmation as outer dialog
+                if (window.confirm('¿Cancelar división de cuentas? Se perderá el progreso de los pagos.')) {
+                  setPaymentDialogOpen(false);
+                  setBillSplits([]);
+                  setActiveSplitIndex(0);
+                }
+              }}
               total={billSplits[activeSplitIndex]?.total || 0}
               paymentMethods={paymentMethods}
               onConfirm={async (paymentData) => {
