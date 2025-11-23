@@ -25,6 +25,8 @@ import {
   Menu,
   MenuItem,
   Divider,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -85,6 +87,8 @@ const Sales: React.FC = () => {
   const [companyLiabilityId, setCompanyLiabilityId] = useState<number | null>(null);
   const [dianResponseDialog, setDianResponseDialog] = useState(false);
   const [selectedDianResponse, setSelectedDianResponse] = useState<string>('');
+  const [selectedElectronicInvoice, setSelectedElectronicInvoice] = useState<any>(null);
+  const [dianTab, setDianTab] = useState(0);
 
   useEffect(() => {
     dispatch(fetchTodaySales());
@@ -530,10 +534,12 @@ const Sales: React.FC = () => {
                                 <IconButton
                                   size="small"
                                   onClick={() => {
+                                    setSelectedElectronicInvoice(sale.electronic_invoice);
                                     setSelectedDianResponse(sale.electronic_invoice!.dian_response || '');
+                                    setDianTab(0); // Reset to first tab
                                     setDianResponseDialog(true);
                                   }}
-                                  title="Ver respuesta DIAN"
+                                  title="Ver datos enviados y respuesta DIAN"
                                 >
                                   <ViewIcon fontSize="small" />
                                 </IconButton>
@@ -965,46 +971,78 @@ const Sales: React.FC = () => {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Respuesta DIAN</Typography>
+            <Typography variant="h6">Factura Electrónica DIAN</Typography>
             <Chip
-              label="JSON"
+              label={selectedElectronicInvoice?.invoice_number || 'N/A'}
               size="small"
               color="primary"
             />
           </Box>
         </DialogTitle>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={dianTab} onChange={(e, newValue) => setDianTab(newValue)} aria-label="DIAN data tabs">
+            <Tab label="Datos Enviados" />
+            <Tab label="Respuesta DIAN" />
+          </Tabs>
+        </Box>
         <DialogContent dividers>
-          <Box sx={{
-            bgcolor: '#1e1e1e',
-            color: '#d4d4d4',
-            p: 2,
-            borderRadius: 1,
-            fontFamily: 'monospace',
-            fontSize: '0.875rem',
-            overflow: 'auto',
-            maxHeight: '60vh'
-          }}>
-            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-              {selectedDianResponse ? (() => {
-                try {
-                  return JSON.stringify(JSON.parse(selectedDianResponse), null, 2);
-                } catch (e) {
-                  return selectedDianResponse;
-                }
-              })() : 'No hay respuesta DIAN disponible'}
-            </pre>
-          </Box>
+          {/* Tab Panel: Datos Enviados */}
+          {dianTab === 0 && (
+            <Box sx={{
+              bgcolor: '#1e1e1e',
+              color: '#d4d4d4',
+              p: 2,
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              overflow: 'auto',
+              maxHeight: '60vh'
+            }}>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                {selectedElectronicInvoice?.request_data
+                  ? JSON.stringify(JSON.parse(selectedElectronicInvoice.request_data), null, 2)
+                  : 'No hay datos de solicitud disponibles'}
+              </pre>
+            </Box>
+          )}
+
+          {/* Tab Panel: Respuesta DIAN */}
+          {dianTab === 1 && (
+            <Box sx={{
+              bgcolor: '#1e1e1e',
+              color: '#d4d4d4',
+              p: 2,
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              overflow: 'auto',
+              maxHeight: '60vh'
+            }}>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+                {selectedDianResponse ? (() => {
+                  try {
+                    return JSON.stringify(JSON.parse(selectedDianResponse), null, 2);
+                  } catch (e) {
+                    return selectedDianResponse;
+                  }
+                })() : 'No hay respuesta DIAN disponible'}
+              </pre>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDianResponseDialog(false)}>Cerrar</Button>
           <Button
             variant="outlined"
             onClick={() => {
-              navigator.clipboard.writeText(selectedDianResponse);
-              toast.success('Respuesta copiada al portapapeles');
+              const contentToCopy = dianTab === 0
+                ? (selectedElectronicInvoice?.request_data || '')
+                : selectedDianResponse;
+              navigator.clipboard.writeText(contentToCopy);
+              toast.success(`${dianTab === 0 ? 'Datos de solicitud' : 'Respuesta'} copiado al portapapeles`);
             }}
           >
-            Copiar JSON
+            Copiar {dianTab === 0 ? 'Solicitud' : 'Respuesta'}
           </Button>
         </DialogActions>
       </Dialog>

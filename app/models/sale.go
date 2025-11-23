@@ -119,6 +119,7 @@ type ElectronicInvoice struct {
 	ValidationCheckedAt  *time.Time   `json:"validation_checked_at,omitempty"` // Last validation check
 	XMLDocument          string       `json:"xml_document"`             // Stored XML
 	PDFDocument          string       `json:"pdf_document"`             // Base64 PDF
+	RequestData          string       `gorm:"type:text" json:"request_data"` // JSON request sent to DIAN API
 	RetryCount           int          `json:"retry_count"`
 	LastError            string       `json:"last_error"`
 	CreditNotes          []CreditNote `json:"credit_notes,omitempty"`

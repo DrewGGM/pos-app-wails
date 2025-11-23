@@ -92,7 +92,14 @@ function mapSale(w: models.Sale): Sale {
         id: payment.payment_method.id as unknown as number,
         name: payment.payment_method.name || '',
         type: payment.payment_method.type as 'cash' | 'digital' | 'card' | 'check',
-        show_in_cash_summary: (payment.payment_method as any).show_in_cash_summary !== false,
+        icon: payment.payment_method.icon || '',
+        requires_ref: payment.payment_method.requires_ref || false,
+        requires_reference: payment.payment_method.requires_ref || false,
+        dian_payment_method_id: (payment.payment_method as any).dian_payment_method_id,
+        affects_cash_register: (payment.payment_method as any).affects_cash_register !== false, // Default to true if undefined
+        show_in_cash_summary: (payment.payment_method as any).show_in_cash_summary !== false, // Default to true if undefined
+        is_active: payment.payment_method.is_active || false,
+        display_order: payment.payment_method.display_order || 0,
       } : undefined,
       amount: payment.amount || 0,
       reference: payment.reference || '',
@@ -117,6 +124,7 @@ function mapSale(w: models.Sale): Sale {
       qr_code: w.electronic_invoice.qr_code || '',
       status: w.electronic_invoice.status as 'pending' | 'sent' | 'accepted' | 'rejected' | 'error',
       dian_response: w.electronic_invoice.dian_response || '',
+      request_data: (w.electronic_invoice as any).request_data || '',
       sent_at: w.electronic_invoice.sent_at ? new Date(w.electronic_invoice.sent_at as any).toISOString() : undefined,
       accepted_at: w.electronic_invoice.accepted_at ? new Date(w.electronic_invoice.accepted_at as any).toISOString() : undefined,
       retry_count: w.electronic_invoice.retry_count || 0,

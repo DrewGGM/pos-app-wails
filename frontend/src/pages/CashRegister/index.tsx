@@ -25,6 +25,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  IconButton,
+  CircularProgress,
+  Container,
 } from '@mui/material';
 import {
   AttachMoney as MoneyIcon,
@@ -38,8 +44,11 @@ import {
   LockOpen as LockOpenIcon,
   Receipt as ReceiptIcon,
   Assessment as ReportIcon,
+  ExpandMore as ExpandMoreIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks';
 import { wailsAuthService } from '../../services/wailsAuthService';
 import { wailsSalesService } from '../../services/wailsSalesService';
@@ -76,7 +85,9 @@ interface CashMovement {
 
 const CashRegister: React.FC = () => {
   const { user, cashRegisterId, openCashRegister: openCashRegisterContext, closeCashRegister: closeCashRegisterContext } = useAuth();
+  const navigate = useNavigate();
   const [registerStatus, setRegisterStatus] = useState<CashRegisterStatus | null>(null);
+  const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [closeDialog, setCloseDialog] = useState(false);
   const [movementDialog, setMovementDialog] = useState(false);
@@ -95,6 +106,7 @@ const CashRegister: React.FC = () => {
 
   const loadRegisterStatus = async () => {
     try {
+      setLoading(true);
       if (cashRegisterId && user) {
         const register = await wailsAuthService.getOpenCashRegister(user.id!);
         if (register) {
@@ -102,7 +114,11 @@ const CashRegister: React.FC = () => {
           let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
 
           try {
-            const sales = await wailsSalesService.getSales();
+            // CRITICAL FIX: Use getSalesHistory instead of getSales (which only returns today's sales)
+            // We need ALL sales for this cash register, not just today's sales
+            // This is important for multi-day cash register sessions
+            // OPTIMIZATION: Reduced from 1000 to 500 for better performance
+            const { sales } = await wailsSalesService.getSalesHistory(500, 0);
             const registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
 
             registerSales.forEach((sale: any) => {
@@ -114,13 +130,11 @@ const CashRegister: React.FC = () => {
                 sale.payment_details.forEach((payment: any) => {
                   const paymentMethod = payment.payment_method;
 
-                  // Only include payment methods that are explicitly marked to show in cash summary
-                  // If the field is undefined/null, treat as true for backwards compatibility
-                  const shouldShow = paymentMethod?.show_in_cash_summary === undefined
-                    ? true
-                    : paymentMethod.show_in_cash_summary === true;
+                  // CRITICAL: Only include payment methods that affect cash register
+                  // This must match the backend calculation in employee_service.go:578-584
+                  const affectsCashRegister = paymentMethod?.affects_cash_register === true;
 
-                  if (paymentMethod && paymentMethod.name && shouldShow) {
+                  if (paymentMethod && paymentMethod.name && affectsCashRegister) {
                     const methodName = paymentMethod.name;
                     salesSummary.by_payment_method[methodName] =
                       (salesSummary.by_payment_method[methodName] || 0) + payment.amount;
@@ -154,7 +168,7 @@ const CashRegister: React.FC = () => {
             })),
             sales_summary: salesSummary
           });
-          
+
           // Set default closing amount
           if (register.expected_amount) {
             setClosingAmount(register.expected_amount.toString());
@@ -163,6 +177,8 @@ const CashRegister: React.FC = () => {
       }
     } catch (error) {
       // Error loading cash register
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -309,7 +325,13 @@ const CashRegister: React.FC = () => {
         </Box>
       </Box>
 
-      {!isRegisterOpen && !registerStatus && (
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {!loading && !isRegisterOpen && !registerStatus && (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <LockIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -329,7 +351,7 @@ const CashRegister: React.FC = () => {
         </Paper>
       )}
 
-      {registerStatus && (
+      {!loading && registerStatus && (
         <>
           {/* Status Card */}
           <Card sx={{ mb: 3, backgroundColor: isRegisterOpen ? '#e8f5e9' : '#ffebee' }}>
@@ -418,18 +440,34 @@ const CashRegister: React.FC = () => {
                       </Typography>
                     </ListItemSecondaryAction>
                   </ListItem>
+                  {/* Ventas por método de pago que afectan caja */}
                   <ListItem>
                     <ListItemText
-                      primary="Ventas en efectivo"
-                      secondary="Método de pago 'Efectivo' o 'cash'"
+                      primary={<strong>Ventas que afectan caja</strong>}
+                      secondary="Desglose por método de pago"
                     />
-                    <ListItemSecondaryAction>
-                      <Typography variant="body1" color="success.main">
-                        +${((registerStatus.sales_summary.by_payment_method['Efectivo'] ||
-                            registerStatus.sales_summary.by_payment_method['cash'] || 0).toLocaleString('es-CO'))}
-                      </Typography>
-                    </ListItemSecondaryAction>
                   </ListItem>
+                  {Object.entries(registerStatus.sales_summary.by_payment_method).map(([methodName, amount]) => (
+                    <ListItem key={methodName} sx={{ pl: 4 }}>
+                      <ListItemText
+                        primary={methodName}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                      <ListItemSecondaryAction>
+                        <Typography variant="body2" color="success.main">
+                          +${(amount as number).toLocaleString('es-CO')}
+                        </Typography>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  {Object.keys(registerStatus.sales_summary.by_payment_method).length === 0 && (
+                    <ListItem sx={{ pl: 4 }}>
+                      <ListItemText
+                        primary="Sin ventas"
+                        primaryTypographyProps={{ variant: 'body2', color: 'text.secondary' }}
+                      />
+                    </ListItem>
+                  )}
                   <ListItem>
                     <ListItemText primary="Otros ingresos" />
                     <ListItemSecondaryAction>
@@ -537,6 +575,19 @@ const CashRegister: React.FC = () => {
               </Table>
             </TableContainer>
           </Paper>
+
+          {/* Link to Cash Register History */}
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<HistoryIcon />}
+              onClick={() => navigate('/cash-register-history')}
+              sx={{ px: 4 }}
+            >
+              Ver Historial de Cierres de Caja
+            </Button>
+          </Box>
         </>
       )}
 

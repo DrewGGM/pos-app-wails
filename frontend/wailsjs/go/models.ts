@@ -690,6 +690,7 @@ export namespace models {
 	    validation_checked_at?: time.Time;
 	    xml_document: string;
 	    pdf_document: string;
+	    request_data: string;
 	    retry_count: number;
 	    last_error: string;
 	    credit_notes?: CreditNote[];
@@ -720,6 +721,7 @@ export namespace models {
 	        this.validation_checked_at = this.convertValues(source["validation_checked_at"], time.Time);
 	        this.xml_document = source["xml_document"];
 	        this.pdf_document = source["pdf_document"];
+	        this.request_data = source["request_data"];
 	        this.retry_count = source["retry_count"];
 	        this.last_error = source["last_error"];
 	        this.credit_notes = this.convertValues(source["credit_notes"], CreditNote);

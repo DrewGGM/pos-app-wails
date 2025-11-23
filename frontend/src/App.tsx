@@ -16,6 +16,7 @@ import Sales from './pages/Sales';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import CashRegister from './pages/CashRegister';
+import CashRegisterHistory from './pages/CashRegisterHistory';
 import Tables from './pages/Tables';
 import Customers from './pages/Customers';
 import Employees from './pages/Employees';
@@ -90,6 +91,7 @@ const App: React.FC = () => {
           <Route path="/sales" element={<Sales />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/cash-register" element={<CashRegister />} />
+          <Route path="/cash-register-history" element={<CashRegisterHistory />} />
           <Route path="/tables" element={<Tables />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/employees" element={<Employees />} />

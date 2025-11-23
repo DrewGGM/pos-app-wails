@@ -528,6 +528,7 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 	var registers []models.CashRegister
 
 	err := s.db.Preload("Employee").
+		Preload("Movements").
 		Order("opened_at DESC").
 		Limit(limit).
 		Offset(offset).

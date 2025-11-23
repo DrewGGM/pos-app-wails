@@ -8,6 +8,7 @@ import {
   PrintCurrentCashRegisterReport,
   PrintLastCashRegisterReport,
   GetCashRegisterReport,
+  GetCashRegisterHistory,
   GetEmployees,
   GetEmployee,
   CreateEmployee,
@@ -52,16 +53,21 @@ function mapCashRegister(w: models.CashRegister): CashRegister {
   return {
     id: w.id as unknown as number,
     employee_id: (w as any).employee_id as number,
+    employee: (w as any).employee ? {
+      id: (w as any).employee.id as number,
+      name: (w as any).employee.name || '',
+      email: (w as any).employee.email || '',
+    } : undefined,
     opening_amount: (w as any).opening_amount as number,
     closing_amount: (w as any).closing_amount as number,
     expected_amount: (w as any).expected_amount as number,
     difference: (w as any).difference as number,
     status: (w as any).status as any,
     notes: (w as any).notes,
-    opened_at: new Date().toISOString(),
-    closed_at: (w as any).closed_at ? new Date().toISOString() : undefined,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    opened_at: (w as any).opened_at ? new Date((w as any).opened_at).toISOString() : new Date().toISOString(),
+    closed_at: (w as any).closed_at ? new Date((w as any).closed_at).toISOString() : undefined,
+    created_at: (w as any).created_at ? new Date((w as any).created_at).toISOString() : new Date().toISOString(),
+    updated_at: (w as any).updated_at ? new Date((w as any).updated_at).toISOString() : new Date().toISOString(),
     // Map cash movements
     movements: ((w as any).movements || []).map((m: any) => ({
       id: m.id as number,
@@ -284,6 +290,17 @@ class WailsAuthService {
       await DeleteEmployee(id);
     } catch (error) {
       throw new Error('Error al eliminar empleado');
+    }
+  }
+
+  // Cash Register History
+  async getCashRegisterHistory(limit: number = 20, offset: number = 0): Promise<CashRegister[]> {
+    try {
+      const registers = await GetCashRegisterHistory(limit, offset);
+      return registers.map(mapCashRegister);
+    } catch (error) {
+      console.error('Error getting cash register history:', error);
+      throw new Error('Error al obtener historial de cajas');
     }
   }
 }

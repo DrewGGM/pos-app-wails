@@ -529,6 +529,21 @@ func (s *SalesService) GetSalesByDateRange(startDate, endDate time.Time) ([]mode
 		Order("created_at DESC").
 		Find(&sales).Error
 
+	// DEBUG: Log payment method data to identify affects_cash_register issue
+	if len(sales) > 0 && len(sales[0].PaymentDetails) > 0 {
+		log.Printf("=== BACKEND PAYMENT METHOD DEBUG ===")
+		for _, detail := range sales[0].PaymentDetails {
+			if detail.PaymentMethod != nil {
+				log.Printf("Payment Method ID: %d", detail.PaymentMethod.ID)
+				log.Printf("Payment Method Name: %s", detail.PaymentMethod.Name)
+				log.Printf("Payment Method Type: %s", detail.PaymentMethod.Type)
+				log.Printf("AffectsCashRegister: %v (type: %T)", detail.PaymentMethod.AffectsCashRegister, detail.PaymentMethod.AffectsCashRegister)
+				log.Printf("ShowInCashSummary: %v", detail.PaymentMethod.ShowInCashSummary)
+			}
+		}
+		log.Printf("====================================")
+	}
+
 	return sales, err
 }
 

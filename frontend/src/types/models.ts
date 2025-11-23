@@ -266,6 +266,7 @@ export interface ElectronicInvoice extends BaseModel {
   zip_key: string;
   xml_document?: string;
   pdf_document?: string;
+  request_data?: string;
   status: 'pending' | 'sent' | 'validating' | 'accepted' | 'rejected' | 'error';
   is_valid?: boolean;
   validation_message?: string;

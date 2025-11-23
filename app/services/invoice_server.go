@@ -141,6 +141,13 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 		return nil, fmt.Errorf("failed to prepare invoice data: %w", err)
 	}
 
+	// Marshal invoice data to JSON for storage (what we send to DIAN)
+	requestDataJSON, err := json.Marshal(invoiceData)
+	if err != nil {
+		fmt.Printf("Warning: Could not marshal invoice request data to JSON: %v\n", err)
+		requestDataJSON = []byte("{}")
+	}
+
 	// Send to DIAN API
 	response, err := s.sendToDIAN(invoiceData, "invoice")
 
@@ -169,6 +176,7 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 			Status:            status,
 			ValidationMessage: fmt.Sprintf("Error: %s", err.Error()),
 			DIANResponse:      string(responseJSON),
+			RequestData:       string(requestDataJSON),
 			LastError:         err.Error(),
 			RetryCount:        0,
 			CreatedAt:         now,
@@ -254,6 +262,7 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 		IsValid:             isValid,
 		ValidationMessage:   validationMessage,
 		DIANResponse:        string(responseJSON),
+		RequestData:         string(requestDataJSON),
 		SentAt:              &now,
 		ValidationCheckedAt: &now, // Set if sync validation was performed
 	}
