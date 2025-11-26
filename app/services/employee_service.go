@@ -380,37 +380,47 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 	var sales []models.Sale
 	s.db.Where("cash_register_id = ?", register.ID).Find(&sales)
 
-	report.NumberOfSales = len(sales)
+	// CRITICAL FIX: Only count and sum sales that have at least one payment method with show_in_cash_summary=true
+	salesCount := 0
+	totalSalesAmount := 0.0
 
 	for _, sale := range sales {
-		report.TotalSales += sale.Total
-
 		// Get payment details
 		var payments []models.Payment
 		s.db.Preload("PaymentMethod").Where("sale_id = ?", sale.ID).Find(&payments)
+
+		// Check if this sale has at least one visible payment method
+		hasVisiblePayment := false
+		saleVisibleTotal := 0.0
 
 		for _, payment := range payments {
 			if payment.PaymentMethod == nil {
 				continue
 			}
 
-			// IMPORTANT: Only include payments that affect cash register (consistent with expected_amount calculation)
-			// Payments like "Rappi" or third-party services that don't go into the physical register
-			// should have affects_cash_register = false
-			if !payment.PaymentMethod.AffectsCashRegister {
-				continue
-			}
+			// For cash register report display: Only include payment methods that should show in cash summary
+			if payment.PaymentMethod.ShowInCashSummary {
+				hasVisiblePayment = true
+				saleVisibleTotal += payment.Amount
 
-			switch payment.PaymentMethod.Type {
-			case "cash":
-				report.TotalCash += payment.Amount
-			case "card":
-				report.TotalCard += payment.Amount
-			case "digital":
-				report.TotalDigital += payment.Amount
-			default:
-				report.TotalOther += payment.Amount
+				// Categorize by type for the printed report
+				switch payment.PaymentMethod.Type {
+				case "cash":
+					report.TotalCash += payment.Amount
+				case "card":
+					report.TotalCard += payment.Amount
+				case "digital":
+					report.TotalDigital += payment.Amount
+				default:
+					report.TotalOther += payment.Amount
+				}
 			}
+		}
+
+		// Only count this sale if it has at least one visible payment method
+		if hasVisiblePayment {
+			salesCount++
+			totalSalesAmount += saleVisibleTotal
 		}
 
 		if sale.Status == "refunded" || sale.Status == "partial_refund" {
@@ -421,6 +431,9 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 		report.TotalDiscounts += sale.Discount
 		report.TotalTax += sale.Tax
 	}
+
+	report.NumberOfSales = salesCount
+	report.TotalSales = totalSalesAmount
 
 	// Calculate deposits and withdrawals
 	for _, movement := range register.Movements {
@@ -635,37 +648,47 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 	var sales []models.Sale
 	s.db.Where("cash_register_id = ?", register.ID).Find(&sales)
 
-	report.NumberOfSales = len(sales)
+	// CRITICAL FIX: Only count and sum sales that have at least one payment method with show_in_cash_summary=true
+	salesCount := 0
+	totalSalesAmount := 0.0
 
 	for _, sale := range sales {
-		report.TotalSales += sale.Total
-
 		// Get payment details
 		var payments []models.Payment
 		s.db.Preload("PaymentMethod").Where("sale_id = ?", sale.ID).Find(&payments)
+
+		// Check if this sale has at least one visible payment method
+		hasVisiblePayment := false
+		saleVisibleTotal := 0.0
 
 		for _, payment := range payments {
 			if payment.PaymentMethod == nil {
 				continue
 			}
 
-			// IMPORTANT: Only include payments that affect cash register (consistent with expected_amount calculation)
-			// Payments like "Rappi" or third-party services that don't go into the physical register
-			// should have affects_cash_register = false
-			if !payment.PaymentMethod.AffectsCashRegister {
-				continue
-			}
+			// For cash register report display: Only include payment methods that should show in cash summary
+			if payment.PaymentMethod.ShowInCashSummary {
+				hasVisiblePayment = true
+				saleVisibleTotal += payment.Amount
 
-			switch payment.PaymentMethod.Type {
-			case "cash":
-				report.TotalCash += payment.Amount
-			case "card":
-				report.TotalCard += payment.Amount
-			case "digital":
-				report.TotalDigital += payment.Amount
-			default:
-				report.TotalOther += payment.Amount
+				// Categorize by type for the printed report
+				switch payment.PaymentMethod.Type {
+				case "cash":
+					report.TotalCash += payment.Amount
+				case "card":
+					report.TotalCard += payment.Amount
+				case "digital":
+					report.TotalDigital += payment.Amount
+				default:
+					report.TotalOther += payment.Amount
+				}
 			}
+		}
+
+		// Only count this sale if it has at least one visible payment method
+		if hasVisiblePayment {
+			salesCount++
+			totalSalesAmount += saleVisibleTotal
 		}
 
 		if sale.Status == "refunded" || sale.Status == "partial_refund" {
@@ -676,6 +699,9 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 		report.TotalDiscounts += sale.Discount
 		report.TotalTax += sale.Tax
 	}
+
+	report.NumberOfSales = salesCount
+	report.TotalSales = totalSalesAmount
 
 	// Calculate deposits and withdrawals
 	for _, movement := range register.Movements {

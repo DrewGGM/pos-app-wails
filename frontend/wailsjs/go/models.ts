@@ -3275,6 +3275,28 @@ export namespace schema {
 
 export namespace services {
 	
+	export class CashMovementDetail {
+	    type: string;
+	    amount: number;
+	    description: string;
+	    reason: string;
+	    employee: string;
+	    time: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CashMovementDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.amount = source["amount"];
+	        this.description = source["description"];
+	        this.reason = source["reason"];
+	        this.employee = source["employee"];
+	        this.time = source["time"];
+	    }
+	}
 	export class CategoryInventoryData {
 	    category_id: number;
 	    category_name: string;
@@ -4043,6 +4065,9 @@ export namespace services {
 	    detalle_productos: ProductDetail[];
 	    detalle_tipos_pago: PaymentMethodDetail[];
 	    detalle_tipos_pedido: OrderTypeDetail[];
+	    detalle_movimientos: CashMovementDetail[];
+	    total_depositos: number;
+	    total_retiros: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ReportData(source);
@@ -4060,6 +4085,9 @@ export namespace services {
 	        this.detalle_productos = this.convertValues(source["detalle_productos"], ProductDetail);
 	        this.detalle_tipos_pago = this.convertValues(source["detalle_tipos_pago"], PaymentMethodDetail);
 	        this.detalle_tipos_pedido = this.convertValues(source["detalle_tipos_pedido"], OrderTypeDetail);
+	        this.detalle_movimientos = this.convertValues(source["detalle_movimientos"], CashMovementDetail);
+	        this.total_depositos = source["total_depositos"];
+	        this.total_retiros = source["total_retiros"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

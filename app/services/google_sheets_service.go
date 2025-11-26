@@ -114,6 +114,16 @@ type OrderTypeDetail struct {
 	Products   []ProductDetail `json:"products"`    // Products sold in this order type
 }
 
+// CashMovementDetail represents a cash register movement
+type CashMovementDetail struct {
+	Type        string  `json:"type"`         // "deposit", "withdrawal"
+	Amount      float64 `json:"amount"`       // Positive for deposits, negative for withdrawals
+	Description string  `json:"description"`  // Description of the movement
+	Reason      string  `json:"reason"`       // Reason for the movement
+	Employee    string  `json:"employee"`     // Employee who made the movement
+	Time        string  `json:"time"`         // Time of the movement (HH:MM format)
+}
+
 // ReportData represents a daily report row
 type ReportData struct {
 	Fecha                 string                 `json:"fecha"`
@@ -126,6 +136,9 @@ type ReportData struct {
 	DetalleProductos      []ProductDetail        `json:"detalle_productos"`
 	DetalleTiposPago      []PaymentMethodDetail  `json:"detalle_tipos_pago"`
 	DetalleTiposPedido    []OrderTypeDetail      `json:"detalle_tipos_pedido"`
+	DetalleMovimientos    []CashMovementDetail   `json:"detalle_movimientos"`     // Cash register movements
+	TotalDepositos        float64                `json:"total_depositos"`         // Total deposits
+	TotalRetiros          float64                `json:"total_retiros"`           // Total withdrawals
 }
 
 // GenerateDailyReport generates report data for a specific date
@@ -138,48 +151,60 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		DetalleProductos: []ProductDetail{},
 	}
 
-	// Get total sales (exclude refunded)
+	// Get ALL order types (active and inactive) to ensure consistent columns
+	var allOrderTypes []models.OrderType
+	s.db.Order("display_order ASC, name ASC").Find(&allOrderTypes)
+
+	// Get total sales (exclude refunded AND order types with hide_amount_in_reports=true)
 	var totalSales float64
 	s.db.Table("orders").
 		Select("COALESCE(SUM(orders.total), 0)").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Scan(&totalSales)
 	report.VentasTotales = totalSales
 
-	// Get DIAN sales (orders with electronic invoice, exclude refunded)
+	// Get DIAN sales (orders with electronic invoice, exclude refunded AND hidden order types)
 	var dianSales float64
 	s.db.Table("orders").
 		Select("COALESCE(SUM(orders.total), 0)").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
 		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Scan(&dianSales)
 	report.VentasDIAN = dianSales
 	report.VentasNoDIAN = totalSales - dianSales
 
-	// Get number of orders (exclude refunded)
+	// Get number of orders (exclude refunded AND hidden order types)
 	var numOrders int64
 	s.db.Table("orders").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Count(&numOrders)
 	report.NumeroOrdenes = int(numOrders)
 
-	// Get total products sold (exclude refunded)
+	// Get total products sold (exclude refunded AND hidden order types)
 	var totalProducts int
 	s.db.Table("order_items").
 		Joins("JOIN orders ON orders.id = order_items.order_id").
 		Joins("JOIN sales ON sales.order_id = orders.id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Select("COALESCE(SUM(order_items.quantity), 0)").
 		Scan(&totalProducts)
 	report.ProductosVendidos = totalProducts
@@ -202,9 +227,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Joins("JOIN orders ON orders.id = order_items.order_id").
 		Joins("JOIN sales ON sales.order_id = orders.id").
 		Joins("JOIN products ON products.id = order_items.product_id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Group("products.id, products.name").
 		Order("SUM(order_items.subtotal) DESC").
 		Scan(&productSummaries)
@@ -230,10 +257,12 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Joins("JOIN sales ON sales.id = payments.sale_id").
 		Joins("JOIN orders ON orders.id = sales.order_id").
 		Joins("JOIN payment_methods ON payment_methods.id = payments.payment_method_id").
+		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Where("payment_methods.show_in_reports = ?", true). // Filter by show_in_reports flag
+		Where("COALESCE(order_types.hide_amount_in_reports, false) = ?", false). // Exclude hidden order types
 		Group("payment_methods.id, payment_methods.name").
 		Order("SUM(payments.amount) DESC").
 		Scan(&paymentSummaries)
@@ -247,7 +276,7 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		})
 	}
 
-	// Get order type breakdown using order_types table
+	// Get order type breakdown - Query sales data for each order type
 	type OrderTypeSummary struct {
 		OrderType      string
 		OrderTypeID    uint
@@ -256,7 +285,7 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		HideAmount     bool
 	}
 
-	var orderTypeSummaries []OrderTypeSummary
+	var orderTypeSummariesFromDB []OrderTypeSummary
 	s.db.Table("orders").
 		Select("COALESCE(order_types.name, orders.type) as order_type, COALESCE(orders.order_type_id, 0) as order_type_id, SUM(orders.total) as amount, COUNT(*) as count, COALESCE(order_types.hide_amount_in_reports, false) as hide_amount").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id").
@@ -265,11 +294,28 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Where("orders.status IN ?", []string{"completed", "paid"}).
 		Where("sales.status NOT IN ?", []string{"refunded"}).
 		Group("COALESCE(order_types.name, orders.type), COALESCE(orders.order_type_id, 0), COALESCE(order_types.hide_amount_in_reports, false)").
-		Order("SUM(orders.total) DESC").
-		Scan(&orderTypeSummaries)
+		Scan(&orderTypeSummariesFromDB)
 
+	// Create a map for quick lookup of sales data by order type name
+	salesByOrderType := make(map[string]OrderTypeSummary)
+	for _, ot := range orderTypeSummariesFromDB {
+		salesByOrderType[ot.OrderType] = ot
+	}
+
+	// CRITICAL: Iterate over ALL order types to ensure consistent columns (even if no sales)
 	report.DetalleTiposPedido = []OrderTypeDetail{}
-	for _, ot := range orderTypeSummaries {
+	for _, orderType := range allOrderTypes {
+		ot, hasSales := salesByOrderType[orderType.Name]
+		if !hasSales {
+			// No sales for this order type - add with zeros
+			ot = OrderTypeSummary{
+				OrderType:   orderType.Name,
+				OrderTypeID: orderType.ID,
+				Amount:      0,
+				Count:       0,
+				HideAmount:  orderType.HideAmountInReports,
+			}
+		}
 		// Get products for this order type
 		type ProductByTypeSum struct {
 			ProductName string
@@ -308,6 +354,45 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 			Count:      int(ot.Count),
 			HideAmount: ot.HideAmount,
 			Products:   productDetails,
+		})
+	}
+
+	// Get cash register movements for this day (exclude automatic "sale" movements)
+	var movements []models.CashMovement
+	s.db.Preload("Employee").
+		Joins("JOIN cash_registers ON cash_registers.id = cash_movements.cash_register_id").
+		Where("cash_movements.created_at >= ? AND cash_movements.created_at < ?", startOfDay, endOfDay).
+		Where("cash_movements.type IN ?", []string{"deposit", "withdrawal"}).
+		Order("cash_movements.created_at ASC").
+		Find(&movements)
+
+	report.DetalleMovimientos = []CashMovementDetail{}
+	report.TotalDepositos = 0
+	report.TotalRetiros = 0
+
+	for _, movement := range movements {
+		employeeName := "Sistema"
+		if movement.Employee != nil {
+			employeeName = movement.Employee.Name
+		}
+
+		movementType := movement.Type
+		amount := movement.Amount
+
+		// Track totals
+		if movementType == "deposit" {
+			report.TotalDepositos += amount
+		} else if movementType == "withdrawal" {
+			report.TotalRetiros += amount
+		}
+
+		report.DetalleMovimientos = append(report.DetalleMovimientos, CashMovementDetail{
+			Type:        movementType,
+			Amount:      amount,
+			Description: movement.Description,
+			Reason:      movement.Reason,
+			Employee:    employeeName,
+			Time:        movement.CreatedAt.Format("15:04"), // HH:MM format
 		})
 	}
 
@@ -397,10 +482,26 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 			report.TicketPromedio,
 		}
 
-		// Add columns for each order type (in the same order as headers)
+		// CRITICAL: Add columns for EACH order type in the SAME order as headers
+		// Create a map for quick lookup
+		orderTypeDataMap := make(map[string]OrderTypeDetail)
 		for _, ot := range report.DetalleTiposPedido {
-			row = append(row, ot.Amount)  // amount column
-			row = append(row, ot.Count)   // count column
+			orderTypeDataMap[ot.OrderType] = ot
+		}
+
+		// Get ALL order types in consistent order
+		var allOrderTypes []models.OrderType
+		s.db.Order("display_order ASC, name ASC").Find(&allOrderTypes)
+
+		// Add data for each order type (0 if no sales)
+		for _, orderType := range allOrderTypes {
+			if otData, exists := orderTypeDataMap[orderType.Name]; exists {
+				row = append(row, otData.Amount) // amount column
+				row = append(row, otData.Count)  // count column
+			} else {
+				row = append(row, 0) // amount = 0
+				row = append(row, 0) // count = 0
+			}
 		}
 
 		// Add JSON details at the end
@@ -494,10 +595,14 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"ticket_promedio",
 		}
 
-		// Add a header for each order type (amount and count)
-		for _, ot := range report.DetalleTiposPedido {
-			headers = append(headers, fmt.Sprintf("%s_ventas", ot.OrderType))
-			headers = append(headers, fmt.Sprintf("%s_ordenes", ot.OrderType))
+		// CRITICAL: Get ALL order types to ensure consistent columns
+		var allOrderTypes []models.OrderType
+		s.db.Order("display_order ASC, name ASC").Find(&allOrderTypes)
+
+		// Add a header for each order type (amount and count) in consistent order
+		for _, orderType := range allOrderTypes {
+			headers = append(headers, fmt.Sprintf("%s_ventas", orderType.Name))
+			headers = append(headers, fmt.Sprintf("%s_ordenes", orderType.Name))
 		}
 
 		// Add final headers for JSON details

@@ -24,6 +24,15 @@ export interface OrderTypeDetail {
   products: ProductDetail[]
 }
 
+export interface CashMovementDetail {
+  type: string          // "deposit" | "withdrawal"
+  amount: number        // Positive for deposits, negative for withdrawals
+  description: string   // Description of the movement
+  reason: string        // Reason for the movement
+  employee: string      // Employee who made the movement
+  time: string          // Time of the movement (HH:MM format)
+}
+
 export interface ReportData {
   fecha: string
   ventas_totales: number
@@ -35,6 +44,9 @@ export interface ReportData {
   detalle_productos: ProductDetail[]
   detalle_tipos_pago?: PaymentMethodDetail[]
   detalle_tipos_pedido?: OrderTypeDetail[]
+  detalle_movimientos?: CashMovementDetail[]
+  total_depositos?: number
+  total_retiros?: number
 }
 
 class GoogleSheetsService {
@@ -129,8 +141,8 @@ class GoogleSheetsService {
       headers.forEach((header, index) => {
         const value = row[index] || ''
 
-        // Parse JSON fields (detalle_productos, detalle_tipos_pedido, detalle_tipos_pago)
-        if (header === 'detalle_productos' || header === 'detalle_tipos_pedido' || header === 'detalle_tipos_pago') {
+        // Parse JSON fields (detalle_productos, detalle_tipos_pedido, detalle_tipos_pago, detalle_movimientos)
+        if (header === 'detalle_productos' || header === 'detalle_tipos_pedido' || header === 'detalle_tipos_pago' || header === 'detalle_movimientos') {
           try {
             report[header] = value ? JSON.parse(value) : []
           } catch {
@@ -140,7 +152,7 @@ class GoogleSheetsService {
         // Convertir a número si parece ser numérico
         else if (header === 'ventas_totales' || header === 'ventas_dian' || header === 'ventas_no_dian' ||
             header === 'ordenes' || header === 'productos_vendidos' || header === 'ticket_promedio' ||
-            header === 'total' || header === 'cantidad') {
+            header === 'total' || header === 'cantidad' || header === 'total_depositos' || header === 'total_retiros') {
           report[header] = this.parseNumber(value)
         } else {
           report[header] = value
@@ -159,7 +171,10 @@ class GoogleSheetsService {
           ticket_promedio: report.ticket_promedio || 0,
           detalle_productos: report.detalle_productos || [],
           detalle_tipos_pago: report.detalle_tipos_pago || [],
-          detalle_tipos_pedido: report.detalle_tipos_pedido || []
+          detalle_tipos_pedido: report.detalle_tipos_pedido || [],
+          detalle_movimientos: report.detalle_movimientos || [],
+          total_depositos: report.total_depositos || 0,
+          total_retiros: report.total_retiros || 0
         })
       }
     }

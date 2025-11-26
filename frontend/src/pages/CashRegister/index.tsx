@@ -66,7 +66,12 @@ interface CashRegisterStatus {
   status: 'open' | 'closed';
   movements: CashMovement[];
   sales_summary: {
-    by_payment_method: { [key: string]: number };
+    by_payment_method: { [key: string]: number }; // For cash register balance (affects_cash_register=true)
+    total: number;
+    count: number;
+  };
+  sales_summary_for_display: {
+    by_payment_method: { [key: string]: number }; // For sales summary display (show_in_cash_summary=true)
     total: number;
     count: number;
   };
@@ -112,6 +117,7 @@ const CashRegister: React.FC = () => {
         if (register) {
           // Get sales for this cash register to calculate summary
           let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
+          let salesSummaryForDisplay = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
 
           try {
             // CRITICAL FIX: Use getSalesHistory instead of getSales (which only returns today's sales)
@@ -122,6 +128,7 @@ const CashRegister: React.FC = () => {
             const registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
 
             registerSales.forEach((sale: any) => {
+              // For balance summary: Add full sale total
               salesSummary.total += sale.total;
               salesSummary.count++;
 
@@ -130,16 +137,34 @@ const CashRegister: React.FC = () => {
                 sale.payment_details.forEach((payment: any) => {
                   const paymentMethod = payment.payment_method;
 
-                  // CRITICAL: Only include payment methods that affect cash register
+                  // For cash register balance: Only include payment methods that affect cash register
                   // This must match the backend calculation in employee_service.go:578-584
                   const affectsCashRegister = paymentMethod?.affects_cash_register === true;
-
                   if (paymentMethod && paymentMethod.name && affectsCashRegister) {
                     const methodName = paymentMethod.name;
                     salesSummary.by_payment_method[methodName] =
                       (salesSummary.by_payment_method[methodName] || 0) + payment.amount;
                   }
+
+                  // For display summary: Include payment methods that should show in cash summary
+                  // CRITICAL FIX: Only add to total if show_in_cash_summary is true
+                  const showInCashSummary = paymentMethod?.show_in_cash_summary === true;
+                  if (paymentMethod && paymentMethod.name && showInCashSummary) {
+                    const methodName = paymentMethod.name;
+                    salesSummaryForDisplay.by_payment_method[methodName] =
+                      (salesSummaryForDisplay.by_payment_method[methodName] || 0) + payment.amount;
+                    // Add to display total only if this payment method should be shown
+                    salesSummaryForDisplay.total += payment.amount;
+                  }
                 });
+
+                // Only count sales that have at least one payment method with show_in_cash_summary=true
+                const hasVisiblePayment = sale.payment_details.some((payment: any) =>
+                  payment.payment_method?.show_in_cash_summary === true
+                );
+                if (hasVisiblePayment) {
+                  salesSummaryForDisplay.count++;
+                }
               }
             });
           } catch (e) {
@@ -166,7 +191,8 @@ const CashRegister: React.FC = () => {
               created_at: new Date(m.created_at || new Date()),
               created_by: m.created_by || ''
             })),
-            sales_summary: salesSummary
+            sales_summary: salesSummary,
+            sales_summary_for_display: salesSummaryForDisplay
           });
 
           // Set default closing amount
@@ -397,7 +423,7 @@ const CashRegister: React.FC = () => {
                 </Typography>
                 <List dense>
                   {/* Show each payment method separately */}
-                  {Object.entries(registerStatus.sales_summary.by_payment_method).map(([methodName, amount]) => (
+                  {Object.entries(registerStatus.sales_summary_for_display.by_payment_method).map(([methodName, amount]) => (
                     <ListItem key={methodName}>
                       <ListItemText primary={methodName} />
                       <ListItemSecondaryAction>
@@ -412,14 +438,14 @@ const CashRegister: React.FC = () => {
                     <ListItemText primary={<strong>Total Ventas</strong>} />
                     <ListItemSecondaryAction>
                       <Typography variant="h6" color="primary">
-                        ${registerStatus.sales_summary.total.toLocaleString('es-CO')}
+                        ${registerStatus.sales_summary_for_display.total.toLocaleString('es-CO')}
                       </Typography>
                     </ListItemSecondaryAction>
                   </ListItem>
                   <ListItem>
                     <ListItemText primary="Cantidad de ventas" />
                     <ListItemSecondaryAction>
-                      <Chip label={registerStatus.sales_summary.count} />
+                      <Chip label={registerStatus.sales_summary_for_display.count} />
                     </ListItemSecondaryAction>
                   </ListItem>
                 </List>

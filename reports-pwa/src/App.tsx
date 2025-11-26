@@ -1,23 +1,31 @@
 import { useState, useEffect } from 'react'
-import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail } from './services/googleSheets'
+import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail, type CashMovementDetail } from './services/googleSheets'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
 
 function App() {
+  // Helper function to get current date/time in Colombia timezone
+  const getColombiaDate = (): Date => {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+  }
+
   const [reports, setReports] = useState<ReportData[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [isConfigured, setIsConfigured] = useState(false)
   const [missingConfig, setMissingConfig] = useState<string[]>([])
 
-  // Date navigation
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  // Date navigation - initialize with Colombia timezone
+  const [selectedDate, setSelectedDate] = useState<Date>(getColombiaDate())
   const [viewPeriod, setViewPeriod] = useState<ViewPeriod>('day')
   const [currentReport, setCurrentReport] = useState<ReportData | null>(null)
 
   // Products tab navigation
   const [selectedProductsTab, setSelectedProductsTab] = useState<'total' | string>('total')
+
+  // Cash movements accordion state
+  const [showCashMovements, setShowCashMovements] = useState(false)
 
   useEffect(() => {
     const configured = googleSheetsService.isConfigured()
@@ -82,8 +90,24 @@ function App() {
     }
   }
 
+  // CRITICAL: Format date in Colombia timezone (UTC-5) to avoid timezone issues
+  // When it's 9 PM in Colombia, server might be in different timezone
   const formatDateForFilter = (date: Date): string => {
-    return date.toISOString().split('T')[0]
+    // Use Colombia timezone (UTC-5)
+    const colombiaDate = new Date(date.toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+    const year = colombiaDate.getFullYear()
+    const month = String(colombiaDate.getMonth() + 1).padStart(2, '0')
+    const day = String(colombiaDate.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Helper to parse YYYY-MM-DD date strings from CSV in Colombia timezone
+  const parseDateFromCSV = (dateStr: string): Date => {
+    // Parse as local date in Colombia timezone to avoid UTC conversion issues
+    const [year, month, day] = dateStr.split('-').map(Number)
+    // Create date at noon Colombia time to avoid edge cases with midnight
+    const colombiaDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00`
+    return new Date(new Date(colombiaDateStr).toLocaleString('en-US', { timeZone: 'America/Bogota' }))
   }
 
   const getReportsInPeriod = (): ReportData[] => {
@@ -91,7 +115,7 @@ function App() {
 
     switch (viewPeriod) {
       case 'week': {
-        // Get start of week (Sunday)
+        // Get start of week (Sunday) in Colombia timezone
         const startOfWeek = new Date(date)
         startOfWeek.setDate(date.getDate() - date.getDay())
         startOfWeek.setHours(0, 0, 0, 0)
@@ -102,7 +126,7 @@ function App() {
         endOfWeek.setHours(23, 59, 59, 999)
 
         return reports.filter(r => {
-          const reportDate = new Date(r.fecha)
+          const reportDate = parseDateFromCSV(r.fecha)
           return reportDate >= startOfWeek && reportDate <= endOfWeek
         })
       }
@@ -112,7 +136,7 @@ function App() {
         const month = date.getMonth()
 
         return reports.filter(r => {
-          const reportDate = new Date(r.fecha)
+          const reportDate = parseDateFromCSV(r.fecha)
           return reportDate.getFullYear() === year && reportDate.getMonth() === month
         })
       }
@@ -121,7 +145,7 @@ function App() {
         const year = date.getFullYear()
 
         return reports.filter(r => {
-          const reportDate = new Date(r.fecha)
+          const reportDate = parseDateFromCSV(r.fecha)
           return reportDate.getFullYear() === year
         })
       }
@@ -222,6 +246,22 @@ function App() {
 
     const aggregatedPaymentMethods = Object.values(paymentMethodMap)
 
+    // Aggregate cash movements
+    const allMovements: CashMovementDetail[] = []
+    let totalDepositos = 0
+    let totalRetiros = 0
+
+    periodReports.forEach(report => {
+      if (report.detalle_movimientos) {
+        allMovements.push(...report.detalle_movimientos)
+      }
+      totalDepositos += (report.total_depositos || 0)
+      totalRetiros += (report.total_retiros || 0)
+    })
+
+    // Sort movements by date (earliest first)
+    allMovements.sort((a, b) => a.time.localeCompare(b.time))
+
     // Get period label for fecha field
     const getPeriodLabel = (): string => {
       switch (viewPeriod) {
@@ -253,7 +293,10 @@ function App() {
                        periodReports.reduce((sum, r) => sum + r.ordenes, 0),
       detalle_productos: aggregatedProducts,
       detalle_tipos_pago: aggregatedPaymentMethods,
-      detalle_tipos_pedido: aggregatedOrderTypes
+      detalle_tipos_pedido: aggregatedOrderTypes,
+      detalle_movimientos: allMovements,
+      total_depositos: totalDepositos,
+      total_retiros: totalRetiros
     }
   }
 
@@ -279,7 +322,7 @@ function App() {
   }
 
   const goToToday = () => {
-    setSelectedDate(new Date())
+    setSelectedDate(getColombiaDate())
   }
 
   const formatCurrency = (amount: number) => {
@@ -577,6 +620,79 @@ function App() {
                     </>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Cash Movements Section - Accordion */}
+            {currentReport.detalle_movimientos && (currentReport.total_depositos! > 0 || currentReport.total_retiros! > 0) && (
+              <div className="products-section" style={{ marginTop: '24px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    padding: '16px 0',
+                    borderBottom: showCashMovements ? '2px solid #e0e0e0' : 'none'
+                  }}
+                  onClick={() => setShowCashMovements(!showCashMovements)}
+                >
+                  <h3 style={{ margin: 0 }}>💰 Movimientos de Caja</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <span style={{ fontSize: '14px', color: '#666' }}>
+                      Depósitos: {formatCurrency(currentReport.total_depositos || 0)} |
+                      Retiros: {formatCurrency(currentReport.total_retiros || 0)} |
+                      Neto: {formatCurrency((currentReport.total_depositos || 0) - (currentReport.total_retiros || 0))}
+                    </span>
+                    <span style={{ fontSize: '20px' }}>{showCashMovements ? '▼' : '▶'}</span>
+                  </div>
+                </div>
+
+                {showCashMovements && currentReport.detalle_movimientos.length > 0 && (
+                  <div className="products-table" style={{ marginTop: '16px' }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '80px' }}>Hora</th>
+                          <th style={{ width: '100px' }}>Tipo</th>
+                          <th style={{ width: '120px', textAlign: 'right' }}>Monto</th>
+                          <th>Razón</th>
+                          <th style={{ width: '150px' }}>Empleado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentReport.detalle_movimientos.map((movement, idx) => (
+                          <tr key={idx}>
+                            <td>{movement.time}</td>
+                            <td>
+                              <span style={{
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                backgroundColor: movement.type === 'deposit' ? '#d4edda' : '#f8d7da',
+                                color: movement.type === 'deposit' ? '#155724' : '#721c24'
+                              }}>
+                                {movement.type === 'deposit' ? 'Depósito' : 'Retiro'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: movement.type === 'deposit' ? '#155724' : '#721c24' }}>
+                              {movement.type === 'deposit' ? '+' : '-'}{formatCurrency(Math.abs(movement.amount))}
+                            </td>
+                            <td>{movement.reason || movement.description}</td>
+                            <td>{movement.employee}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {showCashMovements && currentReport.detalle_movimientos.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '32px', color: '#666' }}>
+                    No hay movimientos de caja para este período
+                  </div>
+                )}
               </div>
             )}
           </>

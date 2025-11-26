@@ -253,6 +253,14 @@ const POS: React.FC = () => {
       setSelectedTable(order.table || null);
       setSelectedCustomer(order.customer || null);
 
+      // CRITICAL FIX: Load delivery info if present
+      if (order.delivery_customer_name || order.delivery_address || order.delivery_phone) {
+        setDeliveryInfo({
+          customerName: order.delivery_customer_name || '',
+          address: order.delivery_address || '',
+          phone: order.delivery_phone || ''
+        });
+      }
 
       toast.info(`Orden ${order.order_number} ${isEditing ? 'lista para editar' : 'cargada'}`);
 
