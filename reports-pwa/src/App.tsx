@@ -36,7 +36,8 @@ function App() {
       setMissingConfig(missing)
     } else {
       // Auto-load today's report on mount
-      loadReports()
+      // Pass true to skip the isConfigured check since we just verified it
+      loadReports(true)
     }
   }, [])
 
@@ -47,8 +48,11 @@ function App() {
     }
   }, [selectedDate, reports, viewPeriod])
 
-  const loadReports = async () => {
-    if (!isConfigured) {
+  const loadReports = async (skipConfigCheck = false) => {
+    // Check configuration - either skip if already verified, or check against service directly
+    const actuallyConfigured = skipConfigCheck || googleSheetsService.isConfigured()
+
+    if (!actuallyConfigured) {
       setError('La aplicación no está configurada.')
       return
     }
@@ -428,7 +432,7 @@ function App() {
             </div>
 
             <button
-              onClick={loadReports}
+              onClick={() => loadReports()}
               disabled={loading}
               className="btn-primary"
             >

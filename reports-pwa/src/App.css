@@ -19,20 +19,47 @@
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
+html {
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-primary);
   line-height: 1.6;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--bg-color); /* Ensure root also has background */
 }
 
 .app {
-  max-width: 1400px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 1rem;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  background-color: var(--bg-color); /* Ensure app container has background */
+}
+
+/* Desktop: apply max-width only on larger screens */
+@media (min-width: 1400px) {
+  .app {
+    max-width: 1400px;
+  }
 }
 
 /* Header */
@@ -253,11 +280,52 @@ body {
 
 .products-table {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  width: 100%;
+  max-width: 100%;
 }
 
 .products-table table {
   width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
+}
+
+/* Prevent tables from breaking layout on mobile */
+@media (max-width: 768px) {
+  .products-table {
+    margin: 0 -1rem; /* Extend to edges on mobile */
+    padding: 0 1rem;
+  }
+
+  .products-table table {
+    font-size: 0.875rem;
+    min-width: 600px; /* Allow horizontal scroll for wide tables */
+  }
+
+  .products-table th,
+  .products-table td {
+    white-space: nowrap; /* Prevent text wrapping causing layout issues */
+    padding: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .products-table {
+    margin: 0 -0.75rem;
+    padding: 0 0.75rem;
+  }
+
+  .products-table table {
+    font-size: 0.8125rem;
+    min-width: 500px;
+  }
+
+  .products-table th,
+  .products-table td {
+    padding: 0.4rem;
+  }
 }
 
 .products-table th {
@@ -388,6 +456,15 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .app {
+    padding: 0.75rem;
+  }
+
+  .header {
+    margin: -0.75rem -0.75rem 1.5rem -0.75rem;
+    padding: 1.75rem 1rem;
+  }
+
   .header h1 {
     font-size: 1.5rem;
   }
@@ -421,6 +498,10 @@ body {
   .products-table {
     font-size: 0.875rem;
   }
+
+  .products-section {
+    padding: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -433,13 +514,17 @@ body {
     padding: 1.5rem 0.5rem;
   }
 
+  .header h1 {
+    font-size: 1.25rem;
+  }
+
   .date-nav {
     gap: 0.5rem;
   }
 
   .date-display h2 {
     font-size: 0.875rem;
-    min-width: 150px;
+    min-width: 120px;
   }
 
   .summary-card {
@@ -452,5 +537,24 @@ body {
 
   .card-value {
     font-size: 1.25rem;
+  }
+
+  .controls {
+    padding: 0.75rem;
+  }
+
+  .products-section {
+    padding: 0.75rem;
+  }
+
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+
+  .tab {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
   }
 }
