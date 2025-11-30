@@ -521,28 +521,12 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 		PayableAmount:        fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals - use appropriate tax ID based on whether tax is applied
-	var taxID int
-	var taxPercent string
-	if sale.Tax > 0 {
-		taxID = 1 // IVA 19%
-		taxPercent = "19"
-	} else {
-		taxID = 5 // IVA 0% (exempt/not subject to IVA)
-		taxPercent = "0"
-	}
+	// Calculate tax totals by grouping products by their tax type
+	// This supports invoices with multiple tax types (e.g., IVA 19%, IVA 0%, ICA, etc.)
+	invoice.TaxTotals = s.calculateTaxTotals(sale.Order)
 
-	invoice.TaxTotals = []TaxTotal{
-		{
-			TaxID:         taxID,
-			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       taxPercent,
-			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
-		},
-	}
-
-	// Set invoice lines - pass tax info to ensure consistency between header and lines
-	invoice.InvoiceLines = s.prepareInvoiceLines(sale.Order, taxID, taxPercent)
+	// Set invoice lines - calculate taxes per product based on their TaxTypeID
+	invoice.InvoiceLines = s.prepareInvoiceLines(sale.Order)
 
 	// Set discounts if any
 	if sale.Discount > 0 {
@@ -560,24 +544,79 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	return invoice, nil
 }
 
-// prepareInvoiceLines prepares invoice lines from order items
-// headerTaxID and headerTaxPercent ensure consistency between header and line taxes
-func (s *InvoiceService) prepareInvoiceLines(order *models.Order, headerTaxID int, headerTaxPercent string) []InvoiceLine {
-	lines := make([]InvoiceLine, 0)
-
-	// Convert tax percent to float for calculations
-	headerTaxPercentFloat := 0.0
-	if headerTaxPercent != "0" {
-		fmt.Sscanf(headerTaxPercent, "%f", &headerTaxPercentFloat)
+// calculateTaxTotals calculates tax totals grouped by tax type
+// Considers company's TypeRegimeID: No Responsable de IVA always returns 0% regardless of products
+func (s *InvoiceService) calculateTaxTotals(order *models.Order) []TaxTotal {
+	// Map to accumulate tax amounts by tax type
+	// Key: tax_id, Value: {taxableAmount, taxAmount, percent}
+	type TaxAccumulator struct {
+		TaxID         int
+		TaxableAmount float64
+		TaxAmount     float64
+		Percent       float64
 	}
+	taxMap := make(map[int]*TaxAccumulator)
+
+	// Iterate through all order items and accumulate taxes by type
+	for _, item := range order.Items {
+		// Get tax info based on company's TypeRegimeID and product's TaxTypeID
+		dianTaxID, taxPercent := s.getTaxInfoForProduct(item.Product.TaxTypeID)
+
+		// Calculate tax amount for this item
+		taxAmount := item.Subtotal * (taxPercent / 100.0)
+
+		// Accumulate in map
+		if acc, exists := taxMap[dianTaxID]; exists {
+			acc.TaxableAmount += item.Subtotal
+			acc.TaxAmount += taxAmount
+		} else {
+			taxMap[dianTaxID] = &TaxAccumulator{
+				TaxID:         dianTaxID,
+				TaxableAmount: item.Subtotal,
+				TaxAmount:     taxAmount,
+				Percent:       taxPercent,
+			}
+		}
+	}
+
+	// Convert map to slice of TaxTotal
+	taxTotals := make([]TaxTotal, 0, len(taxMap))
+	for _, acc := range taxMap {
+		taxTotals = append(taxTotals, TaxTotal{
+			TaxID:         acc.TaxID,
+			TaxAmount:     fmt.Sprintf("%.2f", acc.TaxAmount),
+			Percent:       fmt.Sprintf("%.2f", acc.Percent),
+			TaxableAmount: fmt.Sprintf("%.2f", acc.TaxableAmount),
+		})
+	}
+
+	// If no taxes found, add a default IVA 0% entry to avoid empty tax_totals
+	if len(taxTotals) == 0 {
+		taxTotals = append(taxTotals, TaxTotal{
+			TaxID:         1,
+			TaxAmount:     "0.00",
+			Percent:       "0.00",
+			TaxableAmount: fmt.Sprintf("%.2f", order.Subtotal),
+		})
+	}
+
+	return taxTotals
+}
+
+// prepareInvoiceLines prepares invoice lines from order items
+// Considers company's TypeRegimeID and product's TaxTypeID to determine correct tax
+func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine {
+	lines := make([]InvoiceLine, 0)
 
 	for _, item := range order.Items {
 		// Use product ID as code (DIAN requires non-empty code)
 		productCode := fmt.Sprintf("%d", item.Product.ID)
 
-		// Use header tax info to ensure consistency with header TaxTotals
-		// This prevents FAS01b error (tax mismatch between header and lines)
-		taxAmount := item.Subtotal * (headerTaxPercentFloat / 100.0)
+		// Get tax info based on company's TypeRegimeID and product's TaxTypeID
+		dianTaxID, taxPercent := s.getTaxInfoForProduct(item.Product.TaxTypeID)
+
+		// Calculate tax amount based on determined percentage
+		taxAmount := item.Subtotal * (taxPercent / 100.0)
 
 		line := InvoiceLine{
 			UnitMeasureID:            item.Product.UnitMeasureID,
@@ -592,10 +631,10 @@ func (s *InvoiceService) prepareInvoiceLines(order *models.Order, headerTaxID in
 			BaseQuantity:             "1",
 			TaxTotals: []TaxTotal{
 				{
-					TaxID:         headerTaxID,
+					TaxID:         dianTaxID,
 					TaxAmount:     fmt.Sprintf("%.2f", taxAmount),
 					TaxableAmount: fmt.Sprintf("%.2f", item.Subtotal),
-					Percent:       headerTaxPercent,
+					Percent:       fmt.Sprintf("%.2f", taxPercent),
 				},
 			},
 		}
@@ -740,6 +779,54 @@ func (s *InvoiceService) getPaymentMethodCode(paymentMethod *models.PaymentMetho
 	default:
 		return 1 // Instrumento no definido
 	}
+}
+
+// getDIANTaxIDFromCode maps DIAN TaxType Code to tax_id for electronic invoicing
+// According to DIAN parametric data:
+//   Code "01" -> tax_id 1 (IVA - all rates 0%, 5%, 19%)
+//   Code "02" -> tax_id 2 (IC - Impuesto al Consumo)
+//   Code "03" -> tax_id 3 (ICA - Impuesto de Industria y Comercio)
+//   Code "04" -> tax_id 4 (INC - Impuesto Nacional al Consumo)
+func (s *InvoiceService) getDIANTaxIDFromCode(taxCode string) int {
+	switch taxCode {
+	case "01":
+		return 1 // IVA (Value Added Tax)
+	case "02":
+		return 2 // IC (Consumption Tax)
+	case "03":
+		return 3 // ICA (Industry and Commerce Tax)
+	case "04":
+		return 4 // INC (National Consumption Tax)
+	default:
+		return 1 // Default to IVA
+	}
+}
+
+// getTaxInfoForProduct determines the correct DIAN tax_id and percentage
+// based on company's TypeRegimeID (fiscal responsibility) and product's TaxTypeID
+// Returns: (dianTaxID, taxPercent)
+func (s *InvoiceService) getTaxInfoForProduct(productTaxTypeID int) (int, float64) {
+	parametricData := models.GetDIANParametricData()
+
+	// CRITICAL: Check company's TypeRegimeID first
+	// TypeRegimeID = 2 (No Responsable de IVA) means company CANNOT charge IVA
+	if s.config.TypeRegimeID == 2 {
+		// No Responsable de IVA - Always use IVA 0% regardless of product configuration
+		return 1, 0.00 // tax_id: 1 (IVA), percent: 0%
+	}
+
+	// Company is Responsable de IVA (TypeRegimeID = 1 or other)
+	// Use product's TaxTypeID to determine the correct tax
+	taxType, exists := parametricData.TaxTypes[productTaxTypeID]
+	if !exists {
+		// Default to IVA 19% if tax type not found
+		taxType = parametricData.TaxTypes[1]
+	}
+
+	// Map TaxType.Code to DIAN tax_id
+	dianTaxID := s.getDIANTaxIDFromCode(taxType.Code)
+
+	return dianTaxID, taxType.Percent
 }
 
 // inferDocumentTypeID maps identification_type string to DIAN TypeDocumentIdentificationID
@@ -1061,27 +1148,11 @@ func (s *InvoiceService) prepareCreditNoteData(electronicInvoice *models.Electro
 		PayableAmount:       fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals - use appropriate tax ID based on whether tax is applied
-	var taxID int
-	var taxPercent string
-	if sale.Tax > 0 {
-		taxID = 1 // IVA 19%
-		taxPercent = "19"
-	} else {
-		taxID = 5 // IVA 0% (exempt/not subject to IVA)
-		taxPercent = "0"
-	}
+	// Calculate tax totals by grouping products by their tax type
+	// This supports credit notes with multiple tax types (e.g., IVA 19%, IVA 0%, ICA, etc.)
+	creditNote.TaxTotals = s.calculateTaxTotals(sale.Order)
 
-	creditNote.TaxTotals = []TaxTotal{
-		{
-			TaxID:         taxID,
-			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       taxPercent,
-			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
-		},
-	}
-
-	// Set credit note lines (same as original invoice)
+	// Set credit note lines - calculate taxes per product based on their TaxTypeID
 	creditNote.CreditNoteLines = s.prepareCreditNoteLines(sale.Order)
 	creditNote.Amount = sale.Total
 
@@ -1128,27 +1199,11 @@ func (s *InvoiceService) prepareDebitNoteData(electronicInvoice *models.Electron
 		PayableAmount:       fmt.Sprintf("%.2f", sale.Total),
 	}
 
-	// Set tax totals - use appropriate tax ID based on whether tax is applied
-	var taxID int
-	var taxPercent string
-	if sale.Tax > 0 {
-		taxID = 1 // IVA 19%
-		taxPercent = "19"
-	} else {
-		taxID = 5 // IVA 0% (exempt/not subject to IVA)
-		taxPercent = "0"
-	}
+	// Calculate tax totals by grouping products by their tax type
+	// This supports debit notes with multiple tax types (e.g., IVA 19%, IVA 0%, ICA, etc.)
+	debitNote.TaxTotals = s.calculateTaxTotals(sale.Order)
 
-	debitNote.TaxTotals = []TaxTotal{
-		{
-			TaxID:         taxID,
-			TaxAmount:     fmt.Sprintf("%.2f", sale.Tax),
-			Percent:       taxPercent,
-			TaxableAmount: fmt.Sprintf("%.2f", sale.Subtotal),
-		},
-	}
-
-	// Set debit note lines (same as original invoice)
+	// Set debit note lines - calculate taxes per product based on their TaxTypeID
 	debitNote.DebitNoteLines = s.prepareDebitNoteLines(sale.Order)
 	debitNote.Amount = sale.Total
 
@@ -1156,19 +1211,18 @@ func (s *InvoiceService) prepareDebitNoteData(electronicInvoice *models.Electron
 }
 
 // prepareCreditNoteLines prepares credit note lines from order items
+// Considers company's TypeRegimeID and product's TaxTypeID to determine correct tax
 func (s *InvoiceService) prepareCreditNoteLines(order *models.Order) []CreditNoteLine {
 	lines := make([]CreditNoteLine, 0)
-
-	// Get DIAN parametric data for tax calculations
-	dianData := models.GetDIANParametricData()
 
 	for _, item := range order.Items {
 		// Use product ID as code
 		productCode := fmt.Sprintf("%d", item.Product.ID)
 
-		// Get tax rate from product's tax type
-		taxType := dianData.TaxTypes[item.Product.TaxTypeID]
-		taxPercent := taxType.Percent
+		// Get tax info based on company's TypeRegimeID and product's TaxTypeID
+		dianTaxID, taxPercent := s.getTaxInfoForProduct(item.Product.TaxTypeID)
+
+		// Calculate tax amount based on determined percentage
 		taxAmount := item.Subtotal * (taxPercent / 100.0)
 
 		line := CreditNoteLine{
@@ -1184,7 +1238,7 @@ func (s *InvoiceService) prepareCreditNoteLines(order *models.Order) []CreditNot
 			BaseQuantity:             "1",
 			TaxTotals: []TaxTotal{
 				{
-					TaxID:         item.Product.TaxTypeID,
+					TaxID:         dianTaxID,
 					TaxAmount:     fmt.Sprintf("%.2f", taxAmount),
 					TaxableAmount: fmt.Sprintf("%.2f", item.Subtotal),
 					Percent:       fmt.Sprintf("%.2f", taxPercent),
@@ -1198,19 +1252,18 @@ func (s *InvoiceService) prepareCreditNoteLines(order *models.Order) []CreditNot
 }
 
 // prepareDebitNoteLines prepares debit note lines from order items
+// Considers company's TypeRegimeID and product's TaxTypeID to determine correct tax
 func (s *InvoiceService) prepareDebitNoteLines(order *models.Order) []DebitNoteLine {
 	lines := make([]DebitNoteLine, 0)
-
-	// Get DIAN parametric data for tax calculations
-	dianData := models.GetDIANParametricData()
 
 	for _, item := range order.Items {
 		// Use product ID as code
 		productCode := fmt.Sprintf("%d", item.Product.ID)
 
-		// Get tax rate from product's tax type
-		taxType := dianData.TaxTypes[item.Product.TaxTypeID]
-		taxPercent := taxType.Percent
+		// Get tax info based on company's TypeRegimeID and product's TaxTypeID
+		dianTaxID, taxPercent := s.getTaxInfoForProduct(item.Product.TaxTypeID)
+
+		// Calculate tax amount based on determined percentage
 		taxAmount := item.Subtotal * (taxPercent / 100.0)
 
 		line := DebitNoteLine{
@@ -1226,7 +1279,7 @@ func (s *InvoiceService) prepareDebitNoteLines(order *models.Order) []DebitNoteL
 			BaseQuantity:             "1",
 			TaxTotals: []TaxTotal{
 				{
-					TaxID:         item.Product.TaxTypeID,
+					TaxID:         dianTaxID,
 					TaxAmount:     fmt.Sprintf("%.2f", taxAmount),
 					TaxableAmount: fmt.Sprintf("%.2f", item.Subtotal),
 					Percent:       fmt.Sprintf("%.2f", taxPercent),

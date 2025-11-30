@@ -760,6 +760,15 @@ func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 		taxIncludedInPrice = config.TaxIncludedInPrice
 	}
 
+	// Get DIAN config to check company's TypeRegimeID
+	// TypeRegimeID = 2 means "No Responsable de IVA" - company CANNOT charge IVA
+	var dianConfig models.DIANConfig
+	s.db.First(&dianConfig)
+	isResponsableIVA := dianConfig.TypeRegimeID != 2 // Default to responsible if not configured
+
+	// Get DIAN parametric data for tax type lookups
+	parametricData := models.GetDIANParametricData()
+
 	// Calculate items subtotal and tax per product
 	for i := range order.Items {
 		item := &order.Items[i]
@@ -785,18 +794,20 @@ func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 
 		subtotal += item.Subtotal
 
-		// Calculate tax based on product tax_type_id
-		// DIAN Tax Types: 1=IVA 19%, 5=IVA 0%, 6=IVA 5%
+		// Calculate tax rate based on company's TypeRegimeID and product's TaxTypeID
 		var itemTaxRate float64
-		switch product.TaxTypeID {
-		case 1: // IVA 19%
-			itemTaxRate = 19.0
-		case 5: // IVA 0%
+		if !isResponsableIVA {
+			// Company is "No Responsable de IVA" - CANNOT charge IVA
 			itemTaxRate = 0.0
-		case 6: // IVA 5%
-			itemTaxRate = 5.0
-		default:
-			itemTaxRate = 0.0 // No tax by default
+		} else {
+			// Company is "Responsable de IVA" - use product's TaxTypeID
+			taxType, exists := parametricData.TaxTypes[product.TaxTypeID]
+			if exists {
+				itemTaxRate = taxType.Percent
+			} else {
+				// Default to IVA 19% if tax type not found
+				itemTaxRate = 19.0
+			}
 		}
 
 		// Calculate item tax

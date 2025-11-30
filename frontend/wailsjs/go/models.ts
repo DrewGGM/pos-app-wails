@@ -189,8 +189,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    anys: Record<string, any>;
-	    ConnPool?: any;
+	    ClauseBuilders: Record<string, ClauseBuilder>;
+	    ConnPool: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -213,6 +213,7 @@ export namespace gorm {
 	    Preloads: Record<string, Array<any>>;
 	    // Go type: sync
 	    Settings: any;
+	    ConnPool: any;
 	    Schema?: schema.Schema;
 	    Context: any;
 	    RaiseErrorOnNotFound: boolean;
@@ -247,7 +248,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.anys = source["anys"];
+	        this.ClauseBuilders = source["ClauseBuilders"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -317,8 +318,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    anys: Record<string, any>;
-	    ConnPool?: any;
+	    ClauseBuilders: Record<string, ClauseBuilder>;
+	    ConnPool: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -349,7 +350,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.anys = source["anys"];
+	        this.ClauseBuilders = source["ClauseBuilders"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];

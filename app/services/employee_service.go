@@ -377,8 +377,9 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 	}
 
 	// Calculate sales totals (same logic as generateCashRegisterReport)
+	// CRITICAL: Use Model() to respect soft delete - only include non-deleted sales
 	var sales []models.Sale
-	s.db.Where("cash_register_id = ?", register.ID).Find(&sales)
+	s.db.Model(&models.Sale{}).Where("cash_register_id = ?", register.ID).Find(&sales)
 
 	// CRITICAL FIX: Only count and sum sales that have at least one payment method with show_in_cash_summary=true
 	salesCount := 0
@@ -589,8 +590,9 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 	//
 	// CRITICAL: Only count sales created AFTER the cash register was opened
 	// This prevents counting sales from previous sessions that have the same cash_register_id
+	// CRITICAL: Filter deleted sales - soft delete must be respected
 	var cashAffectingPayments []models.Payment
-	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
+	s.db.Joins("JOIN sales ON payments.sale_id = sales.id AND sales.deleted_at IS NULL").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
 		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
 		Where("sales.created_at >= ?", register.OpenedAt).
@@ -609,8 +611,9 @@ func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) f
 	// Subtract refunded payments that affected cash register (money returned to customer)
 	// IMPORTANT: Only include payment methods where affects_cash_register = true
 	// CRITICAL: Only count sales created AFTER the cash register was opened
+	// CRITICAL: Filter deleted sales - soft delete must be respected
 	var refundedCashAffectingPayments []models.Payment
-	s.db.Joins("JOIN sales ON payments.sale_id = sales.id").
+	s.db.Joins("JOIN sales ON payments.sale_id = sales.id AND sales.deleted_at IS NULL").
 		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
 		Where("sales.cash_register_id = ? AND payment_methods.affects_cash_register = ?", register.ID, true).
 		Where("sales.created_at >= ?", register.OpenedAt).
@@ -645,8 +648,9 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 	}
 
 	// Calculate sales totals
+	// CRITICAL: Use Model() to respect soft delete - only include non-deleted sales
 	var sales []models.Sale
-	s.db.Where("cash_register_id = ?", register.ID).Find(&sales)
+	s.db.Model(&models.Sale{}).Where("cash_register_id = ?", register.ID).Find(&sales)
 
 	// CRITICAL FIX: Only count and sum sales that have at least one payment method with show_in_cash_summary=true
 	salesCount := 0
