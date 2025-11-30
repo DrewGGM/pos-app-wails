@@ -717,3 +717,104 @@ func (s *GoogleSheetsService) SyncNow() error {
 
 	return nil
 }
+
+// FullSyncResult represents the result of a full synchronization
+type FullSyncResult struct {
+	TotalDays      int      `json:"total_days"`       // Total number of days to sync
+	SyncedDays     int      `json:"synced_days"`      // Successfully synced days
+	FailedDays     int      `json:"failed_days"`      // Failed days
+	Errors         []string `json:"errors"`           // List of errors (one per failed day)
+	StartDate      string   `json:"start_date"`       // First date synced (YYYY-MM-DD)
+	EndDate        string   `json:"end_date"`         // Last date synced (YYYY-MM-DD)
+	Status         string   `json:"status"`           // "success", "partial", "error"
+	Message        string   `json:"message"`          // Human-readable message
+}
+
+// SyncAllDays performs a full synchronization of all days with sales data
+// This method finds all days with sales from the first sale to today and syncs them all
+func (s *GoogleSheetsService) SyncAllDays() (*FullSyncResult, error) {
+	config, err := s.GetConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config: %w", err)
+	}
+
+	if !config.IsEnabled {
+		return nil, fmt.Errorf("Google Sheets integration is disabled")
+	}
+
+	// Find the date of the first sale in the database
+	var firstSale models.Sale
+	if err := s.db.Order("created_at ASC").First(&firstSale).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &FullSyncResult{
+				TotalDays:  0,
+				SyncedDays: 0,
+				FailedDays: 0,
+				Status:     "success",
+				Message:    "No hay ventas para sincronizar",
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to find first sale: %w", err)
+	}
+
+	// Get start and end dates
+	startDate := time.Date(firstSale.CreatedAt.Year(), firstSale.CreatedAt.Month(), firstSale.CreatedAt.Day(), 0, 0, 0, 0, firstSale.CreatedAt.Location())
+	endDate := time.Now()
+
+	result := &FullSyncResult{
+		StartDate: startDate.Format("2006-01-02"),
+		EndDate:   endDate.Format("2006-01-02"),
+		Errors:    []string{},
+	}
+
+	// Calculate total days to sync
+	days := int(endDate.Sub(startDate).Hours()/24) + 1
+	result.TotalDays = days
+
+	// Iterate through each day and sync
+	currentDate := startDate
+	for currentDate.Before(endDate) || currentDate.Equal(endDate) {
+		// Generate report for this day
+		report, err := s.GenerateDailyReport(currentDate)
+		if err != nil {
+			result.FailedDays++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", currentDate.Format("2006-01-02"), err))
+		} else {
+			// Send to Google Sheets
+			if err := s.SendReport(config, report); err != nil {
+				result.FailedDays++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", currentDate.Format("2006-01-02"), err))
+			} else {
+				result.SyncedDays++
+			}
+		}
+
+		// Move to next day
+		currentDate = currentDate.Add(24 * time.Hour)
+	}
+
+	// Determine overall status
+	if result.FailedDays == 0 {
+		result.Status = "success"
+		result.Message = fmt.Sprintf("Sincronización completa exitosa: %d días sincronizados", result.SyncedDays)
+	} else if result.SyncedDays > 0 {
+		result.Status = "partial"
+		result.Message = fmt.Sprintf("Sincronización parcial: %d días sincronizados, %d fallidos", result.SyncedDays, result.FailedDays)
+	} else {
+		result.Status = "error"
+		result.Message = "La sincronización falló completamente"
+	}
+
+	// Update last sync status
+	config.LastSyncStatus = result.Status
+	if result.FailedDays > 0 {
+		config.LastSyncError = fmt.Sprintf("%d días fallidos", result.FailedDays)
+	} else {
+		config.LastSyncError = ""
+	}
+	now := time.Now()
+	config.LastSyncAt = &now
+	s.db.Save(config)
+
+	return result, nil
+}

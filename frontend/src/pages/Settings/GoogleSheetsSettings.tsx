@@ -38,7 +38,8 @@ import { toast } from 'react-toastify';
 import {
   wailsGoogleSheetsService,
   GoogleSheetsConfig,
-  GoogleSheetsConfigClass
+  GoogleSheetsConfigClass,
+  FullSyncResult
 } from '../../services/wailsGoogleSheetsService';
 import {
   wailsReportSchedulerService,
@@ -53,6 +54,9 @@ const GoogleSheetsSettings: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [fullSyncing, setFullSyncing] = useState(false);
+  const [fullSyncResult, setFullSyncResult] = useState<FullSyncResult | null>(null);
+  const [showFullSyncDialog, setShowFullSyncDialog] = useState(false);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [jsonKeyFile, setJsonKeyFile] = useState<string>('');
   const [secondsRemaining, setSecondsRemaining] = useState<number>(0);
@@ -151,6 +155,40 @@ const GoogleSheetsSettings: React.FC = () => {
       toast.error('Error al enviar reporte: ' + (error.message || error));
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleFullSync = async () => {
+    try {
+      setFullSyncing(true);
+      setShowFullSyncDialog(true);
+      const result = await wailsGoogleSheetsService.syncAllDays();
+      setFullSyncResult(result);
+
+      if (result.status === 'success') {
+        toast.success(result.message);
+      } else if (result.status === 'partial') {
+        toast.warning(result.message);
+      } else {
+        toast.error(result.message);
+      }
+
+      await loadConfig();
+      await loadSchedulerStatus();
+    } catch (error: any) {
+      toast.error('Error en sincronización total: ' + (error.message || error));
+      setFullSyncResult({
+        total_days: 0,
+        synced_days: 0,
+        failed_days: 0,
+        errors: [error.message || error],
+        start_date: '',
+        end_date: '',
+        status: 'error',
+        message: 'Error al ejecutar la sincronización total'
+      });
+    } finally {
+      setFullSyncing(false);
     }
   };
 
@@ -604,7 +642,16 @@ const GoogleSheetsSettings: React.FC = () => {
 
         {/* Acciones */}
         <Divider sx={{ my: 4 }} />
-        <Stack direction="row" spacing={2} justifyContent="flex-end">
+        <Stack direction="row" spacing={2} justifyContent="flex-end" flexWrap="wrap">
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={handleFullSync}
+            disabled={fullSyncing || !config.is_enabled}
+            startIcon={fullSyncing ? <CircularProgress size={20} /> : <CloudSyncIcon />}
+          >
+            {fullSyncing ? 'Sincronizando...' : 'Sincronización Total'}
+          </Button>
           <Button
             variant="outlined"
             onClick={handleSyncNow}
@@ -645,6 +692,123 @@ const GoogleSheetsSettings: React.FC = () => {
           <Button onClick={() => setShowKeyDialog(false)}>Cancelar</Button>
           <Button onClick={handlePasteJson} variant="contained" disabled={!jsonKeyFile}>
             Configurar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para mostrar resultados de sincronización total */}
+      <Dialog
+        open={showFullSyncDialog}
+        onClose={() => !fullSyncing && setShowFullSyncDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CloudSyncIcon />
+          Sincronización Total de Google Sheets
+        </DialogTitle>
+        <DialogContent>
+          {fullSyncing ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 4 }}>
+              <CircularProgress size={60} />
+              <Typography variant="h6">Sincronizando todos los días...</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Este proceso puede tomar varios minutos dependiendo de la cantidad de datos
+              </Typography>
+            </Box>
+          ) : fullSyncResult ? (
+            <Box>
+              {/* Estado general */}
+              <Alert
+                severity={fullSyncResult.status === 'success' ? 'success' : fullSyncResult.status === 'partial' ? 'warning' : 'error'}
+                sx={{ mb: 3 }}
+              >
+                <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                  {fullSyncResult.message}
+                </Typography>
+              </Alert>
+
+              {/* Estadísticas */}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent sx={{ textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total de Días
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                        {fullSyncResult.total_days}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent sx={{ textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Sincronizados
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                        {fullSyncResult.synced_days}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent sx={{ textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Fallidos
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'error.main' }}>
+                        {fullSyncResult.failed_days}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Rango de fechas */}
+              {fullSyncResult.start_date && fullSyncResult.end_date && (
+                <Box sx={{ mb: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Rango de sincronización:
+                  </Typography>
+                  <Typography variant="body1">
+                    <strong>Desde:</strong> {fullSyncResult.start_date} <strong>Hasta:</strong> {fullSyncResult.end_date}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Errores */}
+              {fullSyncResult.errors && fullSyncResult.errors.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    Errores encontrados:
+                  </Typography>
+                  <Box sx={{ maxHeight: 300, overflow: 'auto', p: 2, bgcolor: 'error.light', borderRadius: 1 }}>
+                    {fullSyncResult.errors.map((error: any, index: number) => (
+                      <Typography key={index} variant="body2" sx={{ mb: 1, fontFamily: 'monospace' }}>
+                        • {error}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              No hay resultados disponibles
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setShowFullSyncDialog(false)}
+            disabled={fullSyncing}
+            variant="contained"
+          >
+            Cerrar
           </Button>
         </DialogActions>
       </Dialog>

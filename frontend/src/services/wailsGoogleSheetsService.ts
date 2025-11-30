@@ -2,13 +2,17 @@ import {
   GetConfig,
   SaveConfig,
   TestConnection,
-  SyncNow
+  SyncNow,
+  SyncAllDays
 } from '../../wailsjs/go/services/GoogleSheetsService';
 import { models } from '../../wailsjs/go/models';
+import { services } from '../../wailsjs/go/models';
 
 export type GoogleSheetsConfig = models.GoogleSheetsConfig;
 // Export the class constructor as well
 export const GoogleSheetsConfigClass = models.GoogleSheetsConfig;
+
+export type FullSyncResult = services.FullSyncResult;
 
 export const wailsGoogleSheetsService = {
   async getConfig(): Promise<GoogleSheetsConfig> {
@@ -25,5 +29,9 @@ export const wailsGoogleSheetsService = {
 
   async syncNow(): Promise<void> {
     return await SyncNow();
+  },
+
+  async syncAllDays(): Promise<FullSyncResult> {
+    return await SyncAllDays();
   }
 };

@@ -189,8 +189,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    ClauseBuilders: Record<string, ClauseBuilder>;
-	    ConnPool: any;
+	    anys: Record<string, any>;
+	    ConnPool?: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -213,7 +213,6 @@ export namespace gorm {
 	    Preloads: Record<string, Array<any>>;
 	    // Go type: sync
 	    Settings: any;
-	    ConnPool: any;
 	    Schema?: schema.Schema;
 	    Context: any;
 	    RaiseErrorOnNotFound: boolean;
@@ -248,7 +247,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.ClauseBuilders = source["ClauseBuilders"];
+	        this.anys = source["anys"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -318,8 +317,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    ClauseBuilders: Record<string, ClauseBuilder>;
-	    ConnPool: any;
+	    anys: Record<string, any>;
+	    ConnPool?: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -350,7 +349,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.ClauseBuilders = source["ClauseBuilders"];
+	        this.anys = source["anys"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -3850,6 +3849,32 @@ export namespace services {
 	        this.phone = source["phone"];
 	        this.email = source["email"];
 	        this.has_system_config = source["has_system_config"];
+	    }
+	}
+	export class FullSyncResult {
+	    total_days: number;
+	    synced_days: number;
+	    failed_days: number;
+	    errors: string[];
+	    start_date: string;
+	    end_date: string;
+	    status: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FullSyncResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total_days = source["total_days"];
+	        this.synced_days = source["synced_days"];
+	        this.failed_days = source["failed_days"];
+	        this.errors = source["errors"];
+	        this.start_date = source["start_date"];
+	        this.end_date = source["end_date"];
+	        this.status = source["status"];
+	        this.message = source["message"];
 	    }
 	}
 	export class HourlySalesData {

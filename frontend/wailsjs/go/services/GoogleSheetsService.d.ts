@@ -12,6 +12,8 @@ export function SaveConfig(arg1:models.GoogleSheetsConfig):Promise<void>;
 
 export function SendReport(arg1:models.GoogleSheetsConfig,arg2:services.ReportData):Promise<void>;
 
+export function SyncAllDays():Promise<services.FullSyncResult>;
+
 export function SyncNow():Promise<void>;
 
 export function TestConnection(arg1:models.GoogleSheetsConfig):Promise<void>;

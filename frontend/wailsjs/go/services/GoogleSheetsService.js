@@ -18,6 +18,10 @@ export function SendReport(arg1, arg2) {
   return window['go']['services']['GoogleSheetsService']['SendReport'](arg1, arg2);
 }
 
+export function SyncAllDays() {
+  return window['go']['services']['GoogleSheetsService']['SyncAllDays']();
+}
+
 export function SyncNow() {
   return window['go']['services']['GoogleSheetsService']['SyncNow']();
 }
