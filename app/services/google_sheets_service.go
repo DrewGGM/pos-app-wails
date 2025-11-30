@@ -156,10 +156,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	s.db.Order("display_order ASC, name ASC").Find(&allOrderTypes)
 
 	// Get total sales (exclude refunded AND order types with hide_amount_in_reports=true)
+	// CRITICAL FIX: Use Model() to respect soft delete AND explicitly filter deleted sales/invoices
 	var totalSales float64
-	s.db.Table("orders").
+	s.db.Model(&models.Order{}).
 		Select("COALESCE(SUM(orders.total), 0)").
-		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
@@ -169,11 +170,12 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	report.VentasTotales = totalSales
 
 	// Get DIAN sales (orders with electronic invoice, exclude refunded AND hidden order types)
+	// CRITICAL FIX: Use Model() to respect soft delete AND explicitly filter deleted sales/invoices
 	var dianSales float64
-	s.db.Table("orders").
+	s.db.Model(&models.Order{}).
 		Select("COALESCE(SUM(orders.total), 0)").
-		Joins("INNER JOIN sales ON sales.order_id = orders.id").
-		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
+		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id AND electronic_invoices.deleted_at IS NULL").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
@@ -184,9 +186,10 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	report.VentasNoDIAN = totalSales - dianSales
 
 	// Get number of orders (exclude refunded AND hidden order types)
+	// CRITICAL FIX: Use Model() to respect soft delete AND explicitly filter deleted sales
 	var numOrders int64
-	s.db.Table("orders").
-		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+	s.db.Model(&models.Order{}).
+		Joins("INNER JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
@@ -196,10 +199,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	report.NumeroOrdenes = int(numOrders)
 
 	// Get total products sold (exclude refunded AND hidden order types)
+	// CRITICAL FIX: Filter deleted orders and sales
 	var totalProducts int
 	s.db.Table("order_items").
-		Joins("JOIN orders ON orders.id = order_items.order_id").
-		Joins("JOIN sales ON sales.order_id = orders.id").
+		Joins("JOIN orders ON orders.id = order_items.order_id AND orders.deleted_at IS NULL").
+		Joins("JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
@@ -224,8 +228,8 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	var productSummaries []ProductSummary
 	s.db.Table("order_items").
 		Select("products.name as product_name, SUM(order_items.quantity) as quantity, SUM(order_items.subtotal) as total").
-		Joins("JOIN orders ON orders.id = order_items.order_id").
-		Joins("JOIN sales ON sales.order_id = orders.id").
+		Joins("JOIN orders ON orders.id = order_items.order_id AND orders.deleted_at IS NULL").
+		Joins("JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 		Joins("JOIN products ON products.id = order_items.product_id").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
@@ -254,8 +258,8 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	var paymentSummaries []PaymentSummary
 	s.db.Table("payments").
 		Select("payment_methods.name as payment_method_name, SUM(payments.amount) as amount, COUNT(*) as count").
-		Joins("JOIN sales ON sales.id = payments.sale_id").
-		Joins("JOIN orders ON orders.id = sales.order_id").
+		Joins("JOIN sales ON sales.id = payments.sale_id AND sales.deleted_at IS NULL").
+		Joins("JOIN orders ON orders.id = sales.order_id AND orders.deleted_at IS NULL").
 		Joins("JOIN payment_methods ON payment_methods.id = payments.payment_method_id").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
@@ -286,9 +290,9 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	}
 
 	var orderTypeSummariesFromDB []OrderTypeSummary
-	s.db.Table("orders").
+	s.db.Model(&models.Order{}).
 		Select("COALESCE(order_types.name, orders.type) as order_type, COALESCE(orders.order_type_id, 0) as order_type_id, SUM(orders.total) as amount, COUNT(*) as count, COALESCE(order_types.hide_amount_in_reports, false) as hide_amount").
-		Joins("INNER JOIN sales ON sales.order_id = orders.id").
+		Joins("INNER JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id"). // LEFT JOIN to support legacy orders
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).
@@ -326,8 +330,8 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		var productsForType []ProductByTypeSum
 		query := s.db.Table("order_items").
 			Select("products.name as product_name, SUM(order_items.quantity) as quantity, SUM(order_items.subtotal) as total").
-			Joins("JOIN orders ON orders.id = order_items.order_id").
-			Joins("JOIN sales ON sales.order_id = orders.id").
+			Joins("JOIN orders ON orders.id = order_items.order_id AND orders.deleted_at IS NULL").
+			Joins("JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
 			Joins("JOIN products ON products.id = order_items.product_id").
 			Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 			Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
