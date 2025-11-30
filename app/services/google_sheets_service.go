@@ -467,6 +467,12 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		return fmt.Errorf("failed to marshal order types: %w", err)
 	}
 
+	// Convert cash movements to JSON string
+	movementsJSON, err := json.Marshal(report.DetalleMovimientos)
+	if err != nil {
+		return fmt.Errorf("failed to marshal cash movements: %w", err)
+	}
+
 	// Prepare row data
 	var row []interface{}
 
@@ -508,6 +514,9 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 		row = append(row, string(productsJSON))
 		row = append(row, string(paymentsJSON))
 		row = append(row, string(orderTypesJSON))
+		row = append(row, string(movementsJSON))      // Cash movements
+		row = append(row, report.TotalDepositos)       // Total deposits
+		row = append(row, report.TotalRetiros)         // Total withdrawals
 	} else {
 		// Original format
 		row = []interface{}{
@@ -521,6 +530,9 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 			string(productsJSON),
 			string(paymentsJSON),
 			string(orderTypesJSON),
+			string(movementsJSON),      // Cash movements
+			report.TotalDepositos,       // Total deposits
+			report.TotalRetiros,         // Total withdrawals
 		}
 	}
 
@@ -609,6 +621,9 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 		headers = append(headers, "detalle_productos")
 		headers = append(headers, "detalle_tipos_pago")
 		headers = append(headers, "detalle_tipos_pedido")
+		headers = append(headers, "detalle_movimientos")  // Cash movements
+		headers = append(headers, "total_depositos")      // Total deposits
+		headers = append(headers, "total_retiros")        // Total withdrawals
 
 		// Calculate end column (A=0, B=1, ... Z=25, AA=26, etc.)
 		numColumns := len(headers)
@@ -621,7 +636,7 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			endColumn = string(rune('A'+firstLetter)) + string(rune('A'+secondLetter))
 		}
 	} else {
-		// Original headers (A-J)
+		// Original headers (A-M, updated from A-J to include cash movements)
 		headers = []interface{}{
 			"fecha",
 			"ventas_totales",
@@ -633,8 +648,11 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"detalle_productos",
 			"detalle_tipos_pago",
 			"detalle_tipos_pedido",
+			"detalle_movimientos",  // Cash movements
+			"total_depositos",      // Total deposits
+			"total_retiros",        // Total withdrawals
 		}
-		endColumn = "J"
+		endColumn = "M"  // Updated from J to M
 	}
 
 	// Read first row
