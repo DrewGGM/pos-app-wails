@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	_ "github.com/go-sql-driver/mysql" // MySQL driver
 )
 
 // ConfigManagerService manages application configuration
@@ -399,4 +401,109 @@ func (s *ConfigManagerService) CheckExistingConfig(dbConfig config.DatabaseConfi
 		Email:           config.Email,
 		HasSystemConfig: hasSystemConfig,
 	}, nil
+}
+
+// ============================================================
+// DIAN MySQL Database Configuration (External Parametric Data)
+// ============================================================
+
+// TestMySQLConnection tests the MySQL database connection with given parameters
+func (s *ConfigManagerService) TestMySQLConnection(mysqlConfig config.MySQLConfig) error {
+	// Build MySQL connection string: user:password@tcp(host:port)/database
+	dsn := fmt.Sprintf(
+		"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		mysqlConfig.Username,
+		mysqlConfig.Password,
+		mysqlConfig.Host,
+		mysqlConfig.Port,
+		mysqlConfig.Database,
+	)
+
+	// Try to open connection
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to connect to MySQL database: %w", err)
+	}
+	defer db.Close()
+
+	// Ping database
+	if err := db.Ping(); err != nil {
+		return fmt.Errorf("failed to ping MySQL database: %w", err)
+	}
+
+	log.Printf("[MySQL] Connection test successful to %s:%d/%s", mysqlConfig.Host, mysqlConfig.Port, mysqlConfig.Database)
+	return nil
+}
+
+// SaveDIANDatabaseConfig saves the DIAN MySQL database configuration
+func (s *ConfigManagerService) SaveDIANDatabaseConfig(mysqlConfig config.MySQLConfig) error {
+	// Load existing config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		// If config doesn't exist, create a new one with defaults
+		cfg = &config.AppConfig{
+			Database: config.DatabaseConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Database: "pos_app_db",
+				Username: "postgres",
+				Password: "",
+				SSLMode:  "disable",
+			},
+			FirstRun: true,
+		}
+	}
+
+	// Update DIAN database configuration
+	cfg.DIANDatabase = &mysqlConfig
+
+	// Save updated config
+	if err := config.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save DIAN database config: %w", err)
+	}
+
+	log.Printf("[MySQL] DIAN database configuration saved: %s:%d/%s (enabled: %v)",
+		mysqlConfig.Host, mysqlConfig.Port, mysqlConfig.Database, mysqlConfig.Enabled)
+	return nil
+}
+
+// GetDIANDatabaseConfig returns the current DIAN MySQL database configuration
+func (s *ConfigManagerService) GetDIANDatabaseConfig() (*config.MySQLConfig, error) {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if cfg.DIANDatabase == nil {
+		// Return default disabled config
+		return &config.MySQLConfig{
+			Enabled:  false,
+			Host:     "localhost",
+			Port:     3306,
+			Database: "dian_parametrics",
+			Username: "root",
+			Password: "",
+		}, nil
+	}
+
+	return cfg.DIANDatabase, nil
+}
+
+// RemoveDIANDatabaseConfig removes the DIAN MySQL database configuration
+func (s *ConfigManagerService) RemoveDIANDatabaseConfig() error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Set DIAN database to nil (will be omitted from JSON)
+	cfg.DIANDatabase = nil
+
+	// Save updated config
+	if err := config.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	log.Println("[MySQL] DIAN database configuration removed")
+	return nil
 }

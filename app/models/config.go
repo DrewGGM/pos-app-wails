@@ -49,9 +49,10 @@ type RestaurantConfig struct {
 	EnableWaiterApp       bool   `json:"enable_waiter_app"`
 
 	// Invoice Settings
-	InvoiceHeader     string `json:"invoice_header"`
-	InvoiceFooter     string `json:"invoice_footer"`
-	ShowLogoOnInvoice bool   `json:"show_logo_on_invoice"`
+	InvoiceHeader        string `json:"invoice_header"`
+	InvoiceFooter        string `json:"invoice_footer"`
+	ShowLogoOnInvoice    bool   `json:"show_logo_on_invoice"`
+	DefaultConsumerEmail string `json:"default_consumer_email"` // Email for CONSUMIDOR FINAL invoices (falls back to company Email if empty)
 
 	// Tax Settings
 	DefaultTaxRate     float64 `json:"default_tax_rate"`

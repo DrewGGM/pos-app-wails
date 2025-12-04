@@ -30,6 +30,10 @@ export function GetConfigPath() {
   return window['go']['services']['ConfigManagerService']['GetConfigPath']();
 }
 
+export function GetDIANDatabaseConfig() {
+  return window['go']['services']['ConfigManagerService']['GetDIANDatabaseConfig']();
+}
+
 export function InitializeDatabase(arg1) {
   return window['go']['services']['ConfigManagerService']['InitializeDatabase'](arg1);
 }
@@ -38,8 +42,16 @@ export function IsFirstRun() {
   return window['go']['services']['ConfigManagerService']['IsFirstRun']();
 }
 
+export function RemoveDIANDatabaseConfig() {
+  return window['go']['services']['ConfigManagerService']['RemoveDIANDatabaseConfig']();
+}
+
 export function SaveConfig(arg1) {
   return window['go']['services']['ConfigManagerService']['SaveConfig'](arg1);
+}
+
+export function SaveDIANDatabaseConfig(arg1) {
+  return window['go']['services']['ConfigManagerService']['SaveDIANDatabaseConfig'](arg1);
 }
 
 export function SaveRestaurantConfig(arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -48,4 +60,8 @@ export function SaveRestaurantConfig(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function TestDatabaseConnection(arg1) {
   return window['go']['services']['ConfigManagerService']['TestDatabaseConnection'](arg1);
+}
+
+export function TestMySQLConnection(arg1) {
+  return window['go']['services']['ConfigManagerService']['TestMySQLConnection'](arg1);
 }

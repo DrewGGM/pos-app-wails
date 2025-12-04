@@ -16,6 +16,11 @@ import {
   Chip,
   Tab,
   Tabs,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -51,6 +56,10 @@ const Customers: React.FC = () => {
     phone: '',
     address: '',
     notes: '',
+    // DIAN corporate fields (optional, only for NIT)
+    type_regime_id: undefined,
+    type_liability_id: undefined,
+    municipality_id: undefined,
   });
 
   useEffect(() => {
@@ -76,6 +85,10 @@ const Customers: React.FC = () => {
         ...customer,
         document_type: customer.identification_type || customer.document_type,
         document_number: customer.identification_number || customer.document_number,
+        // DIAN corporate fields
+        type_regime_id: customer.type_regime_id,
+        type_liability_id: customer.type_liability_id,
+        municipality_id: customer.municipality_id,
       });
     } else {
       setSelectedCustomer(null);
@@ -89,23 +102,44 @@ const Customers: React.FC = () => {
         phone: '',
         address: '',
         notes: '',
+        // DIAN corporate fields reset
+        type_regime_id: undefined,
+        type_liability_id: undefined,
+        municipality_id: undefined,
       });
     }
     setCustomerDialog(true);
   };
 
   const handleSaveCustomer = async () => {
-    if (!customerForm.name || (!customerForm.document_number && !customerForm.identification_number)) {
-      toast.error('Complete los campos requeridos');
+    // Required fields per DIAN Resolución 0165 de 2023:
+    // - name, identification_number, email
+    // All other fields are OPTIONAL
+
+    if (!customerForm.name?.trim()) {
+      toast.error('El nombre es requerido');
+      return;
+    }
+    if (!customerForm.document_number?.trim() && !customerForm.identification_number?.trim()) {
+      toast.error('El número de documento es requerido');
+      return;
+    }
+    if (!customerForm.email?.trim()) {
+      toast.error('El email es requerido');
       return;
     }
 
     try {
       // Map form fields to backend fields
+      // Only include optional DIAN fields if they were provided
       const customerData = {
         ...customerForm,
         identification_type: customerForm.document_type || customerForm.identification_type || 'CC',
         identification_number: customerForm.document_number || customerForm.identification_number || '',
+        // Include DIAN corporate fields only if provided (all are optional per DIAN)
+        type_regime_id: customerForm.type_regime_id || undefined,
+        type_liability_id: customerForm.type_liability_id || undefined,
+        municipality_id: customerForm.municipality_id || undefined,
       };
 
       if (selectedCustomer) {
@@ -421,10 +455,13 @@ const Customers: React.FC = () => {
                 onChange={(e) => setCustomerForm({ ...customerForm, document_type: e.target.value })}
                 SelectProps={{ native: true }}
               >
-                <option value="CC">CC</option>
+                <option value="CC">Cédula (CC)</option>
                 <option value="NIT">NIT</option>
-                <option value="CE">CE</option>
-                <option value="PP">Pasaporte</option>
+                <option value="CE">Cédula Extranjería</option>
+                <option value="TI">Tarjeta Identidad</option>
+                <option value="PA">Pasaporte</option>
+                <option value="PEP">PEP</option>
+                <option value="PPT">PPT</option>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={3}>
@@ -441,6 +478,7 @@ const Customers: React.FC = () => {
                 fullWidth
                 label="Email"
                 type="email"
+                required
                 value={customerForm.email}
                 onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
                 InputProps={{
@@ -455,7 +493,7 @@ const Customers: React.FC = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Teléfono"
+                label="Teléfono (Opcional)"
                 value={customerForm.phone}
                 onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
                 InputProps={{
@@ -470,7 +508,7 @@ const Customers: React.FC = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Dirección"
+                label="Dirección (Opcional)"
                 value={customerForm.address}
                 onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
                 InputProps={{
@@ -485,13 +523,79 @@ const Customers: React.FC = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Notas"
+                label="Notas (Opcional)"
                 multiline
                 rows={2}
                 value={customerForm.notes}
                 onChange={(e) => setCustomerForm({ ...customerForm, notes: e.target.value })}
               />
             </Grid>
+
+            {/* DIAN Corporate Fields - Only shown for NIT */}
+            {customerForm.document_type === 'NIT' && (
+              <>
+                <Grid item xs={12}>
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Campos adicionales opcionales para facturación electrónica (no requeridos por DIAN)
+                  </Alert>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Tipo Régimen</InputLabel>
+                    <Select
+                      value={customerForm.type_regime_id || 2}
+                      onChange={(e) => setCustomerForm({ ...customerForm, type_regime_id: Number(e.target.value) })}
+                      label="Tipo Régimen"
+                    >
+                      <MenuItem value={1}>Responsable de IVA</MenuItem>
+                      <MenuItem value={2}>No Responsable de IVA</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Responsabilidad</InputLabel>
+                    <Select
+                      value={customerForm.type_liability_id || 117}
+                      onChange={(e) => setCustomerForm({ ...customerForm, type_liability_id: Number(e.target.value) })}
+                      label="Responsabilidad"
+                    >
+                      <MenuItem value={117}>No responsable</MenuItem>
+                      <MenuItem value={7}>Gran contribuyente</MenuItem>
+                      <MenuItem value={9}>Autorretenedor</MenuItem>
+                      <MenuItem value={14}>Agente de retención IVA</MenuItem>
+                      <MenuItem value={112}>Régimen Simple (SIMPLE)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Municipio</InputLabel>
+                    <Select
+                      value={customerForm.municipality_id || 820}
+                      onChange={(e) => setCustomerForm({ ...customerForm, municipality_id: Number(e.target.value) })}
+                      label="Municipio"
+                    >
+                      <MenuItem value={820}>Armenia</MenuItem>
+                      <MenuItem value={821}>Buenavista</MenuItem>
+                      <MenuItem value={822}>Calarcá</MenuItem>
+                      <MenuItem value={823}>Circasia</MenuItem>
+                      <MenuItem value={824}>Córdoba</MenuItem>
+                      <MenuItem value={825}>Filandia</MenuItem>
+                      <MenuItem value={826}>Génova</MenuItem>
+                      <MenuItem value={827}>La Tebaida</MenuItem>
+                      <MenuItem value={828}>Montenegro</MenuItem>
+                      <MenuItem value={829}>Pijao</MenuItem>
+                      <MenuItem value={830}>Quimbaya</MenuItem>
+                      <MenuItem value={831}>Salento</MenuItem>
+                      <MenuItem value={832}>Pereira</MenuItem>
+                      <MenuItem value={600}>Medellín</MenuItem>
+                      <MenuItem value={1}>Bogotá D.C.</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>

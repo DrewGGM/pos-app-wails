@@ -81,6 +81,12 @@ export const wailsDianService = {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
     await svc.TestConnection();
+  },
+
+  async resetConfigurationSteps(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ResetConfigurationSteps();
   }
 };
 

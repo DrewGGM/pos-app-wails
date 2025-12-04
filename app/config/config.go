@@ -12,14 +12,17 @@ import (
 // AppConfig holds application configuration (ONLY database connection)
 // Business, DIAN, and System configs are stored in database tables
 type AppConfig struct {
-	// Database Configuration
+	// Database Configuration (PostgreSQL - Main system database)
 	Database DatabaseConfig `json:"database"`
+
+	// DIAN Parametric Database Configuration (MySQL - External optional)
+	DIANDatabase *MySQLConfig `json:"dian_database,omitempty"`
 
 	// First run flag
 	FirstRun bool `json:"first_run"`
 }
 
-// DatabaseConfig holds database connection settings
+// DatabaseConfig holds database connection settings (PostgreSQL)
 type DatabaseConfig struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -27,6 +30,16 @@ type DatabaseConfig struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	SSLMode  string `json:"ssl_mode"`
+}
+
+// MySQLConfig holds MySQL database connection settings (for DIAN parametric data)
+type MySQLConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Database string `json:"database"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // NOTE: Business, DIAN, and System configurations are stored in database tables:
@@ -213,6 +226,14 @@ func (cfg *AppConfig) encryptSensitiveFields() error {
 		}
 	}
 
+	// Encrypt DIAN MySQL database password if configured
+	if cfg.DIANDatabase != nil && cfg.DIANDatabase.Password != "" {
+		cfg.DIANDatabase.Password, err = security.Encrypt(cfg.DIANDatabase.Password)
+		if err != nil {
+			return fmt.Errorf("could not encrypt DIAN database password: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -228,6 +249,16 @@ func (cfg *AppConfig) decryptSensitiveFields() error {
 			decrypted = cfg.Database.Password
 		}
 		cfg.Database.Password = decrypted
+	}
+
+	// Decrypt DIAN MySQL database password if configured
+	if cfg.DIANDatabase != nil && cfg.DIANDatabase.Password != "" {
+		decrypted, err := security.Decrypt(cfg.DIANDatabase.Password)
+		if err != nil {
+			// If decryption fails, assume it's plain text (for development)
+			decrypted = cfg.DIANDatabase.Password
+		}
+		cfg.DIANDatabase.Password = decrypted
 	}
 
 	return nil

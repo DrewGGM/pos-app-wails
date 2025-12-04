@@ -12,22 +12,25 @@ import {
   Alert,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
   Card,
   CardContent,
+  Switch,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
   Storage as StorageIcon,
   Business as BusinessIcon,
   Settings as SettingsIcon,
+  CloudSync as CloudSyncIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-import { wailsConfigManagerService, DatabaseConfig, AppConfig, ExistingConfigData } from '../../services/wailsConfigManagerService';
+import { wailsConfigManagerService, DatabaseConfig, AppConfig, ExistingConfigData, MySQLConfig } from '../../services/wailsConfigManagerService';
 
-const steps = ['Configuración de Base de Datos', 'Información del Negocio', 'Configuración del Sistema', 'Finalizar'];
+const steps = ['Configuración de Base de Datos', 'BD Paramétricos DIAN (Opcional)', 'Información del Negocio', 'Configuración del Sistema', 'Finalizar'];
 
 interface SetupWizardProps {
   onSetupComplete: () => void;
@@ -40,6 +43,11 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
   const [connectionTested, setConnectionTested] = useState(false);
   const [existingConfig, setExistingConfig] = useState<ExistingConfigData | null>(null);
 
+  // MySQL DIAN Database state
+  const [testingMySQL, setTestingMySQL] = useState(false);
+  const [mysqlConnectionTested, setMysqlConnectionTested] = useState(false);
+  const [enableMySQLConfig, setEnableMySQLConfig] = useState(false);
+
   const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
     host: 'localhost',
     port: 5432,
@@ -47,6 +55,16 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
     username: 'postgres',
     password: '',
     ssl_mode: 'disable',
+  });
+
+  // MySQL configuration for DIAN parametric data
+  const [mysqlConfig, setMysqlConfig] = useState<MySQLConfig>({
+    enabled: false,
+    host: 'localhost',
+    port: 3306,
+    database: 'dian_parametrics',
+    username: 'root',
+    password: '',
   });
 
   const [businessConfig, setBusinessConfig] = useState({
@@ -125,6 +143,20 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
     }
   };
 
+  const handleTestMySQLConnection = async () => {
+    setTestingMySQL(true);
+    try {
+      await wailsConfigManagerService.testMySQLConnection(mysqlConfig);
+      toast.success('Conexión exitosa a la base de datos MySQL!');
+      setMysqlConnectionTested(true);
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al conectar a la base de datos MySQL');
+      setMysqlConnectionTested(false);
+    } finally {
+      setTestingMySQL(false);
+    }
+  };
+
   const handleFinish = async () => {
     setLoading(true);
     try {
@@ -141,7 +173,14 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
       toast.info('Inicializando base de datos...');
       await wailsConfigManagerService.initializeDatabase(dbConfig);
 
-      // Step 3: Save business info to database table (restaurant_configs)
+      // Step 3: Save DIAN MySQL database config if enabled
+      if (enableMySQLConfig && mysqlConnectionTested) {
+        toast.info('Guardando configuración de BD DIAN...');
+        const configToSave = { ...mysqlConfig, enabled: true };
+        await wailsConfigManagerService.saveDIANDatabaseConfig(configToSave);
+      }
+
+      // Step 4: Save business info to database table (restaurant_configs)
       toast.info('Guardando información del negocio...');
       await wailsConfigManagerService.saveRestaurantConfig(
         businessConfig.name,
@@ -152,7 +191,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
         businessConfig.email
       );
 
-      // Step 4: Complete setup (run seeds for admin user, etc.)
+      // Step 5: Complete setup (run seeds for admin user, etc.)
       toast.info('Configurando datos iniciales...');
       await wailsConfigManagerService.completeSetup();
 
@@ -284,6 +323,122 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <CloudSyncIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
+                <Typography variant="h5">Base de Datos Paramétricos DIAN (Opcional)</Typography>
+              </Box>
+
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Si tienes una base de datos MySQL externa con datos paramétricos de la DIAN (municipios, departamentos, tipos de documentos, etc.),
+                puedes configurarla aquí. <strong>Este paso es opcional</strong> y puedes configurarlo más tarde en Ajustes.
+              </Alert>
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={enableMySQLConfig}
+                    onChange={(e) => {
+                      setEnableMySQLConfig(e.target.checked);
+                      if (!e.target.checked) {
+                        setMysqlConnectionTested(false);
+                      }
+                    }}
+                    color="primary"
+                  />
+                }
+                label="Habilitar conexión a BD paramétricos DIAN"
+                sx={{ mb: 3 }}
+              />
+
+              {enableMySQLConfig && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={8}>
+                    <TextField
+                      fullWidth
+                      label="Host MySQL"
+                      value={mysqlConfig.host}
+                      onChange={(e) => {
+                        setMysqlConfig({ ...mysqlConfig, host: e.target.value });
+                        setMysqlConnectionTested(false);
+                      }}
+                      helperText="Dirección del servidor MySQL (ej: localhost, 192.168.1.100)"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Puerto"
+                      type="number"
+                      value={mysqlConfig.port}
+                      onChange={(e) => {
+                        setMysqlConfig({ ...mysqlConfig, port: parseInt(e.target.value) || 3306 });
+                        setMysqlConnectionTested(false);
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Nombre de Base de Datos"
+                      value={mysqlConfig.database}
+                      onChange={(e) => {
+                        setMysqlConfig({ ...mysqlConfig, database: e.target.value });
+                        setMysqlConnectionTested(false);
+                      }}
+                      helperText="Base de datos con tablas paramétricos DIAN"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Usuario"
+                      value={mysqlConfig.username}
+                      onChange={(e) => {
+                        setMysqlConfig({ ...mysqlConfig, username: e.target.value });
+                        setMysqlConnectionTested(false);
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Contraseña"
+                      type="password"
+                      value={mysqlConfig.password}
+                      onChange={(e) => {
+                        setMysqlConfig({ ...mysqlConfig, password: e.target.value });
+                        setMysqlConnectionTested(false);
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      onClick={handleTestMySQLConnection}
+                      disabled={testingMySQL}
+                      startIcon={testingMySQL ? <CircularProgress size={20} /> : mysqlConnectionTested ? <CheckCircleIcon /> : null}
+                      color={mysqlConnectionTested ? 'success' : 'primary'}
+                      fullWidth
+                    >
+                      {testingMySQL ? 'Probando conexión...' : mysqlConnectionTested ? 'Conexión exitosa ✓' : 'Probar Conexión MySQL'}
+                    </Button>
+                  </Grid>
+                </Grid>
+              )}
+
+              {!enableMySQLConfig && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Puedes omitir este paso y configurarlo más tarde desde <strong>Ajustes → BD DIAN</strong>.
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        );
+
+      case 2:
+        return (
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                 <BusinessIcon sx={{ fontSize: 40, mr: 2, color: 'primary.main' }} />
                 <Typography variant="h5">Información del Negocio</Typography>
               </Box>
@@ -359,7 +514,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
           </Card>
         );
 
-      case 2:
+      case 3:
         return (
           <Card>
             <CardContent>
@@ -409,7 +564,7 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
           </Card>
         );
 
-      case 3:
+      case 4:
         return (
           <Card>
             <CardContent>
@@ -425,12 +580,22 @@ const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => {
                 <Grid container spacing={2} sx={{ textAlign: 'left', maxWidth: 600, mx: 'auto' }}>
                   <Grid item xs={12}>
                     <Paper variant="outlined" sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" color="text.secondary">Base de Datos</Typography>
+                      <Typography variant="subtitle2" color="text.secondary">Base de Datos PostgreSQL</Typography>
                       <Typography variant="body2">
                         {dbConfig.username}@{dbConfig.host}:{dbConfig.port}/{dbConfig.database}
                       </Typography>
                     </Paper>
                   </Grid>
+                  {enableMySQLConfig && mysqlConnectionTested && (
+                    <Grid item xs={12}>
+                      <Paper variant="outlined" sx={{ p: 2, borderColor: 'success.main' }}>
+                        <Typography variant="subtitle2" color="success.main">BD Paramétricos DIAN (MySQL)</Typography>
+                        <Typography variant="body2">
+                          {mysqlConfig.username}@{mysqlConfig.host}:{mysqlConfig.port}/{mysqlConfig.database}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  )}
                   <Grid item xs={12}>
                     <Paper variant="outlined" sx={{ p: 2 }}>
                       <Typography variant="subtitle2" color="text.secondary">Negocio</Typography>

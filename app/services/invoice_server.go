@@ -56,20 +56,24 @@ type InvoiceData struct {
 }
 
 // InvoiceCustomer represents customer data for invoice
+// Only required fields are always included; optional fields use omitempty
 type InvoiceCustomer struct {
-	IdentificationNumber         string  `json:"identification_number"`
-	DV                           *string `json:"dv,omitempty"`
-	Name                         string  `json:"name"`
-	Phone                        string  `json:"phone"`
-	Address                      string  `json:"address"`
-	Email                        string  `json:"email"`
-	MerchantRegistration         string  `json:"merchant_registration"`
-	TypeDocumentIdentificationID int     `json:"type_document_identification_id"`
-	TypeOrganizationID           int     `json:"type_organization_id"`
-	TypeLiabilityID              int     `json:"type_liability_id"`
-	MunicipalityID               int     `json:"municipality_id"`
-	TypeRegimeID                 int     `json:"type_regime_id"`
-	TaxID                        *int    `json:"tax_id,omitempty"`
+	// Required fields (always sent)
+	IdentificationNumber         string `json:"identification_number"`
+	Name                         string `json:"name"`
+	Email                        string `json:"email"`
+	TypeDocumentIdentificationID int    `json:"type_document_identification_id"`
+
+	// Optional fields (only sent if they have values)
+	DV                   *string `json:"dv,omitempty"`
+	Phone                *string `json:"phone,omitempty"`
+	Address              *string `json:"address,omitempty"`
+	MerchantRegistration *string `json:"merchant_registration,omitempty"`
+	TypeOrganizationID   *int    `json:"type_organization_id,omitempty"`
+	TypeLiabilityID      *int    `json:"type_liability_id,omitempty"`
+	MunicipalityID       *int    `json:"municipality_id,omitempty"`
+	TypeRegimeID         *int    `json:"type_regime_id,omitempty"`
+	TaxID                *int    `json:"tax_id,omitempty"`
 }
 
 // PaymentFormData represents payment form data
@@ -130,6 +134,10 @@ func (s *InvoiceService) SendInvoice(sale *models.Sale, sendEmailToCustomer bool
 		return nil, fmt.Errorf("DIAN configuration not found")
 	}
 	s.config = &config
+
+	// Debug: Log loaded config values
+	fmt.Printf("📥 Loaded DIAN Config - Environment: %s, UseTestSetID: %v, TestSetID: %s\n",
+		config.Environment, config.UseTestSetID, config.TestSetID)
 
 	if !config.IsEnabled {
 		return nil, fmt.Errorf("electronic invoicing is disabled")
@@ -654,9 +662,17 @@ func (s *InvoiceService) sendToDIAN(data interface{}, documentType string) (map[
 	}
 
 	url := fmt.Sprintf("%s/api/ubl2.1/%s", s.config.APIURL, endpoint)
+	// Debug: Log the config values for test_set_id
+	fmt.Printf("🔧 DIAN Config Debug - Environment: %s, UseTestSetID: %v, TestSetID: %s\n",
+		s.config.Environment, s.config.UseTestSetID, s.config.TestSetID)
+
 	// Only add test_set_id if in test mode AND UseTestSetID is true
 	if s.config.Environment == "test" && s.config.UseTestSetID && s.config.TestSetID != "" {
 		url = fmt.Sprintf("%s/%s", url, s.config.TestSetID)
+		fmt.Printf("📋 Using test_set_id in URL: %s\n", url)
+	} else {
+		fmt.Printf("📋 NOT using test_set_id - URL: %s (Environment=%s, UseTestSetID=%v, TestSetID=%s)\n",
+			url, s.config.Environment, s.config.UseTestSetID, s.config.TestSetID)
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -830,6 +846,7 @@ func (s *InvoiceService) getTaxInfoForProduct(productTaxTypeID int) (int, float6
 }
 
 // inferDocumentTypeID maps identification_type string to DIAN TypeDocumentIdentificationID
+// Supports multiple formats (PA, PP, Pasaporte all map to Pasaporte ID 7)
 func (s *InvoiceService) inferDocumentTypeID(identificationType string) int {
 	switch identificationType {
 	case "RC":
@@ -838,12 +855,20 @@ func (s *InvoiceService) inferDocumentTypeID(identificationType string) int {
 		return 2 // Tarjeta de identidad
 	case "CC":
 		return 3 // Cédula de ciudadanía
+	case "TE":
+		return 4 // Tarjeta de extranjería
 	case "CE":
 		return 5 // Cédula de extranjería
 	case "NIT":
 		return 6 // NIT
-	case "Pasaporte":
-		return 7 // Pasaporte
+	case "PA", "PP", "Pasaporte":
+		return 7 // Pasaporte (supports PA, PP, and full name)
+	case "DIE":
+		return 8 // Documento de identificación extranjero
+	case "NITP":
+		return 9 // NIT de otro país
+	case "NUIP":
+		return 10 // NUIP
 	case "PEP":
 		return 11 // PEP (Permiso Especial de Permanencia)
 	case "PPT":
@@ -870,63 +895,73 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 		customer = &defaultCustomer
 	}
 
-	// Build invoice customer - only send fields that are populated
+	// Build invoice customer with ONLY required fields per DIAN Resolución 0165 de 2023:
+	// - identification_number
+	// - type_document_identification_id
+	// - name
+	// - email
+	// - dv (only for NIT)
+	// All other fields are OPTIONAL per DIAN (not required by law)
+
 	invoiceCustomer := InvoiceCustomer{
 		IdentificationNumber: customer.IdentificationNumber,
 		Name:                 customer.Name,
 	}
 
-	// Add optional fields only if they exist
-	if customer.DV != nil && *customer.DV != "" {
-		invoiceCustomer.DV = customer.DV
-	}
-	if customer.Phone != "" {
-		invoiceCustomer.Phone = customer.Phone
-	}
-	if customer.Address != "" {
-		invoiceCustomer.Address = customer.Address
-	}
+	// Email is required - use customer email or fallback for CONSUMIDOR FINAL
 	if customer.Email != "" {
 		invoiceCustomer.Email = customer.Email
 	} else if customer.IdentificationNumber == "222222222222" {
-		// For CONSUMIDOR FINAL, use company email for sending invoice
+		// For CONSUMIDOR FINAL, use DefaultConsumerEmail if configured, otherwise company Email
 		var restaurantConfig models.RestaurantConfig
-		if err := s.db.First(&restaurantConfig).Error; err == nil && restaurantConfig.Email != "" {
-			invoiceCustomer.Email = restaurantConfig.Email
-			fmt.Printf("Using company email for CONSUMIDOR FINAL: %s\n", restaurantConfig.Email)
+		if err := s.db.First(&restaurantConfig).Error; err == nil {
+			if restaurantConfig.DefaultConsumerEmail != "" {
+				invoiceCustomer.Email = restaurantConfig.DefaultConsumerEmail
+				fmt.Printf("Using configured consumer email for CONSUMIDOR FINAL: %s\n", restaurantConfig.DefaultConsumerEmail)
+			} else if restaurantConfig.Email != "" {
+				invoiceCustomer.Email = restaurantConfig.Email
+				fmt.Printf("Using company email for CONSUMIDOR FINAL: %s\n", restaurantConfig.Email)
+			}
 		}
 	}
-	if customer.MerchantRegistration != nil && *customer.MerchantRegistration != "" {
-		invoiceCustomer.MerchantRegistration = *customer.MerchantRegistration
-	} else {
-		invoiceCustomer.MerchantRegistration = "0000000-00" // Default DIAN value
-	}
 
-	// Add DIAN parametric IDs only if specified (for corporate customers)
+	// TypeDocumentIdentificationID is required - infer from identification type if not set
 	if customer.TypeDocumentIdentificationID != nil {
 		invoiceCustomer.TypeDocumentIdentificationID = *customer.TypeDocumentIdentificationID
 	} else {
 		invoiceCustomer.TypeDocumentIdentificationID = s.inferDocumentTypeID(customer.IdentificationType)
 	}
+
+	// DV is required for NIT
+	if customer.DV != nil && *customer.DV != "" {
+		invoiceCustomer.DV = customer.DV
+	}
+
+	// ============================================================
+	// OPTIONAL FIELDS - Only include if customer provided them
+	// These are NOT required by DIAN Resolución 0165 de 2023
+	// ============================================================
+
+	if customer.Phone != "" {
+		invoiceCustomer.Phone = &customer.Phone
+	}
+	if customer.Address != "" {
+		invoiceCustomer.Address = &customer.Address
+	}
+	if customer.MerchantRegistration != nil && *customer.MerchantRegistration != "" {
+		invoiceCustomer.MerchantRegistration = customer.MerchantRegistration
+	}
 	if customer.TypeOrganizationID != nil {
-		invoiceCustomer.TypeOrganizationID = *customer.TypeOrganizationID
-	} else {
-		invoiceCustomer.TypeOrganizationID = 2 // Default: Persona Natural
+		invoiceCustomer.TypeOrganizationID = customer.TypeOrganizationID
 	}
 	if customer.TypeLiabilityID != nil {
-		invoiceCustomer.TypeLiabilityID = *customer.TypeLiabilityID
-	} else {
-		invoiceCustomer.TypeLiabilityID = 117 // Default: No responsable (R-99-PN)
+		invoiceCustomer.TypeLiabilityID = customer.TypeLiabilityID
 	}
 	if customer.TypeRegimeID != nil {
-		invoiceCustomer.TypeRegimeID = *customer.TypeRegimeID
-	} else {
-		invoiceCustomer.TypeRegimeID = 2 // Default: No responsable de IVA
+		invoiceCustomer.TypeRegimeID = customer.TypeRegimeID
 	}
 	if customer.MunicipalityID != nil {
-		invoiceCustomer.MunicipalityID = *customer.MunicipalityID
-	} else {
-		invoiceCustomer.MunicipalityID = s.config.MunicipalityID // Use company municipality as default
+		invoiceCustomer.MunicipalityID = customer.MunicipalityID
 	}
 
 	return invoiceCustomer

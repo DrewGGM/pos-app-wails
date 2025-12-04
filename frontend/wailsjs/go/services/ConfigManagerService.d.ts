@@ -17,12 +17,20 @@ export function GetConfig():Promise<config.AppConfig>;
 
 export function GetConfigPath():Promise<string>;
 
+export function GetDIANDatabaseConfig():Promise<config.MySQLConfig>;
+
 export function InitializeDatabase(arg1:config.DatabaseConfig):Promise<void>;
 
 export function IsFirstRun():Promise<boolean>;
 
+export function RemoveDIANDatabaseConfig():Promise<void>;
+
 export function SaveConfig(arg1:config.AppConfig):Promise<void>;
+
+export function SaveDIANDatabaseConfig(arg1:config.MySQLConfig):Promise<void>;
 
 export function SaveRestaurantConfig(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function TestDatabaseConnection(arg1:config.DatabaseConfig):Promise<void>;
+
+export function TestMySQLConnection(arg1:config.MySQLConfig):Promise<void>;

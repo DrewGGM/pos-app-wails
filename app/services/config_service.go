@@ -190,9 +190,10 @@ func (s *ConfigService) GetDIANConfig() (*models.DIANConfig, error) {
 	if err == gorm.ErrRecordNotFound {
 		// Return default config - APIURL must be configured before use
 		config = models.DIANConfig{
-			Environment: "test",
-			IsEnabled:   false,
-			APIURL:      "", // Must be configured in Settings
+			Environment:  "test",
+			IsEnabled:    false,
+			UseTestSetID: true, // Default to true for test mode
+			APIURL:       "",   // Must be configured in Settings
 		}
 		s.db.Create(&config)
 	}

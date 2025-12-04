@@ -42,6 +42,10 @@ export function MigrateToProduction() {
   return window['go']['services']['DIANService']['MigrateToProduction']();
 }
 
+export function ResetConfigurationSteps() {
+  return window['go']['services']['DIANService']['ResetConfigurationSteps']();
+}
+
 export function SendInvoice(arg1) {
   return window['go']['services']['DIANService']['SendInvoice'](arg1);
 }

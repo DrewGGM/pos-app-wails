@@ -87,6 +87,7 @@ import PaymentMethodsSettings from './PaymentMethodsSettings';
 import OrderTypesSettings from './OrderTypesSettings';
 import CustomPagesSettings from './CustomPagesSettings';
 import RappiSettings from './RappiSettings';
+import DIANDatabaseSettings from './DIANDatabaseSettings';
 
 interface Department {
   id: number;
@@ -134,6 +135,7 @@ const Settings: React.FC = () => {
     address: '',
     phone: '',
     email: '',
+    defaultConsumerEmail: '', // Email for CONSUMIDOR FINAL invoices
     website: '',
     logo: '',
     departmentId: null as number | null,
@@ -320,6 +322,7 @@ const Settings: React.FC = () => {
           address: config.address || '',
           phone: config.phone || '',
           email: config.email || '',
+          defaultConsumerEmail: (config as any).default_consumer_email || '',
           website: config.website || '',
           logo: config.logo || '',
           departmentId: (config as any).department_id || null,
@@ -547,6 +550,7 @@ const Settings: React.FC = () => {
         address: businessSettings.address,
         phone: businessSettings.phone,
         email: businessSettings.email,
+        default_consumer_email: businessSettings.defaultConsumerEmail,
         website: businessSettings.website,
         logo: businessSettings.logo,
         department_id: businessSettings.departmentId,
@@ -590,6 +594,8 @@ const Settings: React.FC = () => {
 
       // Map local state to backend DIANConfig fields
       const current = await wailsDianService.getConfig();
+      console.log('🔧 Current DIAN config from backend:', current);
+      console.log('🔧 useTestSetId state value:', dianSettings.useTestSetId);
       const updated = {
         ...current,
         is_enabled: dianSettings.enabled,
@@ -633,6 +639,7 @@ const Settings: React.FC = () => {
         updated.certificate_password = dianSettings.certificatePassword;
       }
 
+      console.log('🔧 Sending to backend - use_test_set_id:', updated.use_test_set_id, 'test_set_id:', updated.test_set_id);
       await wailsDianService.updateConfig(updated as any);
       toast.success('Configuración DIAN guardada y sincronizada con datos de empresa');
     } catch (e:any) {
@@ -1105,6 +1112,34 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleResetConfigurationSteps = async () => {
+    try {
+      // Confirm with user
+      if (!window.confirm('¿Estás seguro de reiniciar los pasos de configuración?\n\nEsto NO eliminará ningún dato, solo reiniciará el estado de los pasos para que puedas volver a ejecutarlos.')) {
+        return;
+      }
+
+      toast.info('Reiniciando pasos de configuración...');
+      await wailsDianService.resetConfigurationSteps();
+
+      // Reset local state
+      setCompletedSteps({
+        company: false,
+        software: false,
+        certificate: false,
+        resolution: false,
+        creditNote: false,
+        debitNote: false,
+        production: false,
+      });
+
+      toast.success('Pasos de configuración reiniciados. Puedes volver a ejecutar los pasos.');
+      await loadDianConfig();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error reiniciando pasos de configuración');
+    }
+  };
+
   // Update handlers
   const loadCurrentVersion = async () => {
     try {
@@ -1193,6 +1228,7 @@ const Settings: React.FC = () => {
           <Tab icon={<NotificationsIcon />} label="Notificaciones" />
           <Tab icon={<SecurityIcon />} label="Sistema" />
           <Tab icon={<WifiIcon />} label="WebSocket" />
+          <Tab icon={<StorageIcon />} label="BD DIAN" />
         </Tabs>
 
         <TabPanel value={selectedTab} index={0}>
@@ -1420,6 +1456,22 @@ const Settings: React.FC = () => {
                         }}
                       />
                     </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Email Consumidor Final"
+                        value={businessSettings.defaultConsumerEmail}
+                        onChange={(e) => setBusinessSettings({
+                          ...businessSettings,
+                          defaultConsumerEmail: e.target.value,
+                        })}
+                        disabled={!editMode}
+                        helperText="Email para facturas de CONSUMIDOR FINAL (si está vacío, usa el email del negocio)"
+                        InputProps={{
+                          startAdornment: <EmailIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                        }}
+                      />
+                    </Grid>
                     <Grid item xs={12}>
                       <input
                         type="file"
@@ -1526,7 +1578,7 @@ const Settings: React.FC = () => {
           </Alert>
 
           <Grid container spacing={3}>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -1539,6 +1591,37 @@ const Settings: React.FC = () => {
                 }
                 label="Habilitar Facturación Electrónica"
               />
+            </Grid>
+
+            {/* Test/Production Mode Toggle */}
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={!dianSettings.testMode}
+                    onChange={(e) => setDianSettings({
+                      ...dianSettings,
+                      testMode: !e.target.checked,
+                    })}
+                    color={dianSettings.testMode ? "default" : "error"}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <span>Modo: {dianSettings.testMode ? 'Pruebas' : 'Producción'}</span>
+                    <Chip
+                      size="small"
+                      label={dianSettings.testMode ? 'TEST' : 'PROD'}
+                      color={dianSettings.testMode ? 'info' : 'error'}
+                    />
+                  </Box>
+                }
+              />
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4 }}>
+                {dianSettings.testMode
+                  ? 'Las facturas se envían al ambiente de pruebas de DIAN'
+                  : '⚠️ Las facturas se envían al ambiente REAL de DIAN'}
+              </Typography>
             </Grid>
 
             {/* Configuration Status */}
@@ -2331,7 +2414,7 @@ const Settings: React.FC = () => {
                       )}
                     </Grid>
 
-                    <Grid item xs={12}>
+                    <Grid item xs={12} sm={6}>
                       <Button
                         variant="contained"
                         fullWidth
@@ -2339,6 +2422,22 @@ const Settings: React.FC = () => {
                       >
                         Probar Conexión DIAN
                       </Button>
+                    </Grid>
+
+                    {/* Reset Configuration Steps */}
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        fullWidth
+                        onClick={handleResetConfigurationSteps}
+                        startIcon={<span>🔄</span>}
+                      >
+                        Reiniciar Pasos de Configuración
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                        Reinicia el estado de los pasos sin borrar datos
+                      </Typography>
                     </Grid>
                   </Grid>
                 </AccordionDetails>
@@ -3142,6 +3241,11 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={11}>
+          {/* DIAN Database Settings */}
+          <DIANDatabaseSettings />
         </TabPanel>
       </Paper>
 

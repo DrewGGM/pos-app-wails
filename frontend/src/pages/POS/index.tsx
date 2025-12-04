@@ -106,6 +106,7 @@ const POS: React.FC = () => {
   const [orderTypes, setOrderTypes] = useState<models.OrderType[]>([]);
   const [selectedOrderType, setSelectedOrderType] = useState<models.OrderType | null>(null);
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true); // Default to true
+  const [defaultConsumerEmail, setDefaultConsumerEmail] = useState(''); // Email for CONSUMIDOR FINAL
 
   // Refs
   const loadedOrderIdRef = useRef<number | null>(null);
@@ -420,6 +421,8 @@ const POS: React.FC = () => {
       const config = await GetRestaurantConfig();
       if (config) {
         setCompanyLiabilityId(config.type_liability_id || null);
+        // Set default consumer email: use configured default_consumer_email or fallback to company email
+        setDefaultConsumerEmail(config.default_consumer_email || config.email || '');
       }
     } catch (error) {
       // Don't show error toast to user, just log it
@@ -1270,6 +1273,7 @@ const POS: React.FC = () => {
         customer={selectedCustomer}
         needsElectronicInvoice={needsElectronicInvoice}
         defaultPrintReceipt={autoPrintReceipt}
+        defaultConsumerEmail={defaultConsumerEmail}
       />
 
       <CustomerDialog

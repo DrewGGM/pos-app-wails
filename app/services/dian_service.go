@@ -759,8 +759,9 @@ func (s *DIANService) GetDIANConfig() (*models.DIANConfig, error) {
 	if s.config == nil {
 		// Create default config if not exists
 		s.config = &models.DIANConfig{
-			Environment: "test",
-			IsEnabled:   false,
+			Environment:  "test",
+			IsEnabled:    false,
+			UseTestSetID: true, // Default to true for test mode
 		}
 		s.db.Create(s.config)
 	}
@@ -769,10 +770,43 @@ func (s *DIANService) GetDIANConfig() (*models.DIANConfig, error) {
 
 // UpdateDIANConfig updates DIAN configuration
 func (s *DIANService) UpdateDIANConfig(config *models.DIANConfig) error {
+	// Debug: Log the values being saved
+	fmt.Printf("💾 Saving DIAN Config - ID: %d, UseTestSetID: %v, TestSetID: %s, Environment: %s\n",
+		config.ID, config.UseTestSetID, config.TestSetID, config.Environment)
+
 	if err := s.db.Save(config).Error; err != nil {
 		return err
 	}
 	s.config = config
+	fmt.Printf("✅ DIAN Config saved successfully - UseTestSetID: %v\n", config.UseTestSetID)
+	return nil
+}
+
+// ResetConfigurationSteps resets all DIAN configuration steps to false
+// This does NOT delete any data, only resets the step completion flags
+func (s *DIANService) ResetConfigurationSteps() error {
+	var config models.DIANConfig
+	if err := s.db.First(&config).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found: %w", err)
+	}
+
+	// Reset all step completion flags
+	config.Step1Completed = false
+	config.Step2Completed = false
+	config.Step3Completed = false
+	config.Step4Completed = false
+	config.Step5Completed = false
+	config.Step6Completed = false
+	config.Step7Completed = false
+
+	if err := s.db.Save(&config).Error; err != nil {
+		return fmt.Errorf("failed to reset configuration steps: %w", err)
+	}
+
+	// Update service config cache
+	s.config = &config
+
+	fmt.Printf("🔄 DIAN Configuration steps have been reset\n")
 	return nil
 }
 

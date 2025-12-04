@@ -9,7 +9,11 @@ import {
   CompleteSetup,
   GetConfigPath,
   CheckExistingConfig,
-  SaveRestaurantConfig
+  SaveRestaurantConfig,
+  TestMySQLConnection,
+  SaveDIANDatabaseConfig,
+  GetDIANDatabaseConfig,
+  RemoveDIANDatabaseConfig
 } from '../../wailsjs/go/services/ConfigManagerService';
 
 import { config } from '../../wailsjs/go/models';
@@ -19,6 +23,7 @@ import { config } from '../../wailsjs/go/models';
 // Business/DIAN/System configs are stored in database tables (models.RestaurantConfig, models.DIANConfig, models.SystemConfig)
 export type AppConfig = config.AppConfig;
 export type DatabaseConfig = config.DatabaseConfig;
+export type MySQLConfig = config.MySQLConfig;
 
 export interface ExistingConfigData {
   has_config: boolean;
@@ -128,6 +133,43 @@ export const wailsConfigManagerService = {
   ): Promise<void> {
     try {
       await SaveRestaurantConfig(name, businessName, nit, address, phone, email);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ============================================================
+  // DIAN MySQL Database Configuration (External Parametric Data)
+  // ============================================================
+
+  async testMySQLConnection(mysqlConfig: MySQLConfig): Promise<void> {
+    try {
+      await TestMySQLConnection(mysqlConfig);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async saveDIANDatabaseConfig(mysqlConfig: MySQLConfig): Promise<void> {
+    try {
+      await SaveDIANDatabaseConfig(mysqlConfig);
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async getDIANDatabaseConfig(): Promise<MySQLConfig | null> {
+    try {
+      const config = await GetDIANDatabaseConfig();
+      return config;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  async removeDIANDatabaseConfig(): Promise<void> {
+    try {
+      await RemoveDIANDatabaseConfig();
     } catch (error) {
       throw error;
     }

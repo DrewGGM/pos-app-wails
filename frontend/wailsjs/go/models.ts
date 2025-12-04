@@ -53,6 +53,28 @@ export namespace clause {
 
 export namespace config {
 	
+	export class MySQLConfig {
+	    enabled: boolean;
+	    host: string;
+	    port: number;
+	    database: string;
+	    username: string;
+	    password: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.database = source["database"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	    }
+	}
 	export class DatabaseConfig {
 	    host: string;
 	    port: number;
@@ -77,6 +99,7 @@ export namespace config {
 	}
 	export class AppConfig {
 	    database: DatabaseConfig;
+	    dian_database?: MySQLConfig;
 	    first_run: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -86,6 +109,7 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.database = this.convertValues(source["database"], DatabaseConfig);
+	        this.dian_database = this.convertValues(source["dian_database"], MySQLConfig);
 	        this.first_run = source["first_run"];
 	    }
 	
@@ -107,6 +131,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 
 }
 
@@ -2634,6 +2659,7 @@ export namespace models {
 	    invoice_header: string;
 	    invoice_footer: string;
 	    show_logo_on_invoice: boolean;
+	    default_consumer_email: string;
 	    default_tax_rate: number;
 	    tax_included_in_price: boolean;
 	    currency: string;
@@ -2674,6 +2700,7 @@ export namespace models {
 	        this.invoice_header = source["invoice_header"];
 	        this.invoice_footer = source["invoice_footer"];
 	        this.show_logo_on_invoice = source["show_logo_on_invoice"];
+	        this.default_consumer_email = source["default_consumer_email"];
 	        this.default_tax_rate = source["default_tax_rate"];
 	        this.tax_included_in_price = source["tax_included_in_price"];
 	        this.currency = source["currency"];

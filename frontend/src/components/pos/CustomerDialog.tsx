@@ -77,7 +77,10 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
     email: '',
     phone: '',
     address: '',
-    city: 'Armenia',
+    // DIAN corporate fields (optional, only for NIT)
+    type_regime_id: undefined,
+    type_liability_id: undefined,
+    municipality_id: undefined,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [editMode, setEditMode] = useState(false);
@@ -112,6 +115,10 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
+    // Required fields per DIAN Resolución 0165 de 2023:
+    // - name, identification_number, email
+    // All other fields are OPTIONAL (phone, address, etc.)
+
     if (!formData.name?.trim()) {
       errors.name = 'El nombre es requerido';
     }
@@ -122,12 +129,15 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
       errors.identification_number = 'Solo se permiten números';
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (!formData.email?.trim()) {
+      errors.email = 'El email es requerido';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'Email inválido';
     }
 
+    // Optional field validation - only validate format if provided
     if (formData.phone && !/^\d{7,10}$/.test(formData.phone.replace(/\s/g, ''))) {
-      errors.phone = 'Teléfono inválido';
+      errors.phone = 'Teléfono inválido (7-10 dígitos)';
     }
 
     setFormErrors(errors);
@@ -188,7 +198,9 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
       email: '',
       phone: '',
       address: '',
-      city: 'Armenia',
+      type_regime_id: undefined,
+      type_liability_id: undefined,
+      municipality_id: undefined,
     });
     setFormErrors({});
     setEditMode(false);
@@ -352,6 +364,7 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
               <TextField
                 fullWidth
                 label="Nombre Completo / Razón Social"
+                required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 error={!!formErrors.name}
@@ -364,6 +377,7 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
                 fullWidth
                 label="Email"
                 type="email"
+                required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 error={!!formErrors.email}
@@ -374,7 +388,7 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Teléfono"
+                label="Teléfono (Opcional)"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 error={!!formErrors.phone}
@@ -385,27 +399,78 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Dirección"
+                label="Dirección (Opcional)"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Ciudad"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              />
-            </Grid>
+            {/* DIAN Corporate Fields - Only shown for NIT */}
+            {formData.identification_type === 'NIT' && (
+              <>
+                <Grid item xs={12}>
+                  <Alert severity="info" sx={{ mb: 1 }}>
+                    Campos adicionales opcionales para facturación electrónica (no requeridos por DIAN)
+                  </Alert>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Tipo Régimen</InputLabel>
+                    <Select
+                      value={formData.type_regime_id || 2}
+                      onChange={(e) => setFormData({ ...formData, type_regime_id: Number(e.target.value) })}
+                      label="Tipo Régimen"
+                    >
+                      <MenuItem value={1}>Responsable de IVA</MenuItem>
+                      <MenuItem value={2}>No Responsable de IVA</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Responsabilidad</InputLabel>
+                    <Select
+                      value={formData.type_liability_id || 117}
+                      onChange={(e) => setFormData({ ...formData, type_liability_id: Number(e.target.value) })}
+                      label="Responsabilidad"
+                    >
+                      <MenuItem value={117}>No responsable</MenuItem>
+                      <MenuItem value={7}>Gran contribuyente</MenuItem>
+                      <MenuItem value={9}>Autorretenedor</MenuItem>
+                      <MenuItem value={14}>Agente de retención IVA</MenuItem>
+                      <MenuItem value={112}>Régimen Simple (SIMPLE)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Municipio</InputLabel>
+                    <Select
+                      value={formData.municipality_id || 820}
+                      onChange={(e) => setFormData({ ...formData, municipality_id: Number(e.target.value) })}
+                      label="Municipio"
+                    >
+                      <MenuItem value={820}>Armenia</MenuItem>
+                      <MenuItem value={821}>Buenavista</MenuItem>
+                      <MenuItem value={822}>Calarcá</MenuItem>
+                      <MenuItem value={823}>Circasia</MenuItem>
+                      <MenuItem value={824}>Córdoba</MenuItem>
+                      <MenuItem value={825}>Filandia</MenuItem>
+                      <MenuItem value={826}>Génova</MenuItem>
+                      <MenuItem value={827}>La Tebaida</MenuItem>
+                      <MenuItem value={828}>Montenegro</MenuItem>
+                      <MenuItem value={829}>Pijao</MenuItem>
+                      <MenuItem value={830}>Quimbaya</MenuItem>
+                      <MenuItem value={831}>Salento</MenuItem>
+                      <MenuItem value={832}>Pereira</MenuItem>
+                      <MenuItem value={600}>Medellín</MenuItem>
+                      <MenuItem value={1}>Bogotá D.C.</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </>
+            )}
           </Grid>
-
-          {formData.identification_type === 'NIT' && (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              Para facturación electrónica a empresas, asegúrese de ingresar el NIT completo
-            </Alert>
-          )}
         </TabPanel>
       </DialogContent>
 
