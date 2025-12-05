@@ -473,8 +473,9 @@ func (s *InvoiceService) checkZipKeyStatus(zipKey string) (validated bool, isVal
 
 // prepareInvoiceData prepares invoice data from a sale
 func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustomer bool) (*InvoiceData, error) {
-	// Load related data
+	// Load related data including item modifiers for invoice description
 	if err := s.db.Preload("Order.Items.Product").
+		Preload("Order.Items.Modifiers.Modifier").
 		Preload("Customer").
 		Preload("PaymentDetails.PaymentMethod").
 		First(sale, sale.ID).Error; err != nil {
@@ -613,6 +614,7 @@ func (s *InvoiceService) calculateTaxTotals(order *models.Order) []TaxTotal {
 
 // prepareInvoiceLines prepares invoice lines from order items
 // Considers company's TypeRegimeID and product's TaxTypeID to determine correct tax
+// Includes modifier names in description (unless modifier has HideFromInvoice=true)
 func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine {
 	lines := make([]InvoiceLine, 0)
 
@@ -626,12 +628,27 @@ func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine 
 		// Calculate tax amount based on determined percentage
 		taxAmount := item.Subtotal * (taxPercent / 100.0)
 
+		// Build description with modifiers (only those not hidden from invoice)
+		description := item.Product.Name
+		if len(item.Modifiers) > 0 {
+			var visibleModifiers []string
+			for _, itemMod := range item.Modifiers {
+				// Only include modifier if it's loaded and not hidden from invoice
+				if itemMod.Modifier != nil && !itemMod.Modifier.HideFromInvoice {
+					visibleModifiers = append(visibleModifiers, itemMod.Modifier.Name)
+				}
+			}
+			if len(visibleModifiers) > 0 {
+				description = fmt.Sprintf("%s (%s)", item.Product.Name, strings.Join(visibleModifiers, ", "))
+			}
+		}
+
 		line := InvoiceLine{
 			UnitMeasureID:            item.Product.UnitMeasureID,
 			InvoicedQuantity:         strconv.Itoa(item.Quantity),
 			LineExtensionAmount:      fmt.Sprintf("%.2f", item.Subtotal),
 			FreeOfChargeIndicator:    false,
-			Description:              item.Product.Name,
+			Description:              description,
 			Notes:                    item.Notes,
 			Code:                     productCode,
 			TypeItemIdentificationID: 4,

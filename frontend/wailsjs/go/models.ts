@@ -1004,6 +1004,7 @@ export namespace models {
 	    name: string;
 	    type: string;
 	    price_change: number;
+	    hide_from_invoice: boolean;
 	    group_id: number;
 	    modifier_group?: ModifierGroup;
 	    created_at: time.Time;
@@ -1019,6 +1020,7 @@ export namespace models {
 	        this.name = source["name"];
 	        this.type = source["type"];
 	        this.price_change = source["price_change"];
+	        this.hide_from_invoice = source["hide_from_invoice"];
 	        this.group_id = source["group_id"];
 	        this.modifier_group = this.convertValues(source["modifier_group"], ModifierGroup);
 	        this.created_at = this.convertValues(source["created_at"], time.Time);

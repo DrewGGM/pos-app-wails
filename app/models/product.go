@@ -58,15 +58,16 @@ type ModifierGroup struct {
 
 // Modifier represents product modifiers/extras
 type Modifier struct {
-	ID            uint           `gorm:"primaryKey" json:"id"`
-	Name          string         `gorm:"not null" json:"name"`
-	Type          string         `json:"type"`         // "addition", "removal", "option"
-	PriceChange   float64        `json:"price_change"` // Can be negative for removals
-	GroupID       uint           `json:"group_id"`
-	ModifierGroup *ModifierGroup `gorm:"foreignKey:GroupID" json:"modifier_group,omitempty"`
-	Products      []Product      `gorm:"many2many:product_modifiers;" json:"-"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID              uint           `gorm:"primaryKey" json:"id"`
+	Name            string         `gorm:"not null" json:"name"`
+	Type            string         `json:"type"`                              // "addition", "removal", "option"
+	PriceChange     float64        `json:"price_change"`                      // Can be negative for removals
+	HideFromInvoice bool           `gorm:"default:false" json:"hide_from_invoice"` // If true, modifier won't appear in invoice line description
+	GroupID         uint           `json:"group_id"`
+	ModifierGroup   *ModifierGroup `gorm:"foreignKey:GroupID" json:"modifier_group,omitempty"`
+	Products        []Product      `gorm:"many2many:product_modifiers;" json:"-"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // InventoryMovement tracks inventory changes

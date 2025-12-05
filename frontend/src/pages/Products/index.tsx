@@ -26,6 +26,7 @@ import {
   MenuItem,
   Switch,
   FormControlLabel,
+  Checkbox,
   Divider,
 } from '@mui/material';
 import {
@@ -142,6 +143,7 @@ const Products: React.FC = () => {
     type: 'add',
     price_change: 0,
     group_id: 0,
+    hide_from_invoice: false, // If true, modifier won't appear in electronic invoice description
   });
   const [productModifiers, setProductModifiers] = useState<number[]>([]);
 
@@ -527,6 +529,7 @@ const Products: React.FC = () => {
         type: modifier.type || 'add',
         price_change: modifier.price_change || 0,
         group_id: modifier.group_id || 0,
+        hide_from_invoice: modifier.hide_from_invoice || false,
       });
     } else {
       setEditingModifier(null);
@@ -535,6 +538,7 @@ const Products: React.FC = () => {
         type: 'add',
         price_change: 0,
         group_id: 0,
+        hide_from_invoice: false,
       });
     }
     setModifierDialog(true);
@@ -1486,6 +1490,18 @@ const Products: React.FC = () => {
                 startAdornment: <InputAdornment position="start">$</InputAdornment>,
               }}
             />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={modifierForm.hide_from_invoice}
+                  onChange={(e) => setModifierForm({ ...modifierForm, hide_from_invoice: e.target.checked })}
+                />
+              }
+              label="Ocultar de factura electrónica"
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+              Si está activo, este modificador no aparecerá en la descripción del producto en la factura electrónica
+            </Typography>
           </Box>
         </DialogContent>
         <DialogActions>
