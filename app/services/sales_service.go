@@ -121,14 +121,11 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.InvoiceType = "electronic"
 	}
 
-	// CRITICAL FIX: Validate customer for electronic invoice
+	// Validate customer for electronic invoice (DIAN Resolución 0165 de 2023)
+	// CONSUMIDOR FINAL (222222222222) is allowed - email is sourced from DefaultConsumerEmail or company email
 	if needsElectronicInvoice {
 		if sale.Customer == nil {
 			return nil, fmt.Errorf("electronic invoice requires a valid customer")
-		}
-		// Check if customer is CONSUMIDOR FINAL (default customer - not valid for electronic invoices)
-		if sale.Customer.IdentificationNumber == "222222222222" {
-			return nil, fmt.Errorf("electronic invoice cannot be issued to CONSUMIDOR FINAL - please provide customer details")
 		}
 		// Validate customer has required fields for DIAN
 		if sale.Customer.IdentificationNumber == "" {

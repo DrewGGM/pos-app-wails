@@ -47,6 +47,7 @@ type InvoiceData struct {
 	EstablishmentEmail        string              `json:"establishment_email,omitempty"`
 	Sendmail                  bool                `json:"sendmail"`
 	SendmailToMe              bool                `json:"sendmailtome"`
+	LogoEmpresaEmisora        string              `json:"logo_empresa_emisora,omitempty"`
 	Customer                  InvoiceCustomer     `json:"customer"`
 	PaymentForm               interface{}         `json:"payment_form"`
 	LegalMonetaryTotals       LegalMonetaryTotals `json:"legal_monetary_totals"`
@@ -58,17 +59,19 @@ type InvoiceData struct {
 // InvoiceCustomer represents customer data for invoice
 // Only required fields are always included; optional fields use omitempty
 type InvoiceCustomer struct {
-	// Required fields (always sent)
-	IdentificationNumber         string `json:"identification_number"`
-	Name                         string `json:"name"`
-	Email                        string `json:"email"`
-	TypeDocumentIdentificationID int    `json:"type_document_identification_id"`
+	// Core fields (always sent for all customers)
+	IdentificationNumber string `json:"identification_number"`
+	Name                 string `json:"name"`
+
+	// Fields that may be omitted for CONSUMIDOR FINAL
+	Email                        string `json:"email,omitempty"`
+	TypeDocumentIdentificationID int    `json:"type_document_identification_id,omitempty"`
 
 	// Optional fields (only sent if they have values)
 	DV                   *string `json:"dv,omitempty"`
 	Phone                *string `json:"phone,omitempty"`
 	Address              *string `json:"address,omitempty"`
-	MerchantRegistration *string `json:"merchant_registration,omitempty"`
+	MerchantRegistration string  `json:"merchant_registration,omitempty"`
 	TypeOrganizationID   *int    `json:"type_organization_id,omitempty"`
 	TypeLiabilityID      *int    `json:"type_liability_id,omitempty"`
 	MunicipalityID       *int    `json:"municipality_id,omitempty"`
@@ -325,10 +328,10 @@ func (s *InvoiceService) validateZipKeyAsync(invoiceID uint, zipKey string) {
 		// Validation complete - update invoice
 		now := time.Now()
 		updateData := map[string]interface{}{
-			"is_valid":               &isValid,
-			"validation_message":     validationMessage,
-			"dian_response":          dianResponse,
-			"validation_checked_at":  &now,
+			"is_valid":              &isValid,
+			"validation_message":    validationMessage,
+			"dian_response":         dianResponse,
+			"validation_checked_at": &now,
 		}
 
 		if isValid {
@@ -485,7 +488,11 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	// Get next invoice number
 	invoiceNumber := s.config.LastInvoiceNumber + 1
 
+	// Check if this is CONSUMIDOR FINAL
+	isConsumidorFinal := sale.Customer == nil || sale.Customer.IdentificationNumber == "222222222222"
+
 	// Prepare invoice data
+	// For CONSUMIDOR FINAL: sendmailtome = true (send invoice copy to company email)
 	invoice := &InvoiceData{
 		Number:                  invoiceNumber,
 		TypeDocumentID:          1, // Electronic Invoice
@@ -495,8 +502,8 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 		Prefix:                  s.config.ResolutionPrefix,
 		Notes:                   sale.Notes,
 		DisableConfirmationText: true,
-		Sendmail:                sendEmailToCustomer, // Use value from payment dialog instead of config
-		SendmailToMe:            false,
+		Sendmail:                sendEmailToCustomer,
+		SendmailToMe:            isConsumidorFinal, // true for CONSUMIDOR FINAL so company receives the invoice
 	}
 
 	// Set establishment info
@@ -506,6 +513,19 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	invoice.EstablishmentAddress = restaurantConfig.Address
 	invoice.EstablishmentPhone = restaurantConfig.Phone
 	invoice.EstablishmentEmail = restaurantConfig.Email
+	if restaurantConfig.Logo != "" {
+		// Remove data:image prefix if present - API expects raw base64 only
+		// The API adds "data:image/jpg;base64, " prefix itself
+		logo := restaurantConfig.Logo
+		if strings.Contains(logo, ",") {
+			// Format is "data:image/...;base64,XXXX" - extract only the base64 part
+			parts := strings.SplitN(logo, ",", 2)
+			if len(parts) == 2 {
+				logo = parts[1]
+			}
+		}
+		invoice.LogoEmpresaEmisora = logo
+	}
 
 	// Set customer info - use helper to build customer data from DB
 	invoice.Customer = s.buildInvoiceCustomer(sale.Customer)
@@ -643,6 +663,10 @@ func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine 
 			}
 		}
 
+		// Calculate effective unit price (includes modifiers)
+		// DIAN requires: line_extension_amount = price_amount × invoiced_quantity
+		effectiveUnitPrice := item.Subtotal / float64(item.Quantity)
+
 		line := InvoiceLine{
 			UnitMeasureID:            item.Product.UnitMeasureID,
 			InvoicedQuantity:         strconv.Itoa(item.Quantity),
@@ -652,7 +676,7 @@ func (s *InvoiceService) prepareInvoiceLines(order *models.Order) []InvoiceLine 
 			Notes:                    item.Notes,
 			Code:                     productCode,
 			TypeItemIdentificationID: 4,
-			PriceAmount:              fmt.Sprintf("%.2f", item.UnitPrice),
+			PriceAmount:              fmt.Sprintf("%.2f", effectiveUnitPrice),
 			BaseQuantity:             "1",
 			TaxTotals: []TaxTotal{
 				{
@@ -816,10 +840,11 @@ func (s *InvoiceService) getPaymentMethodCode(paymentMethod *models.PaymentMetho
 
 // getDIANTaxIDFromCode maps DIAN TaxType Code to tax_id for electronic invoicing
 // According to DIAN parametric data:
-//   Code "01" -> tax_id 1 (IVA - all rates 0%, 5%, 19%)
-//   Code "02" -> tax_id 2 (IC - Impuesto al Consumo)
-//   Code "03" -> tax_id 3 (ICA - Impuesto de Industria y Comercio)
-//   Code "04" -> tax_id 4 (INC - Impuesto Nacional al Consumo)
+//
+//	Code "01" -> tax_id 1 (IVA - all rates 0%, 5%, 19%)
+//	Code "02" -> tax_id 2 (IC - Impuesto al Consumo)
+//	Code "03" -> tax_id 3 (ICA - Impuesto de Industria y Comercio)
+//	Code "04" -> tax_id 4 (INC - Impuesto Nacional al Consumo)
 func (s *InvoiceService) getDIANTaxIDFromCode(taxCode string) int {
 	switch taxCode {
 	case "01":
@@ -897,6 +922,7 @@ func (s *InvoiceService) inferDocumentTypeID(identificationType string) int {
 
 // buildInvoiceCustomer creates InvoiceCustomer from Customer model
 // Loads default "Consumidor Final" from database if customer is nil
+// For CONSUMIDOR FINAL (222222222222), only minimal fields are returned
 func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) InvoiceCustomer {
 	// Load default customer if none provided
 	if customer == nil {
@@ -912,7 +938,31 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 		customer = &defaultCustomer
 	}
 
-	// Build invoice customer with ONLY required fields per DIAN Resolución 0165 de 2023:
+	// ============================================================
+	// CONSUMIDOR FINAL - Return ONLY minimal required fields
+	// Per DIAN API specification (Postman collection):
+	// - identification_number: 222222222222
+	// - name: "CONSUMIDOR FINAL"
+	// - merchant_registration: "0000000-00"
+	// No other fields required (no DV, no type_document_identification_id, no email)
+	// ============================================================
+	if customer.IdentificationNumber == "222222222222" {
+		invoiceCustomer := InvoiceCustomer{
+			IdentificationNumber: "222222222222",
+			Name:                 "CONSUMIDOR FINAL",
+			MerchantRegistration: "0000000-00",
+		}
+
+		fmt.Printf("CONSUMIDOR FINAL - Minimal customer data: identification=%s, name=%s, merchant_registration=%s\n",
+			invoiceCustomer.IdentificationNumber, invoiceCustomer.Name, invoiceCustomer.MerchantRegistration)
+		return invoiceCustomer
+	}
+
+	// ============================================================
+	// REAL CUSTOMER - Include all available fields
+	// ============================================================
+
+	// Build invoice customer with required fields per DIAN Resolución 0165 de 2023:
 	// - identification_number
 	// - type_document_identification_id
 	// - name
@@ -925,21 +975,9 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 		Name:                 customer.Name,
 	}
 
-	// Email is required - use customer email or fallback for CONSUMIDOR FINAL
+	// Email is required
 	if customer.Email != "" {
 		invoiceCustomer.Email = customer.Email
-	} else if customer.IdentificationNumber == "222222222222" {
-		// For CONSUMIDOR FINAL, use DefaultConsumerEmail if configured, otherwise company Email
-		var restaurantConfig models.RestaurantConfig
-		if err := s.db.First(&restaurantConfig).Error; err == nil {
-			if restaurantConfig.DefaultConsumerEmail != "" {
-				invoiceCustomer.Email = restaurantConfig.DefaultConsumerEmail
-				fmt.Printf("Using configured consumer email for CONSUMIDOR FINAL: %s\n", restaurantConfig.DefaultConsumerEmail)
-			} else if restaurantConfig.Email != "" {
-				invoiceCustomer.Email = restaurantConfig.Email
-				fmt.Printf("Using company email for CONSUMIDOR FINAL: %s\n", restaurantConfig.Email)
-			}
-		}
 	}
 
 	// TypeDocumentIdentificationID is required - infer from identification type if not set
@@ -966,7 +1004,7 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 		invoiceCustomer.Address = &customer.Address
 	}
 	if customer.MerchantRegistration != nil && *customer.MerchantRegistration != "" {
-		invoiceCustomer.MerchantRegistration = customer.MerchantRegistration
+		invoiceCustomer.MerchantRegistration = *customer.MerchantRegistration
 	}
 	if customer.TypeOrganizationID != nil {
 		invoiceCustomer.TypeOrganizationID = customer.TypeOrganizationID
@@ -1125,9 +1163,9 @@ type DebitNoteData struct {
 
 // BillingReference represents billing reference for notes (NC/ND)
 type BillingReference struct {
-	Number         string `json:"number"`          // Invoice number
-	UUID           string `json:"uuid"`            // CUFE of original invoice (used as unique identifier)
-	IssueDate      string `json:"issue_date"`      // Original invoice issue date
+	Number         string `json:"number"`           // Invoice number
+	UUID           string `json:"uuid"`             // CUFE of original invoice (used as unique identifier)
+	IssueDate      string `json:"issue_date"`       // Original invoice issue date
 	TypeDocumentID int    `json:"type_document_id"` // Document type (1=Invoice)
 }
 

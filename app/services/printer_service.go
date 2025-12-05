@@ -537,9 +537,9 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.init()
 	s.setAlign("center")
 
-	// Load order with all data including delivery info
-	s.db.Preload("Order").Preload("Order.Items.Product").First(sale, sale.ID)
-	log.Printf("🚚 Electronic Invoice: Loaded sale with order. Order nil? %v", sale.Order == nil)
+	// Load order with all data including customer, delivery info and modifiers
+	s.db.Preload("Customer").Preload("Order").Preload("Order.Items.Product").Preload("Order.Items.Modifiers.Modifier").First(sale, sale.ID)
+	log.Printf("🚚 Electronic Invoice: Loaded sale with order. Order nil? %v, Customer nil? %v", sale.Order == nil, sale.Customer == nil)
 
 	// Get restaurant config
 	var restaurant models.RestaurantConfig
@@ -603,17 +603,25 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.write("DATOS DEL CLIENTE\n")
 	s.setEmphasize(false)
 	if sale.Customer != nil {
+		// Check if this is CONSUMIDOR FINAL (generic customer)
+		isConsumidorFinal := sale.Customer.IdentificationNumber == "222222222222"
+
 		s.write(fmt.Sprintf("Nombre: %s\n", sale.Customer.Name))
 		s.write(fmt.Sprintf("NIT/CC: %s", sale.Customer.IdentificationNumber))
-		if sale.Customer.DV != nil {
+		if sale.Customer.DV != nil && *sale.Customer.DV != "" {
 			s.write(fmt.Sprintf("-%s", *sale.Customer.DV))
 		}
 		s.write("\n")
-		if sale.Customer.Address != "" {
-			s.write(fmt.Sprintf("Dirección: %s\n", sale.Customer.Address))
-		}
-		if sale.Customer.Phone != "" {
-			s.write(fmt.Sprintf("Teléfono: %s\n", sale.Customer.Phone))
+
+		// For real customers (not CONSUMIDOR FINAL), show address and phone if available
+		// Skip fake data like "NO REGISTRADO" or "0" for CONSUMIDOR FINAL
+		if !isConsumidorFinal {
+			if sale.Customer.Address != "" && sale.Customer.Address != "NO REGISTRADO" {
+				s.write(fmt.Sprintf("Dirección: %s\n", sale.Customer.Address))
+			}
+			if sale.Customer.Phone != "" && sale.Customer.Phone != "0" {
+				s.write(fmt.Sprintf("Teléfono: %s\n", sale.Customer.Phone))
+			}
 		}
 	} else {
 		s.write("CONSUMIDOR FINAL\n")
@@ -653,12 +661,49 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 
 	// Items already loaded at the beginning of the function
 	for _, item := range sale.Order.Items {
+		// Debug: Log modifiers info
+		log.Printf("📦 Item: %s, Modifiers count: %d", item.Product.Name, len(item.Modifiers))
+		for i, mod := range item.Modifiers {
+			if mod.Modifier != nil {
+				log.Printf("   Modifier[%d]: %s, HideFromInvoice: %v, PriceChange: %.2f",
+					i, mod.Modifier.Name, mod.Modifier.HideFromInvoice, mod.PriceChange)
+			} else {
+				log.Printf("   Modifier[%d]: Modifier is nil!", i)
+			}
+		}
+
+		// Build description with modifiers (matching DIAN invoice line format)
+		description := item.Product.Name
+		if len(item.Modifiers) > 0 {
+			var visibleModifiers []string
+			for _, itemMod := range item.Modifiers {
+				// Only include modifier if it's loaded and not hidden from invoice
+				if itemMod.Modifier != nil && !itemMod.Modifier.HideFromInvoice {
+					visibleModifiers = append(visibleModifiers, itemMod.Modifier.Name)
+				}
+			}
+			if len(visibleModifiers) > 0 {
+				description = fmt.Sprintf("%s (%s)", item.Product.Name, strings.Join(visibleModifiers, ", "))
+			}
+		}
+
+		// Calculate effective unit price (includes modifiers)
+		// This matches what's sent to DIAN: effectiveUnitPrice = Subtotal / Quantity
+		effectiveUnitPrice := item.Subtotal / float64(item.Quantity)
+
 		// Item description and quantity
-		s.write(fmt.Sprintf("%s\n", item.Product.Name))
+		s.write(fmt.Sprintf("%s\n", description))
 		s.write(fmt.Sprintf("  %d x $%s = $%s\n",
 			item.Quantity,
-			s.formatMoney(item.UnitPrice),
+			s.formatMoney(effectiveUnitPrice),
 			s.formatMoney(item.Subtotal)))
+
+		// Print modifiers detail if any price changes
+		for _, itemMod := range item.Modifiers {
+			if itemMod.Modifier != nil && itemMod.PriceChange != 0 && !itemMod.Modifier.HideFromInvoice {
+				s.write(fmt.Sprintf("    + %s: $%s\n", itemMod.Modifier.Name, s.formatMoney(itemMod.PriceChange)))
+			}
+		}
 
 		// Item notes if any
 		if item.Notes != "" {
@@ -706,10 +751,14 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.write("Validar en:\n")
 	s.write("https://catalogo-vpfe.dian.gov.co\n")
 
-	// Print QR Code as image
+	// Print QR Code as image using the URL from DIAN response (QRStr)
 	s.lineFeed()
-	qrURL := fmt.Sprintf("https://catalogo-vpfe.dian.gov.co/Document/FindDocument?documentKey=%s", sale.ElectronicInvoice.CUFE)
 	s.setAlign("center")
+	qrURL := sale.ElectronicInvoice.QRCode // Use QR URL from DIAN response
+	if qrURL == "" {
+		// Fallback if QRCode not available (shouldn't happen with valid DIAN response)
+		qrURL = fmt.Sprintf("https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=%s", sale.ElectronicInvoice.CUFE)
+	}
 	if err := s.printQRCodeAsImage(qrURL, 256); err != nil {
 		// If QR fails, show placeholder
 		s.write("[ CÓDIGO QR - ERROR ]\n")
@@ -766,9 +815,9 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	s.init()
 	s.setAlign("center")
 
-	// Load order with all data including delivery info
-	s.db.Preload("Order").Preload("Order.Items.Product").First(sale, sale.ID)
-	log.Printf("🚚 Simple Receipt: Loaded sale with order. Order nil? %v", sale.Order == nil)
+	// Load order with all data including customer, delivery info and modifiers
+	s.db.Preload("Customer").Preload("Order").Preload("Order.Items.Product").Preload("Order.Items.Modifiers.Modifier").First(sale, sale.ID)
+	log.Printf("🚚 Simple Receipt: Loaded sale with order. Order nil? %v, Customer nil? %v", sale.Order == nil, sale.Customer == nil)
 
 	// Get restaurant config
 	var restaurant models.RestaurantConfig
@@ -835,10 +884,34 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	// Items already loaded at the beginning of the function
 
 	for _, item := range sale.Order.Items {
-		s.write(fmt.Sprintf("%d x %s\n", item.Quantity, item.Product.Name))
+		// Build description with modifiers (matching invoice format)
+		description := item.Product.Name
+		if len(item.Modifiers) > 0 {
+			var visibleModifiers []string
+			for _, itemMod := range item.Modifiers {
+				if itemMod.Modifier != nil && !itemMod.Modifier.HideFromInvoice {
+					visibleModifiers = append(visibleModifiers, itemMod.Modifier.Name)
+				}
+			}
+			if len(visibleModifiers) > 0 {
+				description = fmt.Sprintf("%s (%s)", item.Product.Name, strings.Join(visibleModifiers, ", "))
+			}
+		}
+
+		// Calculate effective unit price (includes modifiers)
+		effectiveUnitPrice := item.Subtotal / float64(item.Quantity)
+
+		s.write(fmt.Sprintf("%d x %s\n", item.Quantity, description))
 		s.write(fmt.Sprintf("  $%s c/u = $%s\n",
-			s.formatMoney(item.UnitPrice),
+			s.formatMoney(effectiveUnitPrice),
 			s.formatMoney(item.Subtotal)))
+
+		// Print modifiers detail if any price changes
+		for _, itemMod := range item.Modifiers {
+			if itemMod.Modifier != nil && itemMod.PriceChange != 0 && !itemMod.Modifier.HideFromInvoice {
+				s.write(fmt.Sprintf("    + %s: $%s\n", itemMod.Modifier.Name, s.formatMoney(itemMod.PriceChange)))
+			}
+		}
 	}
 
 	// Print totals
