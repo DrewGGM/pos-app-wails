@@ -124,6 +124,7 @@ const POS: React.FC = () => {
   const [splitBillDialogOpen, setSplitBillDialogOpen] = useState(false);
   const [billSplits, setBillSplits] = useState<BillSplit[]>([]);
   const [activeSplitIndex, setActiveSplitIndex] = useState(0);
+  const [originalOrderIdForSplit, setOriginalOrderIdForSplit] = useState<number | null>(null);
   const [selectedProductForModifier, setSelectedProductForModifier] = useState<Product | null>(null);
   const [selectedProductForPrice, setSelectedProductForPrice] = useState<Product | null>(null);
   const [selectedItemForModifierEdit, setSelectedItemForModifierEdit] = useState<OrderItem | null>(null);
@@ -1565,6 +1566,11 @@ const POS: React.FC = () => {
         onClose={() => setSplitBillDialogOpen(false)}
         orderItems={orderItems}
         onProcessSplit={(splits) => {
+          // Save the original order ID before processing splits
+          // This order will be cancelled after all splits are paid
+          if (currentOrder?.id) {
+            setOriginalOrderIdForSplit(currentOrder.id);
+          }
           setBillSplits(splits);
           setSplitBillDialogOpen(false);
           setActiveSplitIndex(0);
@@ -1586,6 +1592,7 @@ const POS: React.FC = () => {
               setPaymentDialogOpen(false);
               setBillSplits([]);
               setActiveSplitIndex(0);
+              setOriginalOrderIdForSplit(null);
             }
           }}
           maxWidth="md"
@@ -1631,6 +1638,7 @@ const POS: React.FC = () => {
                   setPaymentDialogOpen(false);
                   setBillSplits([]);
                   setActiveSplitIndex(0);
+                  setOriginalOrderIdForSplit(null);
                 }
               }}
               total={billSplits[activeSplitIndex]?.total || 0}
@@ -1649,11 +1657,21 @@ const POS: React.FC = () => {
                     setActiveSplitIndex(nextIndex);
                     toast.info(`Procesando pago de ${billSplits[nextIndex].name} ($${billSplits[nextIndex].total.toLocaleString('es-CO')})`);
                   } else {
-                    // All splits paid, clear everything
+                    // All splits paid - cancel/delete the original order if it exists
+                    if (originalOrderIdForSplit) {
+                      try {
+                        await wailsOrderService.cancelOrder(originalOrderIdForSplit, 'Orden dividida en cuentas separadas');
+                      } catch (cancelError) {
+                        console.error('Error cancelling original order:', cancelError);
+                        // Don't fail the whole operation if cancel fails
+                      }
+                    }
+                    // Clear everything
                     setBillSplits([]);
                     setActiveSplitIndex(0);
+                    setOriginalOrderIdForSplit(null);
                     setPaymentDialogOpen(false);
-                    clearOrder(true); // Clear the order after all splits are paid
+                    clearOrder(true); // Clear local state after all splits are paid
                     toast.success('¡Todos los pagos divididos procesados correctamente!');
                   }
                 } catch (error) {
