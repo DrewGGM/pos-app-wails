@@ -795,7 +795,8 @@ const POS: React.FC = () => {
           employee_id: user?.id,
           items: itemsToProcess,
           notes: splitItems ? 'Cuenta dividida' : '',
-          source: 'pos',
+          // Use 'split' source for split bills - this prevents sending to kitchen
+          source: splitItems ? 'split' : 'pos',
           // Include delivery info if exists (check for actual data, not just order type)
           ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
             delivery_customer_name: deliveryInfo.customerName,

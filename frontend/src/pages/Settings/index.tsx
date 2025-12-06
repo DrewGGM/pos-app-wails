@@ -194,6 +194,15 @@ const Settings: React.FC = () => {
     certificatePassword: '',
     certificateFileName: '',
     apiToken: '',
+    // Production Resolution (for Step 7)
+    prodResolution: '',
+    prodPrefix: '',
+    prodStartNumber: 0,
+    prodEndNumber: 0,
+    prodTechnicalKey: '',
+    prodResolutionDate: '',
+    prodDateFrom: '',
+    prodDateTo: '',
   });
 
   // Track which configuration steps are completed
@@ -424,6 +433,15 @@ const Settings: React.FC = () => {
           certificatePassword: '', // Don't load password for security
           certificateFileName: config.certificate ? 'Certificado existente' : '',
           apiToken: config.api_token || '',
+          // Production Resolution (for Step 7) - These are empty until user enters them
+          prodResolution: '',
+          prodPrefix: '',
+          prodStartNumber: 0,
+          prodEndNumber: 0,
+          prodTechnicalKey: '',
+          prodResolutionDate: '',
+          prodDateFrom: '',
+          prodDateTo: '',
         });
 
         // Load step completion status from database
@@ -1085,13 +1103,13 @@ const Settings: React.FC = () => {
         return;
       }
 
-      toast.info('Migrando ambiente a Producción...');
+      toast.info('Migrando ambiente a Producción... Consultando resolución de la DIAN...');
 
       // Call backend to perform complete production migration
-      // This will: 1) Change environment, 2) Get numbering ranges, 3) Update config, 4) Register resolution
+      // This will: 1) Change environment, 2) Get resolution from DIAN, 3) Configure resolution automatically
       await wailsDianService.migrateToProduction();
 
-      toast.success('Migración a Producción completada exitosamente. Resolución de producción configurada.');
+      toast.success('¡Migración a Producción completada! Resolución configurada automáticamente desde la DIAN.');
       setCompletedSteps(prev => ({ ...prev, production: true }));
 
       // Update DIAN settings to reflect production mode
@@ -2387,6 +2405,26 @@ const Settings: React.FC = () => {
 
                     {/* Step 7: Migrate to Production */}
                     <Grid item xs={12}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, mt: 2 }}>
+                        Paso 7: Migrar a Producción
+                      </Typography>
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        Este paso consultará automáticamente la resolución de producción desde la DIAN usando el Software ID configurado.
+                        La resolución se configurará automáticamente con los datos obtenidos de la DIAN.
+                      </Alert>
+                      {!completedSteps.production && completedSteps.debitNote && (
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                          <strong>IMPORTANTE:</strong> Antes de migrar a producción, asegúrate de:
+                          <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                            <li>Haber completado satisfactoriamente las pruebas en ambiente de habilitación</li>
+                            <li>Tener la resolución de facturación autorizada por la DIAN</li>
+                            <li>Verificar que todos los pasos anteriores estén correctamente configurados</li>
+                          </ul>
+                        </Alert>
+                      )}
+                    </Grid>
+
+                    <Grid item xs={12}>
                       <Button
                         variant="contained"
                         fullWidth
@@ -2400,16 +2438,11 @@ const Settings: React.FC = () => {
                           }
                         }}
                       >
-                        {completedSteps.production ? "✓ Paso 7 Completado: En Producción" : "Paso 7: Migrar a Producción"}
+                        {completedSteps.production ? "✓ Paso 7 Completado: En Producción" : "Migrar a Producción (Automático)"}
                       </Button>
                       {!completedSteps.debitNote && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
                           Completa todos los pasos anteriores primero
-                        </Typography>
-                      )}
-                      {!completedSteps.production && completedSteps.debitNote && (
-                        <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5, ml: 2, fontWeight: 'bold' }}>
-                          ⚠️ Este paso cambiará el ambiente de pruebas a producción. Asegúrate de haber completado todas las pruebas necesarias.
                         </Typography>
                       )}
                     </Grid>

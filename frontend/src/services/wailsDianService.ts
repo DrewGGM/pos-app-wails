@@ -74,6 +74,7 @@ export const wailsDianService = {
   async migrateToProduction(): Promise<void> {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
+    // MigrateToProduction now automatically extracts resolution from GetNumberingRanges
     await svc.MigrateToProduction();
   },
 

@@ -79,7 +79,7 @@ type Order struct {
 	EmployeeID   uint           `gorm:"index" json:"employee_id"`
 	Employee     *Employee      `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
 	SaleID       *uint          `json:"sale_id,omitempty"`
-	Source       string         `json:"source"` // "pos", "waiter_app", "online"
+	Source       string         `json:"source"` // "pos", "waiter_app", "online", "split" (split bills - not sent to kitchen)
 	IsSynced     bool           `gorm:"default:false" json:"is_synced"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`

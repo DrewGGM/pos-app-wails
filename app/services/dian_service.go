@@ -610,6 +610,9 @@ func (s *DIANService) GetNumberingRanges() (map[string]interface{}, error) {
 		return nil, err
 	}
 
+	fmt.Printf("📡 GetNumberingRanges - Request URL: %s\n", url)
+	fmt.Printf("📡 GetNumberingRanges - Request Body: %s\n", string(jsonData))
+
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -621,6 +624,7 @@ func (s *DIANService) GetNumberingRanges() (map[string]interface{}, error) {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		fmt.Printf("❌ GetNumberingRanges - HTTP Error: %v\n", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -630,59 +634,183 @@ func (s *DIANService) GetNumberingRanges() (map[string]interface{}, error) {
 		return nil, err
 	}
 
+	fmt.Printf("📡 GetNumberingRanges - Status Code: %d\n", resp.StatusCode)
+	fmt.Printf("📡 GetNumberingRanges - Raw Response:\n%s\n", string(body))
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("DIAN API error: %s", string(body))
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Printf("❌ GetNumberingRanges - JSON Parse Error: %v\n", err)
 		return nil, err
 	}
+
+	// Debug: Pretty print the parsed JSON structure
+	prettyJSON, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Printf("📡 GetNumberingRanges - Parsed JSON Structure:\n%s\n", string(prettyJSON))
+
+	// Debug: Analyze the response structure to help find resolution data
+	s.debugAnalyzeNumberingRangesResponse(result)
 
 	return result, nil
 }
 
+// debugAnalyzeNumberingRangesResponse analyzes and logs the structure of the numbering ranges response
+func (s *DIANService) debugAnalyzeNumberingRangesResponse(result map[string]interface{}) {
+	fmt.Println("🔍 Analyzing GetNumberingRanges response structure...")
+
+	// Check top-level keys
+	fmt.Printf("🔍 Top-level keys: ")
+	for key := range result {
+		fmt.Printf("%s, ", key)
+	}
+	fmt.Println()
+
+	// Check for ResponseDian (typical DIAN SOAP response wrapper)
+	if responseDian, ok := result["ResponseDian"].(map[string]interface{}); ok {
+		fmt.Println("🔍 Found 'ResponseDian' wrapper")
+		s.debugAnalyzeNestedStructure(responseDian, "  ResponseDian")
+	}
+
+	// Check for direct resolution data
+	if resolutions, ok := result["resolutions"].([]interface{}); ok {
+		fmt.Printf("🔍 Found 'resolutions' array with %d elements\n", len(resolutions))
+		for i, res := range resolutions {
+			if resMap, ok := res.(map[string]interface{}); ok {
+				fmt.Printf("🔍 Resolution[%d]: %+v\n", i, resMap)
+			}
+		}
+	}
+
+	// Check for data wrapper
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		fmt.Println("🔍 Found 'data' wrapper")
+		s.debugAnalyzeNestedStructure(data, "  data")
+	}
+
+	// Check for message field (often contains status info)
+	if message, ok := result["message"].(string); ok {
+		fmt.Printf("🔍 Message: %s\n", message)
+	}
+
+	// Check for success field
+	if success, ok := result["success"].(bool); ok {
+		fmt.Printf("🔍 Success: %v\n", success)
+	}
+}
+
+// debugAnalyzeNestedStructure recursively analyzes nested map structures
+func (s *DIANService) debugAnalyzeNestedStructure(data map[string]interface{}, prefix string) {
+	for key, value := range data {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			fmt.Printf("%s.%s: (map with %d keys)\n", prefix, key, len(v))
+			// Go one level deeper for important keys
+			if key == "Envelope" || key == "Body" || key == "GetNumberingRangeResponse" ||
+				key == "GetNumberingRangeResult" || key == "DianResponse" || key == "ResponseList" {
+				s.debugAnalyzeNestedStructure(v, prefix+"."+key)
+			}
+		case []interface{}:
+			fmt.Printf("%s.%s: (array with %d elements)\n", prefix, key, len(v))
+			// If it's a resolution list, print the first element
+			if len(v) > 0 {
+				if firstMap, ok := v[0].(map[string]interface{}); ok {
+					fmt.Printf("%s.%s[0]: %+v\n", prefix, key, firstMap)
+				}
+			}
+		case string:
+			// Only print relevant string fields
+			if key == "Resolution" || key == "Prefix" || key == "From" || key == "To" ||
+				key == "TechnicalKey" || key == "ResolutionDate" || key == "DateFrom" || key == "DateTo" ||
+				key == "StatusCode" || key == "StatusDescription" || key == "IsValid" {
+				fmt.Printf("%s.%s: %s\n", prefix, key, v)
+			}
+		case float64:
+			if key == "From" || key == "To" {
+				fmt.Printf("%s.%s: %.0f\n", prefix, key, v)
+			}
+		}
+	}
+}
+
+// ProductionResolutionData represents the data extracted from GetNumberingRanges response
+type ProductionResolutionData struct {
+	Resolution     string `json:"resolution"`
+	Prefix         string `json:"prefix"`
+	StartNumber    int    `json:"start_number"`
+	EndNumber      int    `json:"end_number"`
+	TechnicalKey   string `json:"technical_key"`
+	ResolutionDate string `json:"resolution_date"`
+	DateFrom       string `json:"date_from"`
+	DateTo         string `json:"date_to"`
+}
+
 // MigrateToProduction performs the complete migration to production environment
+// Automatically extracts resolution data from GetNumberingRanges API response
 func (s *DIANService) MigrateToProduction() error {
 	if s.config == nil || s.config.APIToken == "" {
 		return fmt.Errorf("DIAN configuration not complete")
 	}
 
+	fmt.Println("🚀 Starting production migration...")
+
 	// Step 1: Change environment to production
+	fmt.Println("📍 Step 1: Changing environment to production...")
 	if err := s.ChangeEnvironment("production"); err != nil {
 		return fmt.Errorf("failed to change environment to production: %w", err)
 	}
 
-	// Step 2: Get numbering ranges from DIAN
+	// Step 2: Get numbering ranges from DIAN (this returns the production resolution data)
+	fmt.Println("📍 Step 2: Getting numbering ranges from DIAN...")
 	numberingRanges, err := s.GetNumberingRanges()
 	if err != nil {
 		return fmt.Errorf("failed to get numbering ranges: %w", err)
 	}
 
-	// Step 3: Parse and update configuration with production data
-	// Reload config to get latest values
+	// Step 3: Extract resolution data from the response
+	fmt.Println("📍 Step 3: Extracting resolution data from response...")
+	resolutionData, err := s.extractResolutionFromNumberingRanges(numberingRanges)
+	if err != nil {
+		return fmt.Errorf("failed to extract resolution data: %w", err)
+	}
+
+	// Step 4: Update configuration with extracted resolution data
+	fmt.Println("📍 Step 4: Updating configuration with resolution data...")
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
 	}
 
-	// Extract data from numbering ranges response
-	// The API response structure may vary - extracting common fields
-	if data, ok := numberingRanges["data"].(map[string]interface{}); ok {
-		// Try to find resolution data in various possible locations
-		if resolutions, ok := data["resolutions"].([]interface{}); ok && len(resolutions) > 0 {
-			// Get first resolution (invoice resolution)
-			if resolution, ok := resolutions[0].(map[string]interface{}); ok {
-				s.updateConfigFromResolution(&dianConfig, resolution)
-			}
-		} else {
-			// Data might be directly in the response
-			s.updateConfigFromResolution(&dianConfig, data)
+	// Set production resolution values from extracted data
+	dianConfig.ResolutionNumber = resolutionData.Resolution
+	dianConfig.ResolutionPrefix = resolutionData.Prefix
+	dianConfig.ResolutionFrom = resolutionData.StartNumber
+	dianConfig.ResolutionTo = resolutionData.EndNumber
+	dianConfig.TechnicalKey = resolutionData.TechnicalKey
+	dianConfig.LastInvoiceNumber = resolutionData.StartNumber - 1 // Start at one less than first number
+
+	// Parse dates using local timezone to avoid UTC conversion issues
+	if resolutionData.ResolutionDate != "" {
+		if t, err := time.ParseInLocation("2006-01-02", resolutionData.ResolutionDate, time.Local); err == nil {
+			dianConfig.ResolutionDateFrom = t
 		}
-	} else {
-		// Data might be directly in the response
-		s.updateConfigFromResolution(&dianConfig, numberingRanges)
 	}
+	if resolutionData.DateFrom != "" {
+		if t, err := time.ParseInLocation("2006-01-02", resolutionData.DateFrom, time.Local); err == nil {
+			dianConfig.ResolutionDateFrom = t
+		}
+	}
+	if resolutionData.DateTo != "" {
+		if t, err := time.ParseInLocation("2006-01-02", resolutionData.DateTo, time.Local); err == nil {
+			dianConfig.ResolutionDateTo = t
+		}
+	}
+
+	// Disable test mode since we're in production
+	dianConfig.UseTestSetID = false
+	dianConfig.Step7Completed = true
 
 	// Save updated configuration
 	if err := s.db.Save(&dianConfig).Error; err != nil {
@@ -692,63 +820,287 @@ func (s *DIANService) MigrateToProduction() error {
 	// Update service config cache
 	s.config = &dianConfig
 
-	// Step 4: Register the production resolution with DIAN API
+	// Step 5: Register the production resolution with DIAN API
+	fmt.Println("📍 Step 5: Registering production resolution with DIAN API...")
 	if err := s.ConfigureResolution(); err != nil {
 		return fmt.Errorf("failed to configure production resolution: %w", err)
 	}
 
+	fmt.Printf("✅ Production migration completed successfully:\n")
+	fmt.Printf("   Resolution: %s\n", resolutionData.Resolution)
+	fmt.Printf("   Prefix: %s\n", resolutionData.Prefix)
+	fmt.Printf("   Range: %d - %d\n", resolutionData.StartNumber, resolutionData.EndNumber)
+	fmt.Printf("   Technical Key: %s\n", resolutionData.TechnicalKey)
+	fmt.Printf("   Valid From: %s To: %s\n", resolutionData.DateFrom, resolutionData.DateTo)
+
 	return nil
 }
 
+// extractResolutionFromNumberingRanges extracts resolution data from GetNumberingRanges response
+// Response structure: ResponseDian.Envelope.Body.GetNumberingRangeResponse.GetNumberingRangeResult.ResponseList.NumberRangeResponse
+func (s *DIANService) extractResolutionFromNumberingRanges(response map[string]interface{}) (*ProductionResolutionData, error) {
+	fmt.Println("🔍 Extracting resolution from GetNumberingRanges response...")
+
+	// Navigate the nested structure:
+	// ResponseDian -> Envelope -> Body -> GetNumberingRangeResponse -> GetNumberingRangeResult -> ResponseList -> NumberRangeResponse
+	responseDian, ok := response["ResponseDian"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("ResponseDian not found in response")
+	}
+
+	envelope, ok := responseDian["Envelope"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("Envelope not found in ResponseDian")
+	}
+
+	body, ok := envelope["Body"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("Body not found in Envelope")
+	}
+
+	getNumberingRangeResponse, ok := body["GetNumberingRangeResponse"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("GetNumberingRangeResponse not found in Body")
+	}
+
+	getNumberingRangeResult, ok := getNumberingRangeResponse["GetNumberingRangeResult"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("GetNumberingRangeResult not found in GetNumberingRangeResponse")
+	}
+
+	// Check operation status
+	if opCode, ok := getNumberingRangeResult["OperationCode"].(string); ok {
+		fmt.Printf("🔍 OperationCode: %s\n", opCode)
+		if opCode != "100" {
+			opDesc, _ := getNumberingRangeResult["OperationDescription"].(string)
+			return nil, fmt.Errorf("DIAN operation failed: %s - %s", opCode, opDesc)
+		}
+	}
+
+	responseList, ok := getNumberingRangeResult["ResponseList"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("ResponseList not found in GetNumberingRangeResult")
+	}
+
+	// NumberRangeResponse can be a single object or an array
+	var numberRangeResponse map[string]interface{}
+
+	if nrr, ok := responseList["NumberRangeResponse"].(map[string]interface{}); ok {
+		// Single resolution
+		numberRangeResponse = nrr
+	} else if nrrArray, ok := responseList["NumberRangeResponse"].([]interface{}); ok && len(nrrArray) > 0 {
+		// Multiple resolutions - take the first one (or we could let user choose)
+		if firstRes, ok := nrrArray[0].(map[string]interface{}); ok {
+			numberRangeResponse = firstRes
+		}
+	}
+
+	if numberRangeResponse == nil {
+		return nil, fmt.Errorf("NumberRangeResponse not found or empty in ResponseList")
+	}
+
+	fmt.Printf("🔍 Found NumberRangeResponse: %+v\n", numberRangeResponse)
+
+	// Extract resolution data
+	resolutionData := &ProductionResolutionData{}
+
+	// ResolutionNumber
+	if val, ok := numberRangeResponse["ResolutionNumber"].(string); ok {
+		resolutionData.Resolution = val
+		fmt.Printf("   ✅ ResolutionNumber: %s\n", val)
+	} else {
+		return nil, fmt.Errorf("ResolutionNumber not found in response")
+	}
+
+	// Prefix
+	if val, ok := numberRangeResponse["Prefix"].(string); ok {
+		resolutionData.Prefix = val
+		fmt.Printf("   ✅ Prefix: %s\n", val)
+	} else {
+		return nil, fmt.Errorf("Prefix not found in response")
+	}
+
+	// FromNumber (can be string or number)
+	if val, ok := numberRangeResponse["FromNumber"].(string); ok {
+		if num, err := strconv.Atoi(val); err == nil {
+			resolutionData.StartNumber = num
+			fmt.Printf("   ✅ FromNumber: %d\n", num)
+		}
+	} else if val, ok := numberRangeResponse["FromNumber"].(float64); ok {
+		resolutionData.StartNumber = int(val)
+		fmt.Printf("   ✅ FromNumber: %d\n", resolutionData.StartNumber)
+	}
+	if resolutionData.StartNumber == 0 {
+		return nil, fmt.Errorf("FromNumber not found or invalid in response")
+	}
+
+	// ToNumber (can be string or number)
+	if val, ok := numberRangeResponse["ToNumber"].(string); ok {
+		if num, err := strconv.Atoi(val); err == nil {
+			resolutionData.EndNumber = num
+			fmt.Printf("   ✅ ToNumber: %d\n", num)
+		}
+	} else if val, ok := numberRangeResponse["ToNumber"].(float64); ok {
+		resolutionData.EndNumber = int(val)
+		fmt.Printf("   ✅ ToNumber: %d\n", resolutionData.EndNumber)
+	}
+	if resolutionData.EndNumber == 0 {
+		return nil, fmt.Errorf("ToNumber not found or invalid in response")
+	}
+
+	// TechnicalKey (optional for some document types)
+	if val, ok := numberRangeResponse["TechnicalKey"].(string); ok {
+		resolutionData.TechnicalKey = val
+		fmt.Printf("   ✅ TechnicalKey: %s\n", val)
+	}
+
+	// ResolutionDate
+	if val, ok := numberRangeResponse["ResolutionDate"].(string); ok {
+		resolutionData.ResolutionDate = val
+		fmt.Printf("   ✅ ResolutionDate: %s\n", val)
+	}
+
+	// ValidDateFrom
+	if val, ok := numberRangeResponse["ValidDateFrom"].(string); ok {
+		resolutionData.DateFrom = val
+		fmt.Printf("   ✅ ValidDateFrom: %s\n", val)
+	}
+
+	// ValidDateTo
+	if val, ok := numberRangeResponse["ValidDateTo"].(string); ok {
+		resolutionData.DateTo = val
+		fmt.Printf("   ✅ ValidDateTo: %s\n", val)
+	}
+
+	fmt.Println("✅ Resolution data extracted successfully!")
+	return resolutionData, nil
+}
+
 // updateConfigFromResolution updates DIAN config from resolution data
+// Note: This function is kept for backwards compatibility but is no longer used by MigrateToProduction
+// since production resolution data is now provided by the user directly
 func (s *DIANService) updateConfigFromResolution(config *models.DIANConfig, data map[string]interface{}) {
-	// Extract prefix
-	if prefix, ok := data["prefix"].(string); ok && prefix != "" {
-		config.ResolutionPrefix = prefix
-	}
+	fmt.Println("🔧 updateConfigFromResolution - Attempting to extract values from data...")
+	fmt.Printf("🔧 Data received: %+v\n", data)
 
-	// Extract resolution number
-	if resolution, ok := data["resolution"].(string); ok && resolution != "" {
-		config.ResolutionNumber = resolution
+	// List all keys in the data for debugging
+	fmt.Printf("🔧 Available keys: ")
+	for key := range data {
+		fmt.Printf("'%s', ", key)
 	}
+	fmt.Println()
 
-	// Extract technical key
-	if technicalKey, ok := data["technical_key"].(string); ok && technicalKey != "" {
-		config.TechnicalKey = technicalKey
-	}
-
-	// Extract from number
-	if from, ok := data["from"].(float64); ok {
-		config.ResolutionFrom = int(from)
-	}
-
-	// Extract to number
-	if to, ok := data["to"].(float64); ok {
-		config.ResolutionTo = int(to)
-	}
-
-	// Extract dates
-	if dateFrom, ok := data["date_from"].(string); ok && dateFrom != "" {
-		if t, err := time.Parse("2006-01-02", dateFrom); err == nil {
-			config.ResolutionDateFrom = t
+	// Extract prefix - try multiple possible key names
+	prefixFound := false
+	for _, key := range []string{"prefix", "Prefix", "PREFIX"} {
+		if prefix, ok := data[key].(string); ok && prefix != "" {
+			config.ResolutionPrefix = prefix
+			fmt.Printf("✅ Found prefix '%s' = '%s'\n", key, prefix)
+			prefixFound = true
+			break
 		}
 	}
-
-	if dateTo, ok := data["date_to"].(string); ok && dateTo != "" {
-		if t, err := time.Parse("2006-01-02", dateTo); err == nil {
-			config.ResolutionDateTo = t
-		}
+	if !prefixFound {
+		fmt.Println("⚠️ Prefix not found in data")
 	}
 
-	// resolution_date from API response is typically the same as date_from
-	// If it exists and date_from doesn't, use it as date_from
-	if resolutionDate, ok := data["resolution_date"].(string); ok && resolutionDate != "" {
-		if config.ResolutionDateFrom.IsZero() {
-			if t, err := time.Parse("2006-01-02", resolutionDate); err == nil {
-				config.ResolutionDateFrom = t
+	// Extract resolution number - try multiple possible key names
+	resolutionFound := false
+	for _, key := range []string{"resolution", "Resolution", "RESOLUTION", "ResolutionNumber", "resolution_number"} {
+		if resolution, ok := data[key].(string); ok && resolution != "" {
+			config.ResolutionNumber = resolution
+			fmt.Printf("✅ Found resolution '%s' = '%s'\n", key, resolution)
+			resolutionFound = true
+			break
+		}
+	}
+	if !resolutionFound {
+		fmt.Println("⚠️ Resolution number not found in data")
+	}
+
+	// Extract technical key - try multiple possible key names
+	techKeyFound := false
+	for _, key := range []string{"technical_key", "TechnicalKey", "technicalKey", "TECHNICALKEY"} {
+		if technicalKey, ok := data[key].(string); ok && technicalKey != "" {
+			config.TechnicalKey = technicalKey
+			fmt.Printf("✅ Found technical_key '%s' = '%s'\n", key, technicalKey)
+			techKeyFound = true
+			break
+		}
+	}
+	if !techKeyFound {
+		fmt.Println("⚠️ Technical key not found in data")
+	}
+
+	// Extract from number - try multiple possible key names and types
+	fromFound := false
+	for _, key := range []string{"from", "From", "FROM", "FromNumber", "from_number"} {
+		if from, ok := data[key].(float64); ok {
+			config.ResolutionFrom = int(from)
+			fmt.Printf("✅ Found from '%s' = %d (as float64)\n", key, config.ResolutionFrom)
+			fromFound = true
+			break
+		} else if from, ok := data[key].(string); ok && from != "" {
+			if val, err := strconv.Atoi(from); err == nil {
+				config.ResolutionFrom = val
+				fmt.Printf("✅ Found from '%s' = %d (as string)\n", key, val)
+				fromFound = true
+				break
 			}
 		}
 	}
+	if !fromFound {
+		fmt.Println("⚠️ From number not found in data")
+	}
+
+	// Extract to number - try multiple possible key names and types
+	toFound := false
+	for _, key := range []string{"to", "To", "TO", "ToNumber", "to_number"} {
+		if to, ok := data[key].(float64); ok {
+			config.ResolutionTo = int(to)
+			fmt.Printf("✅ Found to '%s' = %d (as float64)\n", key, config.ResolutionTo)
+			toFound = true
+			break
+		} else if to, ok := data[key].(string); ok && to != "" {
+			if val, err := strconv.Atoi(to); err == nil {
+				config.ResolutionTo = val
+				fmt.Printf("✅ Found to '%s' = %d (as string)\n", key, val)
+				toFound = true
+				break
+			}
+		}
+	}
+	if !toFound {
+		fmt.Println("⚠️ To number not found in data")
+	}
+
+	// Extract dates - try multiple possible key names
+	for _, key := range []string{"date_from", "DateFrom", "dateFrom", "ResolutionDate", "resolution_date"} {
+		if dateFrom, ok := data[key].(string); ok && dateFrom != "" {
+			if t, err := time.Parse("2006-01-02", dateFrom); err == nil {
+				config.ResolutionDateFrom = t
+				fmt.Printf("✅ Found date_from '%s' = '%s'\n", key, dateFrom)
+				break
+			}
+		}
+	}
+
+	for _, key := range []string{"date_to", "DateTo", "dateTo", "ExpirationDate", "expiration_date"} {
+		if dateTo, ok := data[key].(string); ok && dateTo != "" {
+			if t, err := time.Parse("2006-01-02", dateTo); err == nil {
+				config.ResolutionDateTo = t
+				fmt.Printf("✅ Found date_to '%s' = '%s'\n", key, dateTo)
+				break
+			}
+		}
+	}
+
+	fmt.Printf("🔧 updateConfigFromResolution - Final config values:\n")
+	fmt.Printf("   ResolutionNumber: %s\n", config.ResolutionNumber)
+	fmt.Printf("   ResolutionPrefix: %s\n", config.ResolutionPrefix)
+	fmt.Printf("   ResolutionFrom: %d\n", config.ResolutionFrom)
+	fmt.Printf("   ResolutionTo: %d\n", config.ResolutionTo)
+	fmt.Printf("   TechnicalKey: %s\n", config.TechnicalKey)
 }
 
 // GetDIANConfig returns current DIAN configuration

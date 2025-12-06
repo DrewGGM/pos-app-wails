@@ -147,6 +147,8 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	}
 
 	// Send to kitchen AFTER transaction is complete and order is reloaded
+	// NOTE: "split" source is used for split bills - these should NOT be sent to kitchen
+	// because the original order was already sent when it was first created
 	if order.Source == "pos" || order.Source == "waiter_app" {
 		go s.sendToKitchen(reloadedOrder)
 	}
