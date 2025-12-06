@@ -170,12 +170,12 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	report.VentasTotales = totalSales
 
 	// Get DIAN sales (orders with electronic invoice, exclude refunded AND hidden order types)
-	// CRITICAL FIX: Use Model() to respect soft delete AND explicitly filter deleted sales/invoices
+	// NOTE: electronic_invoices table does NOT have deleted_at (no soft delete)
 	var dianSales float64
 	s.db.Model(&models.Order{}).
 		Select("COALESCE(SUM(orders.total), 0)").
 		Joins("INNER JOIN sales ON sales.order_id = orders.id AND sales.deleted_at IS NULL").
-		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id AND electronic_invoices.deleted_at IS NULL").
+		Joins("INNER JOIN electronic_invoices ON electronic_invoices.sale_id = sales.id").
 		Joins("LEFT JOIN order_types ON order_types.id = orders.order_type_id").
 		Where("orders.created_at >= ? AND orders.created_at < ?", startOfDay, endOfDay).
 		Where("orders.status IN ?", []string{"completed", "paid"}).

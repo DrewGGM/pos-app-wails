@@ -456,8 +456,31 @@ function App() {
                 <div className="card-content">
                   <div className="card-label">Ventas Totales</div>
                   <div className="card-value">{formatCurrency(currentReport.ventas_totales)}</div>
+                </div>
+              </div>
+
+              <div className="summary-card" style={{ borderLeft: '4px solid #4CAF50' }}>
+                <div className="card-icon">✅</div>
+                <div className="card-content">
+                  <div className="card-label">Ventas DIAN</div>
+                  <div className="card-value" style={{ color: '#4CAF50' }}>{formatCurrency(currentReport.ventas_dian)}</div>
                   <div className="card-detail">
-                    DIAN: {formatCurrency(currentReport.ventas_dian)}
+                    {currentReport.ventas_totales > 0
+                      ? ((currentReport.ventas_dian / currentReport.ventas_totales) * 100).toFixed(1)
+                      : '0'}% del total
+                  </div>
+                </div>
+              </div>
+
+              <div className="summary-card" style={{ borderLeft: '4px solid #FF9800' }}>
+                <div className="card-icon">📊</div>
+                <div className="card-content">
+                  <div className="card-label">Ventas No DIAN</div>
+                  <div className="card-value" style={{ color: '#FF9800' }}>{formatCurrency(currentReport.ventas_no_dian)}</div>
+                  <div className="card-detail">
+                    {currentReport.ventas_totales > 0
+                      ? ((currentReport.ventas_no_dian / currentReport.ventas_totales) * 100).toFixed(1)
+                      : '0'}% del total
                   </div>
                 </div>
               </div>
@@ -478,17 +501,6 @@ function App() {
                 <div className="card-content">
                   <div className="card-label">Productos Vendidos</div>
                   <div className="card-value">{currentReport.productos_vendidos}</div>
-                </div>
-              </div>
-
-              <div className="summary-card">
-                <div className="card-icon">📊</div>
-                <div className="card-content">
-                  <div className="card-label">Ventas No DIAN</div>
-                  <div className="card-value">{formatCurrency(currentReport.ventas_no_dian)}</div>
-                  <div className="card-detail">
-                    {((currentReport.ventas_no_dian / currentReport.ventas_totales) * 100).toFixed(1)}% del total
-                  </div>
                 </div>
               </div>
             </div>
