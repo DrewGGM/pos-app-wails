@@ -43,6 +43,7 @@ type App struct {
 	GoogleSheetsService     *services.GoogleSheetsService
 	ReportSchedulerService  *services.ReportSchedulerService
 	RappiConfigService      *services.RappiConfigService
+	InvoiceLimitService     *services.InvoiceLimitService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -136,6 +137,12 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		a.ReportSchedulerService.Stop()
 	}
 
+	// Stop invoice limit sync
+	if a.InvoiceLimitService != nil {
+		a.LoggerService.LogInfo("Stopping invoice limit sync")
+		a.InvoiceLimitService.StopPeriodicSync()
+	}
+
 	// Stop WebSocket server
 	if a.WSServer != nil {
 		a.LoggerService.LogInfo("Stopping WebSocket server")
@@ -194,6 +201,7 @@ func (a *App) InitializeServicesAfterSetup() error {
 	// Initialize Google Sheets services
 	a.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 	a.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), a.GoogleSheetsService)
+	a.InvoiceLimitService = services.NewInvoiceLimitService(database.GetDB())
 
 	// Initialize Rappi service
 	a.RappiConfigService = services.NewRappiConfigService()
@@ -314,6 +322,7 @@ func main() {
 	app.GoogleSheetsService = services.NewGoogleSheetsService(nil)
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
 	app.RappiConfigService = services.NewRappiConfigService()
+	app.InvoiceLimitService = services.NewInvoiceLimitService(nil)
 
 	if !isFirstRun {
 		loggerService.LogInfo("Loading configuration from config.json")
@@ -350,12 +359,16 @@ func main() {
 			// Initialize Google Sheets services
 			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 			app.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), app.GoogleSheetsService)
+			app.InvoiceLimitService = services.NewInvoiceLimitService(database.GetDB())
 
 			// Initialize Rappi service
 			app.RappiConfigService = services.NewRappiConfigService()
 
 			loggerService.LogInfo("Initializing default system configurations")
 			app.ConfigService.InitializeDefaultSystemConfigs()
+
+			// Start invoice limit periodic sync
+			app.InvoiceLimitService.StartPeriodicSync()
 		}
 	}
 
@@ -384,6 +397,7 @@ func main() {
 		app.GoogleSheetsService,
 		app.ReportSchedulerService,
 		app.RappiConfigService,
+		app.InvoiceLimitService,
 		app.WSManagementService,
 	}
 

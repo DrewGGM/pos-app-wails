@@ -77,6 +77,7 @@ import QuickPad from '../../components/pos/QuickPad';
 import OrderList from '../../components/pos/OrderList';
 import DeliveryInfoDialog, { DeliveryInfo } from '../../components/pos/DeliveryInfoDialog';
 import SplitBillDialog, { BillSplit } from '../../components/pos/SplitBillDialog';
+import { wailsInvoiceLimitService, InvoiceLimitStatus } from '../../services/wailsInvoiceLimitService';
 
 const POS: React.FC = () => {
   // Context hooks
@@ -133,6 +134,9 @@ const POS: React.FC = () => {
   // Electronic invoice flag per sale
   const [needsElectronicInvoice, setNeedsElectronicInvoice] = useState(false);
 
+  // Invoice limit status (controls if electronic invoice checkbox is available)
+  const [invoiceLimitStatus, setInvoiceLimitStatus] = useState<InvoiceLimitStatus | null>(null);
+
   // Company fiscal liability (for IVA calculation)
   const [companyLiabilityId, setCompanyLiabilityId] = useState<number | null>(null);
 
@@ -151,9 +155,32 @@ const POS: React.FC = () => {
       loadCompanyConfig();
       loadCustomPages();
       loadPrinterSettings();
+      loadInvoiceLimitStatus();
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Periodically check invoice limit status (every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadInvoiceLimitStatus();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadInvoiceLimitStatus = async () => {
+    try {
+      const status = await wailsInvoiceLimitService.getStatus();
+      setInvoiceLimitStatus(status);
+      // If invoice limit is not available and checkbox is checked, uncheck it
+      if (status && !status.available && needsElectronicInvoice) {
+        setNeedsElectronicInvoice(false);
+        toast.warning('Facturación electrónica deshabilitada: ' + status.message);
+      }
+    } catch (error) {
+      // Ignore errors - service might not be ready
+    }
+  };
 
   // Persist selectedCategory in localStorage
   useEffect(() => {
@@ -1210,17 +1237,36 @@ const POS: React.FC = () => {
           </Box>
 
           {/* Electronic Invoice Option */}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={needsElectronicInvoice}
-                onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
-                color="primary"
-              />
-            }
-            label="Factura Electrónica"
-            sx={{ mb: 2 }}
-          />
+          <Box sx={{ mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={needsElectronicInvoice}
+                  onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
+                  color="primary"
+                  disabled={invoiceLimitStatus?.enabled && !invoiceLimitStatus?.available}
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>Factura Electrónica</span>
+                  {invoiceLimitStatus?.enabled && !invoiceLimitStatus?.available && (
+                    <Chip
+                      label="Límite alcanzado"
+                      size="small"
+                      color="warning"
+                      sx={{ fontSize: '0.7rem', height: 20 }}
+                    />
+                  )}
+                </Box>
+              }
+            />
+            {invoiceLimitStatus?.enabled && invoiceLimitStatus?.today_limit > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Hoy: ${invoiceLimitStatus.today_sales.toLocaleString('es-CO')} / ${invoiceLimitStatus.today_limit.toLocaleString('es-CO')}
+              </Typography>
+            )}
+          </Box>
 
           {/* Action Buttons */}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

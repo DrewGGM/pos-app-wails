@@ -214,8 +214,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    anys: Record<string, any>;
-	    ConnPool?: any;
+	    ClauseBuilders: Record<string, ClauseBuilder>;
+	    ConnPool: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -238,6 +238,7 @@ export namespace gorm {
 	    Preloads: Record<string, Array<any>>;
 	    // Go type: sync
 	    Settings: any;
+	    ConnPool: any;
 	    Schema?: schema.Schema;
 	    Context: any;
 	    RaiseErrorOnNotFound: boolean;
@@ -272,7 +273,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.anys = source["anys"];
+	        this.ClauseBuilders = source["ClauseBuilders"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -342,8 +343,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    anys: Record<string, any>;
-	    ConnPool?: any;
+	    ClauseBuilders: Record<string, ClauseBuilder>;
+	    ConnPool: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -374,7 +375,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.anys = source["anys"];
+	        this.ClauseBuilders = source["ClauseBuilders"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -3981,6 +3982,66 @@ export namespace services {
 		    }
 		    return a;
 		}
+	}
+	export class InvoiceLimitConfig {
+	    enabled: boolean;
+	    sync_interval: number;
+	    day_limits: Record<string, number>;
+	    last_sync: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new InvoiceLimitConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.sync_interval = source["sync_interval"];
+	        this.day_limits = source["day_limits"];
+	        this.last_sync = this.convertValues(source["last_sync"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InvoiceLimitStatus {
+	    available: boolean;
+	    enabled: boolean;
+	    today_limit: number;
+	    today_sales: number;
+	    remaining_amount: number;
+	    day_name: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InvoiceLimitStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.enabled = source["enabled"];
+	        this.today_limit = source["today_limit"];
+	        this.today_sales = source["today_sales"];
+	        this.remaining_amount = source["remaining_amount"];
+	        this.day_name = source["day_name"];
+	        this.message = source["message"];
+	    }
 	}
 	export class KeyMetricsComparison {
 	    metric: string;

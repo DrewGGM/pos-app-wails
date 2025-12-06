@@ -45,11 +45,21 @@ import {
   wailsReportSchedulerService,
   SchedulerStatus
 } from '../../services/wailsReportSchedulerService';
+import {
+  wailsInvoiceLimitService,
+  InvoiceLimitConfig,
+  InvoiceLimitStatus
+} from '../../services/wailsInvoiceLimitService';
 
 const GoogleSheetsSettings: React.FC = () => {
   const [config, setConfig] = useState<GoogleSheetsConfig | null>(null);
 
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+
+  // Invoice limit configuration state
+  const [invoiceLimitConfig, setInvoiceLimitConfig] = useState<InvoiceLimitConfig | null>(null);
+  const [invoiceLimitStatus, setInvoiceLimitStatus] = useState<InvoiceLimitStatus | null>(null);
+  const [savingInvoiceLimits, setSavingInvoiceLimits] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -64,10 +74,12 @@ const GoogleSheetsSettings: React.FC = () => {
   useEffect(() => {
     loadConfig();
     loadSchedulerStatus();
+    loadInvoiceLimitConfig();
 
     // Update scheduler status every 5 seconds
     const statusInterval = setInterval(() => {
       loadSchedulerStatus();
+      loadInvoiceLimitStatus();
     }, 5000);
 
     return () => clearInterval(statusInterval);
@@ -105,6 +117,25 @@ const GoogleSheetsSettings: React.FC = () => {
       const status = await wailsReportSchedulerService.getStatus();
       setSchedulerStatus(status);
     } catch (error: any) {
+    }
+  };
+
+  const loadInvoiceLimitConfig = async () => {
+    try {
+      const limitConfig = await wailsInvoiceLimitService.getConfig();
+      setInvoiceLimitConfig(limitConfig);
+      loadInvoiceLimitStatus();
+    } catch (error: any) {
+      // Service might not be available yet
+    }
+  };
+
+  const loadInvoiceLimitStatus = async () => {
+    try {
+      const status = await wailsInvoiceLimitService.getStatus();
+      setInvoiceLimitStatus(status);
+    } catch (error: any) {
+      // Ignore errors
     }
   };
 
@@ -232,6 +263,33 @@ const GoogleSheetsSettings: React.FC = () => {
     } catch (error) {
       toast.error('JSON inválido. Verifica el formato');
     }
+  };
+
+  const handleSaveInvoiceLimits = async () => {
+    if (!invoiceLimitConfig) return;
+
+    try {
+      setSavingInvoiceLimits(true);
+      await wailsInvoiceLimitService.saveConfig(invoiceLimitConfig);
+      toast.success('Configuración de límites guardada en Google Sheets');
+      await loadInvoiceLimitConfig();
+    } catch (error: any) {
+      toast.error('Error al guardar límites: ' + (error.message || error));
+    } finally {
+      setSavingInvoiceLimits(false);
+    }
+  };
+
+  const updateInvoiceLimitConfig = (updates: Partial<InvoiceLimitConfig>) => {
+    if (!invoiceLimitConfig) return;
+    setInvoiceLimitConfig({ ...invoiceLimitConfig, ...updates });
+  };
+
+  const updateDayLimit = (day: string, value: number) => {
+    if (!invoiceLimitConfig) return;
+    const newLimits = { ...invoiceLimitConfig.day_limits };
+    newLimits[`limite_${day}`] = value;
+    setInvoiceLimitConfig({ ...invoiceLimitConfig, day_limits: newLimits });
   };
 
   const formatCountdown = (seconds: number): string => {
@@ -637,6 +695,122 @@ const GoogleSheetsSettings: React.FC = () => {
                 </Card>
               </Grid>
             </Grid>
+          </>
+        )}
+
+        {/* Control de Límites de Facturación Electrónica */}
+        {config.is_enabled && invoiceLimitConfig && (
+          <>
+            <Divider sx={{ my: 4 }} />
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SettingsIcon /> Control de Límites de Facturación Electrónica
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Configura límites diarios para la facturación electrónica. Cuando se alcance el límite del día,
+              el checkbox de factura electrónica en el POS se deshabilitará automáticamente.
+              Esta configuración se guarda en Google Sheets (pestaña "ConfigFE").
+            </Typography>
+
+            {/* Estado actual */}
+            {invoiceLimitStatus && (
+              <Alert
+                severity={invoiceLimitStatus.available ? 'success' : 'warning'}
+                sx={{ mb: 3 }}
+              >
+                <Typography variant="body2">
+                  <strong>Estado actual ({invoiceLimitStatus.day_name}):</strong> {invoiceLimitStatus.message}
+                </Typography>
+                {invoiceLimitStatus.today_limit > 0 && (
+                  <Typography variant="body2">
+                    Ventas DIAN hoy: ${invoiceLimitStatus.today_sales.toLocaleString('es-CO')} / ${invoiceLimitStatus.today_limit.toLocaleString('es-CO')}
+                  </Typography>
+                )}
+              </Alert>
+            )}
+
+            {/* Master Switch */}
+            <Card sx={{ mb: 3, bgcolor: invoiceLimitConfig.enabled ? 'warning.light' : 'grey.100' }}>
+              <CardContent>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={invoiceLimitConfig.enabled}
+                      onChange={(e) => updateInvoiceLimitConfig({ enabled: e.target.checked })}
+                      color="warning"
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="h6">
+                        {invoiceLimitConfig.enabled ? 'Control de Límites Activado' : 'Control de Límites Desactivado'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {invoiceLimitConfig.enabled
+                          ? 'El checkbox de factura electrónica se controlará según los límites configurados'
+                          : 'Si está desactivado, el checkbox de factura electrónica siempre estará disponible'}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </CardContent>
+            </Card>
+
+            {invoiceLimitConfig.enabled && (
+              <>
+                {/* Intervalo de sincronización */}
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Intervalo de verificación (minutos)"
+                      value={invoiceLimitConfig.sync_interval}
+                      onChange={(e) => updateInvoiceLimitConfig({ sync_interval: parseInt(e.target.value) || 5 })}
+                      helperText="Cada cuántos minutos se verificará la configuración desde Google Sheets"
+                      InputProps={{ inputProps: { min: 1, max: 60 } }}
+                    />
+                  </Grid>
+                </Grid>
+
+                {/* Límites por día */}
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mt: 2 }}>
+                  Límites de ventas DIAN por día (en pesos COP):
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Establece el monto máximo de ventas con factura electrónica por día. Cuando se alcance el límite, el checkbox se deshabilitará.
+                  Un valor de 0 significa sin límite para ese día.
+                </Typography>
+
+                <Grid container spacing={2}>
+                  {['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map((day) => (
+                    <Grid item xs={6} sm={4} md={3} key={day}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label={day.charAt(0).toUpperCase() + day.slice(1)}
+                        value={invoiceLimitConfig.day_limits[`limite_${day}`] || 0}
+                        onChange={(e) => updateDayLimit(day, parseFloat(e.target.value) || 0)}
+                        InputProps={{ inputProps: { min: 0 } }}
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+
+                {/* Botón guardar límites */}
+                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    onClick={handleSaveInvoiceLimits}
+                    disabled={savingInvoiceLimits}
+                    startIcon={savingInvoiceLimits ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                  >
+                    {savingInvoiceLimits ? 'Guardando...' : 'Guardar Límites en Google Sheets'}
+                  </Button>
+                </Box>
+              </>
+            )}
           </>
         )}
 
