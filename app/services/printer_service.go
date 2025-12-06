@@ -559,30 +559,99 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 		s.lineFeed()
 	}
 
-	// Print header - FACTURA ELECTRÓNICA DE VENTA
+	// Print header title - FACTURA ELECTRÓNICA DE VENTA (split in 2 lines)
 	s.setEmphasize(true)
 	s.setSize(2, 2)
-	s.write("FACTURA ELECTRÓNICA DE VENTA\n")
+	s.write("FACTURA ELECTRONICA\n")
+	s.write("DE VENTA\n")
 	s.setSize(1, 1)
 	s.setEmphasize(false)
 	s.lineFeed()
 
-	// Print company info
-	s.setEmphasize(true)
-	s.write(fmt.Sprintf("%s\n", restaurant.Name))
-	s.setEmphasize(false)
-	s.write(fmt.Sprintf("NIT: %s-%s\n", dianConfig.IdentificationNumber, dianConfig.DV))
-	s.write(fmt.Sprintf("%s\n", restaurant.Address))
-	s.write(fmt.Sprintf("Tel: %s\n", restaurant.Phone))
-	s.write(fmt.Sprintf("Email: %s\n", restaurant.Email))
-
-	// Regime and liability info
+	// Get parametric data for regime and liability names
 	parametricData := models.GetDIANParametricData()
+
+	// Print Business Name (Razón Social) - emphasized
+	s.setEmphasize(true)
+	businessName := dianConfig.BusinessName
+	if businessName == "" {
+		businessName = restaurant.BusinessName
+	}
+	if businessName == "" {
+		businessName = restaurant.Name
+	}
+	s.write(fmt.Sprintf("%s\n", businessName))
+	s.setEmphasize(false)
+
+	// Print Commercial Name if different from Business Name
+	if restaurant.Name != "" && restaurant.Name != businessName {
+		s.setEmphasize(true)
+		s.write(fmt.Sprintf("%s\n", restaurant.Name))
+		s.setEmphasize(false)
+	}
+
+	// Print NIT
+	nitLine := fmt.Sprintf("NIT: %s", dianConfig.IdentificationNumber)
+	if dianConfig.DV != "" {
+		nitLine += fmt.Sprintf("-%s", dianConfig.DV)
+	}
+	s.write(nitLine + "\n")
+
+	// Print Regime and Liability on separate lines
 	if regime, ok := parametricData.TypeRegimes[dianConfig.TypeRegimeID]; ok {
-		s.write(fmt.Sprintf("Régimen: %s\n", regime.Name))
+		s.write(fmt.Sprintf("%s\n", regime.Name))
 	}
 	if liability, ok := parametricData.TypeLiabilities[dianConfig.TypeLiabilityID]; ok {
-		s.write(fmt.Sprintf("Responsabilidad: %s\n", liability.Name))
+		s.write(fmt.Sprintf("Obligacion: %s\n", liability.Name))
+	}
+
+	// Print Resolution info on separate lines
+	if dianConfig.ResolutionNumber != "" {
+		s.write(fmt.Sprintf("Resolucion de Facturacion Electronica No. %s\n", dianConfig.ResolutionNumber))
+		if !dianConfig.ResolutionDateFrom.IsZero() {
+			s.write(fmt.Sprintf("de %s, Prefijo: %s, Rango %d Al %d\n",
+				dianConfig.ResolutionDateFrom.Format("2006-01-02"),
+				dianConfig.ResolutionPrefix,
+				dianConfig.ResolutionFrom,
+				dianConfig.ResolutionTo))
+		} else {
+			s.write(fmt.Sprintf("Prefijo: %s, Rango %d Al %d\n",
+				dianConfig.ResolutionPrefix,
+				dianConfig.ResolutionFrom,
+				dianConfig.ResolutionTo))
+		}
+		if !dianConfig.ResolutionDateFrom.IsZero() && !dianConfig.ResolutionDateTo.IsZero() {
+			s.write(fmt.Sprintf("Vigencia Desde: %s Hasta: %s\n",
+				dianConfig.ResolutionDateFrom.Format("2006-01-02"),
+				dianConfig.ResolutionDateTo.Format("2006-01-02")))
+		}
+	}
+
+	// Print Address
+	if restaurant.Address != "" {
+		s.write(fmt.Sprintf("%s\n", restaurant.Address))
+	}
+
+	// Print Municipality, Department and Country on separate line
+	if dianConfig.MunicipalityID > 0 {
+		if municipality, ok := parametricData.Municipalities[dianConfig.MunicipalityID]; ok {
+			locationLine := municipality.Name
+			if dept, ok := parametricData.Departments[municipality.DepartmentID]; ok {
+				locationLine += ", " + dept.Name
+			}
+			locationLine += " - Colombia"
+			s.write(locationLine + "\n")
+		}
+	}
+
+	// Print Phone
+	if restaurant.Phone != "" {
+		s.write(fmt.Sprintf("Telefono: %s\n", restaurant.Phone))
+	}
+
+	// Print Email
+	if restaurant.Email != "" {
+		s.write(fmt.Sprintf("E-mail: %s\n", restaurant.Email))
 	}
 
 	s.lineFeed()
@@ -1545,61 +1614,124 @@ func (s *PrinterService) TestPrinter(printerID uint) error {
 		s.lineFeed()
 	}
 
-	// Print header - FACTURA ELECTRÓNICA DE VENTA
+	// Print header title - FACTURA ELECTRÓNICA DE VENTA (split in 2 lines)
 	s.setEmphasize(true)
 	s.setSize(2, 2)
-	s.write("FACTURA ELECTRÓNICA\n")
+	s.write("FACTURA ELECTRONICA\n")
 	s.write("DE VENTA\n")
 	s.setSize(1, 1)
 	s.setEmphasize(false)
-	s.write("*** PRUEBA DE IMPRESIÓN ***\n")
 	s.lineFeed()
 
-	// Print company info
+	// Get parametric data for regime and liability names
+	parametricData := models.GetDIANParametricData()
+
+	// Print Business Name (Razón Social) - emphasized
 	s.setEmphasize(true)
-	if restaurant.BusinessName != "" {
-		s.write(fmt.Sprintf("%s\n", restaurant.BusinessName))
-	} else {
-		s.write(fmt.Sprintf("%s\n", restaurant.Name))
+	businessName := dianConfig.BusinessName
+	if businessName == "" {
+		businessName = restaurant.BusinessName
 	}
+	if businessName == "" {
+		businessName = restaurant.Name
+	}
+	s.write(fmt.Sprintf("%s\n", businessName))
 	s.setEmphasize(false)
 
-	if dianConfig.IdentificationNumber != "" {
-		s.write(fmt.Sprintf("NIT: %s", dianConfig.IdentificationNumber))
-		if dianConfig.DV != "" {
-			s.write(fmt.Sprintf("-%s", dianConfig.DV))
-		}
-		s.write("\n")
-	} else if restaurant.IdentificationNumber != "" {
-		s.write(fmt.Sprintf("NIT: %s", restaurant.IdentificationNumber))
-		if restaurant.DV != "" {
-			s.write(fmt.Sprintf("-%s", restaurant.DV))
-		}
-		s.write("\n")
+	// Print Commercial Name if different from Business Name
+	if restaurant.Name != "" && restaurant.Name != businessName {
+		s.setEmphasize(true)
+		s.write(fmt.Sprintf("%s\n", restaurant.Name))
+		s.setEmphasize(false)
 	}
 
+	// Print NIT
+	if dianConfig.IdentificationNumber != "" {
+		nitLine := fmt.Sprintf("NIT: %s", dianConfig.IdentificationNumber)
+		if dianConfig.DV != "" {
+			nitLine += fmt.Sprintf("-%s", dianConfig.DV)
+		}
+		s.write(nitLine + "\n")
+		// Print Regime and Liability on separate lines
+		if regime, ok := parametricData.TypeRegimes[dianConfig.TypeRegimeID]; ok {
+			s.write(fmt.Sprintf("%s\n", regime.Name))
+		}
+		if liability, ok := parametricData.TypeLiabilities[dianConfig.TypeLiabilityID]; ok {
+			s.write(fmt.Sprintf("Obligacion: %s\n", liability.Name))
+		}
+	} else if restaurant.IdentificationNumber != "" {
+		nitLine := fmt.Sprintf("NIT: %s", restaurant.IdentificationNumber)
+		if restaurant.DV != "" {
+			nitLine += fmt.Sprintf("-%s", restaurant.DV)
+		}
+		s.write(nitLine + "\n")
+		// Print Regime and Liability on separate lines
+		if restaurant.TypeRegimeID != nil {
+			if regime, ok := parametricData.TypeRegimes[*restaurant.TypeRegimeID]; ok {
+				s.write(fmt.Sprintf("%s\n", regime.Name))
+			}
+		}
+		if restaurant.TypeLiabilityID != nil {
+			if liability, ok := parametricData.TypeLiabilities[*restaurant.TypeLiabilityID]; ok {
+				s.write(fmt.Sprintf("Obligacion: %s\n", liability.Name))
+			}
+		}
+	}
+
+	// Print Resolution info on separate lines
+	if dianConfig.ResolutionNumber != "" {
+		s.write(fmt.Sprintf("Resolucion de Facturacion Electronica No. %s\n", dianConfig.ResolutionNumber))
+		if !dianConfig.ResolutionDateFrom.IsZero() {
+			s.write(fmt.Sprintf("de %s, Prefijo: %s, Rango %d Al %d\n",
+				dianConfig.ResolutionDateFrom.Format("2006-01-02"),
+				dianConfig.ResolutionPrefix,
+				dianConfig.ResolutionFrom,
+				dianConfig.ResolutionTo))
+		} else {
+			s.write(fmt.Sprintf("Prefijo: %s, Rango %d Al %d\n",
+				dianConfig.ResolutionPrefix,
+				dianConfig.ResolutionFrom,
+				dianConfig.ResolutionTo))
+		}
+		if !dianConfig.ResolutionDateFrom.IsZero() && !dianConfig.ResolutionDateTo.IsZero() {
+			s.write(fmt.Sprintf("Vigencia Desde: %s Hasta: %s\n",
+				dianConfig.ResolutionDateFrom.Format("2006-01-02"),
+				dianConfig.ResolutionDateTo.Format("2006-01-02")))
+		}
+	}
+
+	// Print Address
 	if restaurant.Address != "" {
 		s.write(fmt.Sprintf("%s\n", restaurant.Address))
 	}
-	if restaurant.Phone != "" {
-		s.write(fmt.Sprintf("Tel: %s\n", restaurant.Phone))
-	}
-	if restaurant.Email != "" {
-		s.write(fmt.Sprintf("Email: %s\n", restaurant.Email))
+
+	// Print Municipality, Department and Country on separate line
+	if dianConfig.MunicipalityID > 0 {
+		if municipality, ok := parametricData.Municipalities[dianConfig.MunicipalityID]; ok {
+			locationLine := municipality.Name
+			if dept, ok := parametricData.Departments[municipality.DepartmentID]; ok {
+				locationLine += ", " + dept.Name
+			}
+			locationLine += " - Colombia"
+			s.write(locationLine + "\n")
+		}
 	}
 
-	// Regime and liability info
-	parametricData := models.GetDIANParametricData()
-	if restaurant.TypeRegimeID != nil {
-		if regime, ok := parametricData.TypeRegimes[*restaurant.TypeRegimeID]; ok {
-			s.write(fmt.Sprintf("Régimen: %s\n", regime.Name))
-		}
+	// Print Phone
+	if restaurant.Phone != "" {
+		s.write(fmt.Sprintf("Telefono: %s\n", restaurant.Phone))
 	}
-	if restaurant.TypeLiabilityID != nil {
-		if liability, ok := parametricData.TypeLiabilities[*restaurant.TypeLiabilityID]; ok {
-			s.write(fmt.Sprintf("Responsabilidad: %s\n", liability.Name))
-		}
+
+	// Print Email
+	if restaurant.Email != "" {
+		s.write(fmt.Sprintf("E-mail: %s\n", restaurant.Email))
 	}
+
+	// Test print indicator
+	s.lineFeed()
+	s.setEmphasize(true)
+	s.write("*** PRUEBA DE IMPRESION ***\n")
+	s.setEmphasize(false)
 
 	s.lineFeed()
 	s.setAlign("left")

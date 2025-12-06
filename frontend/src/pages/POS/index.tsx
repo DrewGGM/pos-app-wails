@@ -173,10 +173,13 @@ const POS: React.FC = () => {
     try {
       const status = await wailsInvoiceLimitService.getStatus();
       setInvoiceLimitStatus(status);
+      // If invoice limit is enabled and available, auto-check the checkbox
+      if (status && status.enabled && status.available) {
+        setNeedsElectronicInvoice(true);
+      }
       // If invoice limit is not available and checkbox is checked, uncheck it
-      if (status && !status.available && needsElectronicInvoice) {
+      if (status && status.enabled && !status.available && needsElectronicInvoice) {
         setNeedsElectronicInvoice(false);
-        toast.warning('Facturación electrónica deshabilitada: ' + status.message);
       }
     } catch (error) {
       // Ignore errors - service might not be ready
@@ -1245,28 +1248,10 @@ const POS: React.FC = () => {
                   checked={needsElectronicInvoice}
                   onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
                   color="primary"
-                  disabled={invoiceLimitStatus?.enabled && !invoiceLimitStatus?.available}
                 />
               }
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <span>Factura Electrónica</span>
-                  {invoiceLimitStatus?.enabled && !invoiceLimitStatus?.available && (
-                    <Chip
-                      label="Límite alcanzado"
-                      size="small"
-                      color="warning"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  )}
-                </Box>
-              }
+              label="Factura Electrónica"
             />
-            {invoiceLimitStatus?.enabled && invoiceLimitStatus?.today_limit > 0 && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
-                Hoy: ${invoiceLimitStatus.today_sales.toLocaleString('es-CO')} / ${invoiceLimitStatus.today_limit.toLocaleString('es-CO')}
-              </Typography>
-            )}
           </Box>
 
           {/* Action Buttons */}
