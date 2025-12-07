@@ -218,6 +218,13 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 		if unitPrice == 0 {
 			unitPrice = itemReq.Price
 		}
+		// If still 0, lookup product price from database (defensive check)
+		if unitPrice == 0 && itemReq.ProductID > 0 {
+			var product models.Product
+			if err := h.db.First(&product, itemReq.ProductID).Error; err == nil {
+				unitPrice = product.Price
+			}
+		}
 
 		item := models.OrderItem{
 			ProductID: itemReq.ProductID,
@@ -626,10 +633,23 @@ func (h *RESTHandlers) HandleUpdateOrder(w http.ResponseWriter, r *http.Request,
 
 	// Add new items
 	for _, itemReq := range orderReq.Items {
+		// Use UnitPrice if provided, otherwise fall back to Price
+		unitPrice := itemReq.UnitPrice
+		if unitPrice == 0 {
+			unitPrice = itemReq.Price
+		}
+		// If still 0, lookup product price from database
+		if unitPrice == 0 && itemReq.ProductID > 0 {
+			var product models.Product
+			if err := h.db.First(&product, itemReq.ProductID).Error; err == nil {
+				unitPrice = product.Price
+			}
+		}
+
 		item := models.OrderItem{
 			ProductID: itemReq.ProductID,
 			Quantity:  itemReq.Quantity,
-			UnitPrice: itemReq.Price,
+			UnitPrice: unitPrice,
 			Subtotal:  itemReq.Subtotal,
 			Notes:     itemReq.Notes,
 			Status:    "pending",

@@ -783,6 +783,8 @@ func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 
 		// Get product price if not set
 		if item.UnitPrice == 0 {
+			log.Printf("⚠️ OrderItem had UnitPrice=0, setting from product.Price=%.2f (ProductID=%d)",
+				product.Price, item.ProductID)
 			item.UnitPrice = product.Price
 		}
 

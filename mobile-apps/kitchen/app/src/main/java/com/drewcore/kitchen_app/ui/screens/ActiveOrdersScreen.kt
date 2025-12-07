@@ -228,14 +228,18 @@ fun OrderCardDisplay(
         ) {
             // Header - Only for first card or simplified for continuation
             if (!isContinuation) {
-                // Full header for first card
+                // Full header for first card - Fixed height to prevent overflow
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Title with weight to take available space
                     Text(
                         text = getOrderTitle(order),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = preferences.headerFontSize.sp,
@@ -243,72 +247,79 @@ fun OrderCardDisplay(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        // Elapsed time timer with color coding
-                        OrderTimer(createdAt = order.createdAt)
-
-                        // Modified badge
+                    // Badges in horizontal row (compact layout)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Modified badge (compact)
                         if (isUpdated) {
-                            Spacer(modifier = Modifier.height(4.dp))
                             Surface(
                                 color = Color(0xFFFF6F00),
                                 shape = MaterialTheme.shapes.extraSmall
                             ) {
                                 Text(
-                                    text = "MODIFICADO",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                    fontSize = 10.sp,
+                                    text = "MOD",
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
                                 )
                             }
                         }
+
+                        // Elapsed time timer
+                        OrderTimer(createdAt = order.createdAt)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Divider(thickness = 2.dp)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             } else {
-                // Continuation header
+                // Continuation header - compact layout
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Title with weight
+                    Text(
+                        text = getOrderTitle(order),
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (preferences.headerFontSize - 4).sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // Continuation badge
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
                         Text(
-                            text = getOrderTitle(order),
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "${cardData.cardIndex + 1}/${cardData.totalCards}",
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = (preferences.headerFontSize - 4).sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            shape = MaterialTheme.shapes.extraSmall
-                        ) {
-                            Text(
-                                text = "(Cont. ${cardData.cardIndex + 1}/${cardData.totalCards})",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                        }
                     }
 
+                    // Modified badge (compact)
                     if (isUpdated) {
                         Surface(
                             color = Color(0xFFFF6F00),
                             shape = MaterialTheme.shapes.extraSmall
                         ) {
                             Text(
-                                text = "MODIFICADO",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                fontSize = 10.sp,
+                                text = "MOD",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White
                             )
@@ -316,9 +327,9 @@ fun OrderCardDisplay(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Divider(thickness = 1.dp)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
 
             // Order Items

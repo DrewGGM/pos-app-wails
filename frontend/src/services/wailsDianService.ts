@@ -94,6 +94,12 @@ export const wailsDianService = {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
     await svc.ResetConfigurationSteps();
+  },
+
+  async resendInvoiceEmail(prefix: string, invoiceNumber: string): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ResendInvoiceEmail(prefix, invoiceNumber);
   }
 };
 

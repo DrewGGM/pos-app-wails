@@ -45,6 +45,7 @@ import {
   Error as ErrorIcon,
   Pending as PendingIcon,
   Delete as DeleteIcon,
+  Email as EmailIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -59,6 +60,7 @@ import {
 } from '../../store/slices/salesSlice';
 import { Sale } from '../../types/models';
 import { wailsSalesService } from '../../services/wailsSalesService';
+import { wailsDianService } from '../../services/wailsDianService';
 import { useAuth, useDIANMode } from '../../hooks';
 import { toast } from 'react-toastify';
 import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
@@ -241,6 +243,24 @@ const Sales: React.FC = () => {
     } catch (error: any) {
       toast.error(error?.message || 'Error al reenviar factura');
       loadSalesHistory(); // Refresh to show updated data even on error
+    }
+    handleMenuClose();
+  };
+
+  const handleResendEmail = async (sale: Sale) => {
+    try {
+      if (!sale.electronic_invoice?.prefix || !sale.electronic_invoice?.invoice_number) {
+        toast.error('Esta venta no tiene factura electrónica válida');
+        return;
+      }
+      toast.info('Reenviando email al cliente...');
+      await wailsDianService.resendInvoiceEmail(
+        sale.electronic_invoice.prefix,
+        sale.electronic_invoice.invoice_number
+      );
+      toast.success('Email reenviado exitosamente');
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al reenviar email');
     }
     handleMenuClose();
   };
@@ -686,6 +706,11 @@ const Sales: React.FC = () => {
         {selectedSale?.invoice_type === 'electronic' && (
           <MenuItem onClick={() => selectedSale && handleResendInvoice(selectedSale)}>
             <ReceiptIcon sx={{ mr: 1 }} /> Reenviar Factura Electrónica
+          </MenuItem>
+        )}
+        {selectedSale?.electronic_invoice?.invoice_number && (
+          <MenuItem onClick={() => selectedSale && handleResendEmail(selectedSale)}>
+            <EmailIcon sx={{ mr: 1 }} /> Reenviar Email al Cliente
           </MenuItem>
         )}
         {selectedSale?.electronic_invoice?.dian_response && (

@@ -1534,3 +1534,54 @@ func (s *DIANService) SendInvoice(invoice *DIANInvoice) (*DIANInvoiceResponse, e
 
 	return &invoiceResp, nil
 }
+
+// ResendInvoiceEmail resends the invoice email to the customer
+// Uses the DIAN API endpoint: POST /api/send-email-employee/NO
+func (s *DIANService) ResendInvoiceEmail(prefix string, invoiceNumber string) error {
+	// Load config
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please complete DIAN configuration first")
+	}
+
+	// Build URL: {api_url}/api/send-email-employee/NO
+	url := fmt.Sprintf("%s/api/send-email-employee/NO", dianConfig.APIURL)
+
+	data := map[string]interface{}{
+		"company_idnumber": dianConfig.IdentificationNumber,
+		"prefix":           prefix,
+		"number":           invoiceNumber,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	fmt.Printf("✅ Invoice email resent successfully: %s%s\n", prefix, invoiceNumber)
+	return nil
+}
