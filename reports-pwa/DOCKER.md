@@ -48,13 +48,24 @@ Abre tu navegador en: **http://localhost:3000**
 docker run -d --name pos-reports-pwa -p 8080:80 pos-reports-pwa
 ```
 
-### Con variables de entorno 
+### Con variables de entorno
 
 ```bash
 docker build \
-  --build-arg VITE_API_URL=https://api.example.com \
+  --build-arg VITE_GOOGLE_SHEETS_API_KEY=tu_api_key \
+  --build-arg VITE_GOOGLE_SHEETS_SPREADSHEET_ID=tu_spreadsheet_id \
+  --build-arg VITE_GOOGLE_SHEETS_RANGE=Reportes!A1:Z1000 \
+  --build-arg VITE_CONFIG_API_URL=https://tu-config-api.example.com \
   -t pos-reports-pwa .
 ```
+
+**Variables disponibles:**
+| Variable | Descripción |
+|----------|-------------|
+| `VITE_GOOGLE_SHEETS_API_KEY` | API Key de Google Sheets |
+| `VITE_GOOGLE_SHEETS_SPREADSHEET_ID` | ID del spreadsheet |
+| `VITE_GOOGLE_SHEETS_RANGE` | Rango de datos (ej: `Reportes!A1:Z1000`) |
+| `VITE_CONFIG_API_URL` | URL del servidor Config API para límites de facturación |
 
 ---
 
