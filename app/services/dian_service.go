@@ -4,11 +4,17 @@ import (
 	"PosApp/app/database"
 	"PosApp/app/models"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	_ "image/png" // Register PNG decoder
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -299,6 +305,156 @@ func (s *DIANService) ConfigureCertificate() error {
 	s.config = &dianConfig
 
 	return nil
+}
+
+// ConfigureLogo uploads the company logo to DIAN API
+// The logo must be in JPG format. If PNG, it will be converted with white background.
+func (s *DIANService) ConfigureLogo() error {
+	// Reload config to get latest values
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please configure company first (Step 1)")
+	}
+
+	// Get restaurant config for logo
+	var restaurantConfig models.RestaurantConfig
+	if err := s.db.First(&restaurantConfig).Error; err != nil {
+		return fmt.Errorf("restaurant configuration not found")
+	}
+
+	if restaurantConfig.Logo == "" {
+		return fmt.Errorf("no logo configured. Please upload a logo in restaurant settings first")
+	}
+
+	// Convert logo to JPG base64 (handles PNG with transparency)
+	logoBase64, err := s.convertLogoToJPGBase64(restaurantConfig.Logo)
+	if err != nil {
+		return fmt.Errorf("failed to process logo: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/config/logo", dianConfig.APIURL)
+
+	data := map[string]interface{}{
+		"logo": logoBase64,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	fmt.Println("✅ Logo uploaded to DIAN successfully")
+	return nil
+}
+
+// convertLogoToJPGBase64 converts a logo (PNG or JPG) to JPG base64 format
+// PNG images with transparency get a white background
+func (s *DIANService) convertLogoToJPGBase64(logoData string) (string, error) {
+	// Remove data:image prefix if present
+	base64Data := logoData
+	isPNG := false
+
+	if strings.Contains(logoData, ",") {
+		// Format is "data:image/...;base64,XXXX"
+		parts := strings.SplitN(logoData, ",", 2)
+		if len(parts) == 2 {
+			base64Data = parts[1]
+			// Check if it's PNG
+			if strings.Contains(parts[0], "png") {
+				isPNG = true
+			}
+		}
+	}
+
+	// Decode base64
+	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64 logo: %w", err)
+	}
+
+	// Decode image
+	img, format, err := image.Decode(bytes.NewReader(imageBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Check if PNG by format detection (more reliable than header)
+	if format == "png" {
+		isPNG = true
+	}
+
+	// If PNG or has transparency, convert to JPG with white background
+	if isPNG {
+		img = s.applyWhiteBackground(img)
+	}
+
+	// Encode as JPG
+	var jpgBuffer bytes.Buffer
+	if err := jpeg.Encode(&jpgBuffer, img, &jpeg.Options{Quality: 90}); err != nil {
+		return "", fmt.Errorf("failed to encode as JPG: %w", err)
+	}
+
+	// Return pure base64 (no data:image prefix)
+	return base64.StdEncoding.EncodeToString(jpgBuffer.Bytes()), nil
+}
+
+// applyWhiteBackground applies a white background to an image (for PNG transparency)
+func (s *DIANService) applyWhiteBackground(img image.Image) image.Image {
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Create a new image with white background
+	whiteBackground := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	// Fill with white and composite original image
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			originalColor := img.At(bounds.Min.X+x, bounds.Min.Y+y)
+			r, g, b, a := originalColor.RGBA()
+
+			// If pixel has any transparency, blend with white background
+			if a < 65535 {
+				alpha := float64(a) / 65535.0
+				r = uint32(float64(r)*alpha + float64(65535)*(1-alpha))
+				g = uint32(float64(g)*alpha + float64(65535)*(1-alpha))
+				b = uint32(float64(b)*alpha + float64(65535)*(1-alpha))
+			}
+
+			whiteBackground.SetRGBA(x, y, color.RGBA{
+				R: uint8(r >> 8),
+				G: uint8(g >> 8),
+				B: uint8(b >> 8),
+				A: 255,
+			})
+		}
+	}
+
+	return whiteBackground
 }
 
 // ConfigureResolution configures the resolution in DIAN API

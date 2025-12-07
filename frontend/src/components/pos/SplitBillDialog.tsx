@@ -27,14 +27,21 @@ import {
   Payment as PaymentIcon,
   SplitscreenOutlined as SplitIcon,
   Remove as RemoveIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import { OrderItem } from '../../types/models';
+
+export interface UnallocatedItem {
+  itemId: number;
+  quantity: number;
+}
 
 interface SplitBillDialogProps {
   open: boolean;
   onClose: () => void;
   orderItems: OrderItem[];
   onProcessSplit: (splits: BillSplit[]) => void;
+  onSaveSplit?: (splits: BillSplit[], unallocatedItems: UnallocatedItem[]) => void;
 }
 
 export interface BillSplit {
@@ -55,6 +62,7 @@ const SplitBillDialog: React.FC<SplitBillDialogProps> = ({
   onClose,
   orderItems,
   onProcessSplit,
+  onSaveSplit,
 }) => {
   const [splits, setSplits] = useState<BillSplit[]>([
     { id: 1, name: 'Cuenta 1', items: [], total: 0 },
@@ -203,11 +211,33 @@ const SplitBillDialog: React.FC<SplitBillDialogProps> = ({
   const handleProcessSplit = () => {
     const unallocated = getUnallocatedItems();
     if (unallocated.length > 0) {
-      alert('Debe asignar todos los productos a una cuenta antes de proceder.');
+      alert('Debe asignar todos los productos a una cuenta antes de proceder con pagos.');
       return;
     }
 
     onProcessSplit(splits);
+  };
+
+  const handleSaveSplit = () => {
+    // Get splits that have at least one item
+    const validSplits = splits.filter(split => split.items.length > 0);
+
+    if (validSplits.length === 0) {
+      alert('Debe asignar al menos un producto a una cuenta para guardar la división.');
+      return;
+    }
+
+    // Get unallocated items with their remaining quantities
+    const unallocatedItems: UnallocatedItem[] = orderItems
+      .map(item => ({
+        itemId: item.id!,
+        quantity: getItemRemainingQuantity(item.id!),
+      }))
+      .filter(item => item.quantity > 0);
+
+    if (onSaveSplit) {
+      onSaveSplit(validSplits, unallocatedItems);
+    }
   };
 
   const currentSplit = splits[activeSplitTab];
@@ -485,9 +515,14 @@ const SplitBillDialog: React.FC<SplitBillDialogProps> = ({
 
               {unallocatedItems.length > 0 && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    Aún hay {unallocatedItems.length} producto(s) con cantidades sin asignar.
+                  </Typography>
                   <Typography variant="body2">
-                    Aún hay {unallocatedItems.length} producto(s) con cantidades sin
-                    asignar. Debe asignar todas las unidades antes de proceder.
+                    • <strong>Guardar División:</strong> Los productos sin asignar permanecerán en la orden original.
+                  </Typography>
+                  <Typography variant="body2">
+                    • <strong>Procesar Pagos:</strong> Requiere asignar todos los productos.
                   </Typography>
                 </Alert>
               )}
@@ -495,8 +530,7 @@ const SplitBillDialog: React.FC<SplitBillDialogProps> = ({
               {unallocatedItems.length === 0 && (
                 <Alert severity="success" sx={{ mt: 2 }}>
                   <Typography variant="body2">
-                    ¡Todas las cantidades están asignadas! Puede proceder a procesar
-                    los pagos.
+                    ¡Todas las cantidades están asignadas! Puede guardar la división o procesar los pagos directamente.
                   </Typography>
                 </Alert>
               )}
@@ -509,6 +543,17 @@ const SplitBillDialog: React.FC<SplitBillDialogProps> = ({
         <Button onClick={onClose} color="error">
           Cancelar
         </Button>
+        {onSaveSplit && (
+          <Button
+            onClick={handleSaveSplit}
+            variant="outlined"
+            color="primary"
+            disabled={splits.every(split => split.items.length === 0)}
+            startIcon={<SaveIcon />}
+          >
+            Guardar División
+          </Button>
+        )}
         <Button
           onClick={handleProcessSplit}
           variant="contained"

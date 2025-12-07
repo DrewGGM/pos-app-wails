@@ -46,12 +46,13 @@ import {
   Assessment as ReportIcon,
   ExpandMore as ExpandMoreIcon,
   History as HistoryIcon,
+  Description as DIANReportIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks';
+import { useAuth, useDIANMode } from '../../hooks';
 import { wailsAuthService } from '../../services/wailsAuthService';
-import { wailsSalesService } from '../../services/wailsSalesService';
+import { wailsSalesService, DIANClosingReport } from '../../services/wailsSalesService';
 import { toast } from 'react-toastify';
 
 interface CashRegisterStatus {
@@ -90,6 +91,7 @@ interface CashMovement {
 
 const CashRegister: React.FC = () => {
   const { user, cashRegisterId, openCashRegister: openCashRegisterContext, closeCashRegister: closeCashRegisterContext } = useAuth();
+  const { isDIANMode } = useDIANMode();
   const navigate = useNavigate();
   const [registerStatus, setRegisterStatus] = useState<CashRegisterStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +100,13 @@ const CashRegister: React.FC = () => {
   const [movementDialog, setMovementDialog] = useState(false);
   const [openingAmount, setOpeningAmount] = useState('');
   const [closingAmount, setClosingAmount] = useState('');
+
+  // DIAN Closing Report state
+  const [dianReportDialog, setDianReportDialog] = useState(false);
+  const [dianReportDate, setDianReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dianReport, setDianReport] = useState<DIANClosingReport | null>(null);
+  const [loadingDianReport, setLoadingDianReport] = useState(false);
+  const [printingDianReport, setPrintingDianReport] = useState(false);
   const [closingNotes, setClosingNotes] = useState('');
   const [movement, setMovement] = useState({
     type: 'in' as 'in' | 'out',
@@ -107,7 +116,7 @@ const CashRegister: React.FC = () => {
 
   useEffect(() => {
     loadRegisterStatus();
-  }, [cashRegisterId]);
+  }, [cashRegisterId, isDIANMode]); // Reload when DIAN mode changes
 
   const loadRegisterStatus = async () => {
     try {
@@ -125,7 +134,12 @@ const CashRegister: React.FC = () => {
             // This is important for multi-day cash register sessions
             // OPTIMIZATION: Reduced from 1000 to 500 for better performance
             const { sales } = await wailsSalesService.getSalesHistory(500, 0);
-            const registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
+            let registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
+
+            // In DIAN mode, only include electronic invoice sales
+            if (isDIANMode) {
+              registerSales = registerSales.filter((s: any) => s.needs_electronic_invoice === true);
+            }
 
             registerSales.forEach((sale: any) => {
               // For balance summary: Add full sale total
@@ -171,12 +185,32 @@ const CashRegister: React.FC = () => {
             // Error loading sales summary
           }
 
+          // Calculate expected amount based on DIAN mode
+          // In DIAN mode, use frontend-calculated value from filtered sales
+          // In normal mode, use backend-calculated value
+          const movements = (register.movements || []);
+          const deposits = movements
+            .filter((m: any) => (m.type === 'deposit' || m.type === 'in') && m.reference !== 'OPENING')
+            .reduce((sum: number, m: any) => sum + (m.amount || 0), 0);
+          const withdrawals = movements
+            .filter((m: any) => m.type === 'withdrawal' || m.type === 'out')
+            .reduce((sum: number, m: any) => sum + (m.amount || 0), 0);
+
+          // Sales that affect cash register from salesSummary
+          const salesAffectingCash = Object.values(salesSummary.by_payment_method).reduce(
+            (sum: number, amount) => sum + (amount as number), 0
+          );
+
+          const calculatedExpectedAmount = isDIANMode
+            ? (register.opening_amount || 0) + salesAffectingCash + deposits - withdrawals
+            : register.expected_amount || register.opening_amount || 0;
+
           setRegisterStatus({
             id: register.id || 0,
             opening_amount: register.opening_amount || 0,
             closing_amount: register.closing_amount || 0,
             current_amount: register.opening_amount || 0,  // Start with opening amount, user enters actual cash
-            expected_amount: register.expected_amount || register.opening_amount || 0,  // Backend-calculated expected amount
+            expected_amount: calculatedExpectedAmount,  // Use calculated amount in DIAN mode
             opened_at: new Date(register.opened_at),
             opened_by: user.name,
             status: register.status as 'open' | 'closed',
@@ -298,6 +332,41 @@ const CashRegister: React.FC = () => {
     }
   };
 
+  // DIAN Closing Report handlers
+  const handleOpenDianReport = () => {
+    setDianReportDate(format(new Date(), 'yyyy-MM-dd'));
+    setDianReport(null);
+    setDianReportDialog(true);
+  };
+
+  const handleLoadDianReport = async () => {
+    try {
+      setLoadingDianReport(true);
+      const report = await wailsSalesService.getDIANClosingReport(dianReportDate);
+      setDianReport(report);
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al generar reporte DIAN');
+    } finally {
+      setLoadingDianReport(false);
+    }
+  };
+
+  const handlePrintDianReport = async () => {
+    try {
+      setPrintingDianReport(true);
+      await wailsSalesService.printDIANClosingReport(dianReportDate);
+      toast.success('Reporte DIAN enviado a imprimir');
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al imprimir reporte DIAN');
+    } finally {
+      setPrintingDianReport(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return `$${amount.toLocaleString('es-CO')}`;
+  };
+
   const calculateDifference = () => {
     if (!registerStatus) return 0;
     // Use backend-calculated expected amount (already considers affects_cash_register flag)
@@ -313,21 +382,25 @@ const CashRegister: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 2 }}>
           {isRegisterOpen && (
             <>
-              <Button
-                variant="outlined"
-                startIcon={<PrintIcon />}
-                onClick={handlePrintReport}
-              >
-                Imprimir Reporte
-              </Button>
-              <Button
-                variant="outlined"
-                color="info"
-                startIcon={<ReportIcon />}
-                onClick={handlePrintCurrentReport}
-              >
-                Reporte Actual
-              </Button>
+              {!isDIANMode && (
+                <>
+                  <Button
+                    variant="outlined"
+                    startIcon={<PrintIcon />}
+                    onClick={handlePrintReport}
+                  >
+                    Imprimir Reporte
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="info"
+                    startIcon={<ReportIcon />}
+                    onClick={handlePrintCurrentReport}
+                  >
+                    Reporte Actual
+                  </Button>
+                </>
+              )}
               <Button
                 variant="contained"
                 color="error"
@@ -602,16 +675,28 @@ const CashRegister: React.FC = () => {
             </TableContainer>
           </Paper>
 
-          {/* Link to Cash Register History */}
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+          {/* Link to Cash Register History and DIAN Report */}
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+            {!isDIANMode && (
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<HistoryIcon />}
+                onClick={() => navigate('/cash-register-history')}
+                sx={{ px: 4 }}
+              >
+                Ver Historial de Cierres de Caja
+              </Button>
+            )}
             <Button
-              variant="outlined"
+              variant="contained"
               size="large"
-              startIcon={<HistoryIcon />}
-              onClick={() => navigate('/cash-register-history')}
+              color="primary"
+              startIcon={<DIANReportIcon />}
+              onClick={handleOpenDianReport}
               sx={{ px: 4 }}
             >
-              Ver Historial de Cierres de Caja
+              Reporte Cierre DIAN
             </Button>
           </Box>
         </>
@@ -729,6 +814,312 @@ const CashRegister: React.FC = () => {
           <Button onClick={() => setMovementDialog(false)}>Cancelar</Button>
           <Button onClick={handleCashMovement} variant="contained">
             Registrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* DIAN Closing Report Dialog */}
+      <Dialog
+        open={dianReportDialog}
+        onClose={() => setDianReportDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DIANReportIcon /> Reporte Diario de Cierre DIAN
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Este reporte muestra un resumen de las ventas procesadas por la DIAN (facturación electrónica) para control fiscal.
+          </Alert>
+
+          {/* Date Selector */}
+          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+            <TextField
+              type="date"
+              label="Fecha del Reporte"
+              value={dianReportDate}
+              onChange={(e) => setDianReportDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 200 }}
+            />
+            <Button
+              variant="contained"
+              onClick={handleLoadDianReport}
+              disabled={loadingDianReport}
+              startIcon={loadingDianReport ? <CircularProgress size={20} /> : <ReportIcon />}
+            >
+              {loadingDianReport ? 'Generando...' : 'Generar Reporte'}
+            </Button>
+          </Box>
+
+          {/* Report Content */}
+          {dianReport && (
+            <Box>
+              {/* Business Header */}
+              <Paper sx={{ p: 2, mb: 2, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+                <Typography variant="h6" align="center">{dianReport.business_name}</Typography>
+                {dianReport.commercial_name && dianReport.commercial_name !== dianReport.business_name && (
+                  <Typography variant="body2" align="center">{dianReport.commercial_name}</Typography>
+                )}
+                <Typography variant="body2" align="center">
+                  NIT: {dianReport.nit}{dianReport.dv ? `-${dianReport.dv}` : ''}
+                </Typography>
+                {dianReport.regime && <Typography variant="body2" align="center">{dianReport.regime}</Typography>}
+              </Paper>
+
+              {/* Invoice Range */}
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  Rango de Facturas Electrónicas
+                </Typography>
+                {dianReport.total_invoices > 0 ? (
+                  <Grid container spacing={2}>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">Primera:</Typography>
+                      <Typography variant="body1" fontWeight="bold">{dianReport.first_invoice_number}</Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">Última:</Typography>
+                      <Typography variant="body1" fontWeight="bold">{dianReport.last_invoice_number}</Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">Total:</Typography>
+                      <Typography variant="body1" fontWeight="bold">{dianReport.total_invoices} facturas</Typography>
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">Sin facturas emitidas en esta fecha</Typography>
+                )}
+              </Paper>
+
+              {/* Sales by Tax Type */}
+              {dianReport.sales_by_tax && dianReport.sales_by_tax.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ventas por Tipo de Impuesto
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Tipo</TableCell>
+                          <TableCell align="right">Base</TableCell>
+                          <TableCell align="right">Impuesto</TableCell>
+                          <TableCell align="right">Items</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dianReport.sales_by_tax.map((tax, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{tax.tax_type_name} ({tax.tax_percent > 0 ? `${tax.tax_percent}%` : 'N/A'})</TableCell>
+                            <TableCell align="right">{formatCurrency(tax.base_amount)}</TableCell>
+                            <TableCell align="right">{formatCurrency(tax.tax_amount)}</TableCell>
+                            <TableCell align="right">{tax.item_count}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Sales by Category */}
+              {dianReport.sales_by_category && dianReport.sales_by_category.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ventas por Categoría
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Categoría</TableCell>
+                          <TableCell align="right">Cantidad</TableCell>
+                          <TableCell align="right">Total</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dianReport.sales_by_category.map((cat, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{cat.category_name}</TableCell>
+                            <TableCell align="right">{cat.quantity}</TableCell>
+                            <TableCell align="right">{formatCurrency(cat.total)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Payment Methods */}
+              {dianReport.payment_methods && dianReport.payment_methods.length > 0 && (
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Medios de Pago
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Método</TableCell>
+                          <TableCell align="right">Transacciones</TableCell>
+                          <TableCell align="right">Total</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dianReport.payment_methods.map((pm, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{pm.method_name}</TableCell>
+                            <TableCell align="right">{pm.transactions}</TableCell>
+                            <TableCell align="right">{formatCurrency(pm.total)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
+
+              {/* Adjustments (Credit/Debit Notes) */}
+              {((dianReport.credit_notes && dianReport.credit_notes.length > 0) ||
+                (dianReport.debit_notes && dianReport.debit_notes.length > 0)) && (
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ajustes (Notas Crédito/Débito)
+                  </Typography>
+                  {dianReport.credit_notes && dianReport.credit_notes.length > 0 && (
+                    <>
+                      <Typography variant="body2" color="error.main" fontWeight="bold">Notas Crédito:</Typography>
+                      {dianReport.credit_notes.map((cn, idx) => (
+                        <Typography key={idx} variant="body2">
+                          {cn.prefix}{cn.number}: -{formatCurrency(cn.amount)} ({cn.reason})
+                        </Typography>
+                      ))}
+                      <Typography variant="body2" fontWeight="bold" color="error.main" sx={{ mb: 1 }}>
+                        Total NC: -{formatCurrency(dianReport.total_credit_notes)}
+                      </Typography>
+                    </>
+                  )}
+                  {dianReport.debit_notes && dianReport.debit_notes.length > 0 && (
+                    <>
+                      <Typography variant="body2" color="success.main" fontWeight="bold">Notas Débito:</Typography>
+                      {dianReport.debit_notes.map((dn, idx) => (
+                        <Typography key={idx} variant="body2">
+                          {dn.prefix}{dn.number}: +{formatCurrency(dn.amount)} ({dn.reason})
+                        </Typography>
+                      ))}
+                      <Typography variant="body2" fontWeight="bold" color="success.main">
+                        Total ND: +{formatCurrency(dianReport.total_debit_notes)}
+                      </Typography>
+                    </>
+                  )}
+                </Paper>
+              )}
+
+              {/* Totals Summary */}
+              <Paper sx={{ p: 2, bgcolor: 'grey.100' }}>
+                <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                  Resumen de Totales
+                </Typography>
+                <Grid container spacing={1}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Transacciones:</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" align="right" fontWeight="bold">
+                      {dianReport.total_transactions}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Subtotal:</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" align="right">
+                      {formatCurrency(dianReport.total_subtotal)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Impuestos:</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" align="right">
+                      {formatCurrency(dianReport.total_tax)}
+                    </Typography>
+                  </Grid>
+                  {dianReport.total_discount > 0 && (
+                    <>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Descuentos:</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" align="right" color="error.main">
+                          -{formatCurrency(dianReport.total_discount)}
+                        </Typography>
+                      </Grid>
+                    </>
+                  )}
+                  <Grid item xs={6}>
+                    <Typography variant="body2">Total Ventas:</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" align="right" fontWeight="bold">
+                      {formatCurrency(dianReport.total_sales)}
+                    </Typography>
+                  </Grid>
+                  {dianReport.total_adjustments !== 0 && (
+                    <>
+                      <Grid item xs={6}>
+                        <Typography variant="body2">Ajustes:</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography
+                          variant="body2"
+                          align="right"
+                          color={dianReport.total_adjustments > 0 ? 'success.main' : 'error.main'}
+                        >
+                          {dianReport.total_adjustments > 0 ? '+' : ''}
+                          {formatCurrency(dianReport.total_adjustments)}
+                        </Typography>
+                      </Grid>
+                    </>
+                  )}
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }} />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="h6">TOTAL:</Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="h6" align="right" color="primary">
+                      {formatCurrency(dianReport.grand_total)}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Box>
+          )}
+
+          {!dianReport && !loadingDianReport && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <DIANReportIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+              <Typography variant="body1" color="text.secondary">
+                Seleccione una fecha y haga clic en "Generar Reporte" para ver el resumen de ventas DIAN.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDianReportDialog(false)}>Cerrar</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={printingDianReport ? <CircularProgress size={20} /> : <PrintIcon />}
+            onClick={handlePrintDianReport}
+            disabled={!dianReport || printingDianReport}
+          >
+            {printingDianReport ? 'Imprimiendo...' : 'Imprimir Reporte'}
           </Button>
         </DialogActions>
       </Dialog>

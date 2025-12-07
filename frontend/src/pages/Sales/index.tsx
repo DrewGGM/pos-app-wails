@@ -59,13 +59,14 @@ import {
 } from '../../store/slices/salesSlice';
 import { Sale } from '../../types/models';
 import { wailsSalesService } from '../../services/wailsSalesService';
-import { useAuth } from '../../hooks';
+import { useAuth, useDIANMode } from '../../hooks';
 import { toast } from 'react-toastify';
 import { GetRestaurantConfig } from '../../../wailsjs/go/services/ConfigService';
 
 const Sales: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useAuth();
+  const { isDIANMode } = useDIANMode();
   const {
     todaySales,
     sales,
@@ -154,12 +155,16 @@ const Sales: React.FC = () => {
         return;
       }
 
-      toast.info('Enviando factura electrónica a DIAN...');
-      await wailsSalesService.sendElectronicInvoice(sale.id);
-      toast.success('Factura electrónica enviada exitosamente');
+      // Close dialog if open to show fresh data after refresh
+      setDianResponseDialog(false);
+
+      toast.info('Reenviando factura electrónica a DIAN...');
+      await wailsSalesService.resendElectronicInvoice(sale.id);
+      toast.success('Factura electrónica reenviada exitosamente');
       loadSalesHistory();
     } catch (error: any) {
       toast.error(error?.message || 'Error al enviar factura electrónica');
+      loadSalesHistory(); // Refresh to show updated data even on error
     }
   };
 
@@ -228,14 +233,32 @@ const Sales: React.FC = () => {
   const handleResendInvoice = async (sale: Sale) => {
     try {
       if (sale.id) {
+        toast.info('Reenviando factura electrónica a DIAN...');
         await wailsSalesService.resendElectronicInvoice(sale.id);
         toast.success('Factura electrónica reenviada exitosamente');
         loadSalesHistory();
       }
     } catch (error: any) {
       toast.error(error?.message || 'Error al reenviar factura');
+      loadSalesHistory(); // Refresh to show updated data even on error
     }
     handleMenuClose();
+  };
+
+  const handleConvertToElectronicInvoice = async (sale: Sale) => {
+    try {
+      if (!sale.id) {
+        toast.error('Venta inválida');
+        return;
+      }
+      toast.info('Convirtiendo a factura electrónica y enviando a DIAN...');
+      await wailsSalesService.convertToElectronicInvoice(sale.id);
+      toast.success('Factura electrónica enviada exitosamente');
+      loadSalesHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al convertir a factura electrónica');
+      loadSalesHistory(); // Refresh to show updated data even on error
+    }
   };
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, sale: Sale) => {
@@ -251,8 +274,29 @@ const Sales: React.FC = () => {
     const matchesSearch = !searchQuery ||
       sale.sale_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       sale.customer?.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // En modo DIAN, solo mostrar ventas con factura electrónica (no N/A)
+    if (isDIANMode && !sale.needs_electronic_invoice) {
+      return false;
+    }
+
     return matchesSearch;
   });
+
+  // Estadísticas filtradas para modo DIAN
+  const filteredTodaySales = isDIANMode
+    ? todaySales.filter(sale => sale.needs_electronic_invoice)
+    : todaySales;
+
+  const displayStats = isDIANMode
+    ? {
+        totalSales: filteredTodaySales.length,
+        totalAmount: filteredTodaySales.reduce((sum, sale) => sum + sale.total, 0),
+        averageSale: filteredTodaySales.length > 0
+          ? filteredTodaySales.reduce((sum, sale) => sum + sale.total, 0) / filteredTodaySales.length
+          : 0,
+      }
+    : dailyStats;
 
   const getPaymentMethodChip = (method: string) => {
     const colors: any = {
@@ -295,7 +339,7 @@ const Sales: React.FC = () => {
                     Ventas Hoy
                   </Typography>
                   <Typography variant="h4">
-                    {dailyStats.totalSales}
+                    {displayStats.totalSales}
                   </Typography>
                 </Box>
                 <ShoppingIcon sx={{ fontSize: 40, color: 'primary.main', opacity: 0.3 }} />
@@ -312,7 +356,7 @@ const Sales: React.FC = () => {
                     Total Hoy
                   </Typography>
                   <Typography variant="h4">
-                    ${dailyStats.totalAmount.toLocaleString('es-CO')}
+                    ${displayStats.totalAmount.toLocaleString('es-CO')}
                   </Typography>
                 </Box>
                 <MoneyIcon sx={{ fontSize: 40, color: 'success.main', opacity: 0.3 }} />
@@ -329,7 +373,7 @@ const Sales: React.FC = () => {
                     Ticket Promedio
                   </Typography>
                   <Typography variant="h4">
-                    ${dailyStats.averageSale.toLocaleString('es-CO')}
+                    ${displayStats.averageSale.toLocaleString('es-CO')}
                   </Typography>
                 </Box>
                 <TrendingUpIcon sx={{ fontSize: 40, color: 'info.main', opacity: 0.3 }} />
@@ -346,7 +390,7 @@ const Sales: React.FC = () => {
                     Clientes
                   </Typography>
                   <Typography variant="h4">
-                    {new Set(todaySales.map(s => s.customer?.id)).size}
+                    {new Set(filteredTodaySales.map(s => s.customer?.id)).size}
                   </Typography>
                 </Box>
                 <PeopleIcon sx={{ fontSize: 40, color: 'warning.main', opacity: 0.3 }} />
@@ -579,9 +623,19 @@ const Sales: React.FC = () => {
                           </IconButton>
                         )
                       ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          N/A
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            N/A
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleConvertToElectronicInvoice(sale)}
+                            title="Convertir a factura electrónica"
+                          >
+                            <SendIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       )}
                     </TableCell>
                     <TableCell align="center">

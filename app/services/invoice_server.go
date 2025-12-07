@@ -47,7 +47,6 @@ type InvoiceData struct {
 	EstablishmentEmail        string              `json:"establishment_email,omitempty"`
 	Sendmail                  bool                `json:"sendmail"`
 	SendmailToMe              bool                `json:"sendmailtome"`
-	LogoEmpresaEmisora        string              `json:"logo_empresa_emisora,omitempty"`
 	Customer                  InvoiceCustomer     `json:"customer"`
 	PaymentForm               interface{}         `json:"payment_form"`
 	LegalMonetaryTotals       LegalMonetaryTotals `json:"legal_monetary_totals"`
@@ -513,19 +512,7 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	invoice.EstablishmentAddress = restaurantConfig.Address
 	invoice.EstablishmentPhone = restaurantConfig.Phone
 	invoice.EstablishmentEmail = restaurantConfig.Email
-	if restaurantConfig.Logo != "" {
-		// Remove data:image prefix if present - API expects raw base64 only
-		// The API adds "data:image/jpg;base64, " prefix itself
-		logo := restaurantConfig.Logo
-		if strings.Contains(logo, ",") {
-			// Format is "data:image/...;base64,XXXX" - extract only the base64 part
-			parts := strings.SplitN(logo, ",", 2)
-			if len(parts) == 2 {
-				logo = parts[1]
-			}
-		}
-		invoice.LogoEmpresaEmisora = logo
-	}
+	// Note: Logo is uploaded separately via /api/ubl2.1/config/logo endpoint
 
 	// Set customer info - use helper to build customer data from DB
 	invoice.Customer = s.buildInvoiceCustomer(sale.Customer)

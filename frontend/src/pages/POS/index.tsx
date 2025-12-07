@@ -56,7 +56,7 @@ import {
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 
-import { useAuth,useWebSocket } from '../../hooks';
+import { useAuth, useWebSocket, useDIANMode } from '../../hooks';
 import { wailsProductService } from '../../services/wailsProductService';
 import { wailsCustomPageService } from '../../services/wailsCustomPageService';
 import { wailsOrderService, CreateOrderData } from '../../services/wailsOrderService';
@@ -76,13 +76,14 @@ import TableSelector from '../../components/pos/TableSelector';
 import QuickPad from '../../components/pos/QuickPad';
 import OrderList from '../../components/pos/OrderList';
 import DeliveryInfoDialog, { DeliveryInfo } from '../../components/pos/DeliveryInfoDialog';
-import SplitBillDialog, { BillSplit } from '../../components/pos/SplitBillDialog';
+import SplitBillDialog, { BillSplit, UnallocatedItem } from '../../components/pos/SplitBillDialog';
 import { wailsInvoiceLimitService, InvoiceLimitStatus } from '../../services/wailsInvoiceLimitService';
 
 const POS: React.FC = () => {
   // Context hooks
   const { user, cashRegisterId } = useAuth();
   const { sendMessage, subscribe } = useWebSocket();
+  const { isDIANMode } = useDIANMode();
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
@@ -134,6 +135,9 @@ const POS: React.FC = () => {
 
   // Electronic invoice flag per sale
   const [needsElectronicInvoice, setNeedsElectronicInvoice] = useState(false);
+
+  // Effective value: always true in DIAN mode, otherwise use the checkbox value
+  const effectiveNeedsElectronicInvoice = isDIANMode || needsElectronicInvoice;
 
   // Invoice limit status (controls if electronic invoice checkbox is available)
   const [invoiceLimitStatus, setInvoiceLimitStatus] = useState<InvoiceLimitStatus | null>(null);
@@ -706,10 +710,11 @@ const POS: React.FC = () => {
       };
 
       let resultOrder: Order;
+      const isNewOrder = !currentOrder || !currentOrder.id;
 
       // Check if we're updating an existing order or creating a new one
       if (currentOrder && currentOrder.id) {
-        // Update existing order
+        // Update existing order - backend handles sending to kitchen
         resultOrder = await wailsOrderService.updateOrder(currentOrder.id, orderData);
         toast.success('Orden actualizada exitosamente');
       } else {
@@ -718,8 +723,9 @@ const POS: React.FC = () => {
         toast.success('Orden guardada exitosamente');
       }
 
-      // Send to kitchen if dine-in
-      if (selectedTable) {
+      // Send to kitchen ONLY for NEW orders (updates are handled by backend)
+      // This prevents duplicate kitchen messages when editing order items/comments
+      if (selectedTable && isNewOrder) {
         sendMessage({
           type: 'kitchen_order',
           timestamp: new Date().toISOString(),
@@ -728,11 +734,11 @@ const POS: React.FC = () => {
             table: selectedTable,
           },
         });
+      }
 
-        // Update table status to occupied
-        if (selectedTable.status === 'available') {
-          await wailsOrderService.updateTableStatus(selectedTable.id!, 'occupied');
-        }
+      // Update table status to occupied (for both new and updated orders)
+      if (selectedTable && selectedTable.status === 'available') {
+        await wailsOrderService.updateTableStatus(selectedTable.id!, 'occupied');
       }
 
       // Clear local state only (don't delete the order from DB)
@@ -1240,19 +1246,21 @@ const POS: React.FC = () => {
             </Typography>
           </Box>
 
-          {/* Electronic Invoice Option */}
-          <Box sx={{ mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={needsElectronicInvoice}
-                  onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Factura Electrónica"
-            />
-          </Box>
+          {/* Electronic Invoice Option - Hidden in DIAN Mode */}
+          {!isDIANMode && (
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={needsElectronicInvoice}
+                    onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Factura Electrónica"
+              />
+            </Box>
+          )}
 
           {/* Action Buttons */}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -1304,7 +1312,7 @@ const POS: React.FC = () => {
         paymentMethods={paymentMethods}
         onConfirm={processPayment}
         customer={selectedCustomer}
-        needsElectronicInvoice={needsElectronicInvoice}
+        needsElectronicInvoice={effectiveNeedsElectronicInvoice}
         defaultPrintReceipt={autoPrintReceipt}
         defaultConsumerEmail={defaultConsumerEmail}
       />
@@ -1565,6 +1573,107 @@ const POS: React.FC = () => {
             setPaymentDialogOpen(true);
           }
         }}
+        onSaveSplit={async (splits: BillSplit[], unallocatedItems: UnallocatedItem[]) => {
+          try {
+            setSplitBillDialogOpen(false);
+            setIsSavingOrder(true);
+
+            // Create new orders for each split (source: 'split', status: 'pending')
+            const createdOrders: number[] = [];
+            for (const split of splits) {
+              // Map split items to order items with correct quantities
+              const splitOrderItems = split.items.map(splitItem => {
+                const originalItem = orderItems.find(item => item.id === splitItem.itemId);
+                if (!originalItem) throw new Error('Item not found');
+
+                const unitPrice = (originalItem.subtotal || 0) / originalItem.quantity;
+                return {
+                  product_id: originalItem.product_id,
+                  product: originalItem.product,
+                  quantity: splitItem.quantity,
+                  unit_price: unitPrice,
+                  subtotal: unitPrice * splitItem.quantity,
+                  notes: originalItem.notes,
+                  modifiers: originalItem.modifiers,
+                };
+              });
+
+              const orderData: CreateOrderData = {
+                type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
+                order_type_id: selectedOrderType?.id as unknown as number,
+                table_id: selectedTable?.id,
+                customer_id: selectedCustomer?.id,
+                employee_id: user?.id,
+                items: splitOrderItems,
+                notes: `${split.name} - Cuenta dividida`,
+                source: 'split',
+                ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
+                  delivery_customer_name: deliveryInfo.customerName,
+                  delivery_address: deliveryInfo.address,
+                  delivery_phone: deliveryInfo.phone,
+                }),
+              };
+
+              const newOrder = await wailsOrderService.createOrder(orderData);
+              createdOrders.push(newOrder.id!);
+              toast.success(`${split.name} guardada como orden #${newOrder.order_number || newOrder.id}`);
+            }
+
+            // Handle the original order based on unallocated items
+            if (currentOrder?.id) {
+              if (unallocatedItems.length === 0) {
+                // All items allocated - cancel the original order
+                try {
+                  await wailsOrderService.cancelOrder(currentOrder.id, 'Orden dividida en cuentas separadas');
+                  toast.info('Orden original cancelada (todos los productos fueron divididos)');
+                } catch (cancelError) {
+                  console.error('Error cancelling original order:', cancelError);
+                }
+              } else {
+                // Some items remain - update the original order with only unallocated items
+                const remainingItems = unallocatedItems.map(unalloc => {
+                  const originalItem = orderItems.find(item => item.id === unalloc.itemId);
+                  if (!originalItem) throw new Error('Item not found');
+
+                  const unitPrice = (originalItem.subtotal || 0) / originalItem.quantity;
+                  return {
+                    product_id: originalItem.product_id,
+                    product: originalItem.product,
+                    quantity: unalloc.quantity,
+                    unit_price: unitPrice,
+                    subtotal: unitPrice * unalloc.quantity,
+                    notes: originalItem.notes,
+                    modifiers: originalItem.modifiers,
+                  };
+                });
+
+                const updateData: CreateOrderData = {
+                  type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
+                  order_type_id: selectedOrderType?.id as unknown as number,
+                  table_id: selectedTable?.id,
+                  customer_id: selectedCustomer?.id,
+                  employee_id: user?.id,
+                  items: remainingItems,
+                  notes: currentOrder.notes || '',
+                  source: 'pos',
+                };
+
+                await wailsOrderService.updateOrder(currentOrder.id, updateData);
+                toast.info('Orden original actualizada con los productos restantes');
+              }
+            }
+
+            // Clear local state
+            clearOrder(true);
+            toast.success(`División guardada: ${splits.length} cuenta(s) creadas`);
+
+          } catch (error: any) {
+            console.error('Error saving split:', error);
+            toast.error('Error al guardar la división: ' + (error.message || 'Error desconocido'));
+          } finally {
+            setIsSavingOrder(false);
+          }
+        }}
       />
 
       {/* Payment Dialog for Split Bill */}
@@ -1665,7 +1774,7 @@ const POS: React.FC = () => {
                 }
               }}
               customer={selectedCustomer}
-              needsElectronicInvoice={needsElectronicInvoice}
+              needsElectronicInvoice={effectiveNeedsElectronicInvoice}
               defaultPrintReceipt={autoPrintReceipt}
             />
           </DialogContent>

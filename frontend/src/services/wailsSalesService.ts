@@ -5,6 +5,7 @@ import {
   GetPaymentMethods,
   GetCustomers,
   ResendElectronicInvoice,
+  ConvertToElectronicInvoice,
   GetSalesHistory,
   CreateCustomer,
   UpdateCustomer,
@@ -16,10 +17,103 @@ import {
   RefundSale,
   DeleteSale,
   GetSalesReport,
-  PrintReceipt
+  PrintReceipt,
+  GetDIANClosingReport,
+  PrintDIANClosingReport
 } from '../../wailsjs/go/services/SalesService';
 import { models } from '../../wailsjs/go/models';
 import { Sale, Customer, PaymentMethod, ProcessSaleData } from '../types/models';
+
+// DIAN Closing Report Types
+export interface CategorySalesDetail {
+  category_id: number;
+  category_name: string;
+  quantity: number;
+  subtotal: number;
+  tax: number;
+  total: number;
+}
+
+export interface TaxBreakdownDetail {
+  tax_type_id: number;
+  tax_type_name: string;
+  tax_percent: number;
+  base_amount: number;
+  tax_amount: number;
+  total: number;
+  item_count: number;
+}
+
+export interface NoteDetail {
+  number: string;
+  prefix: string;
+  reason: string;
+  amount: number;
+  status: string;
+  created_at: string;
+}
+
+export interface PaymentMethodSummary {
+  method_id: number;
+  method_name: string;
+  method_type: string;
+  transactions: number;
+  total: number;
+}
+
+export interface DIANClosingReport {
+  // Business Info
+  business_name: string;
+  commercial_name: string;
+  nit: string;
+  dv: string;
+  regime: string;
+  liability: string;
+  address: string;
+  city: string;
+  department: string;
+  phone: string;
+  email: string;
+  resolution: string;
+  resolution_prefix: string;
+  resolution_from: number;
+  resolution_to: number;
+  resolution_date_from: string;
+  resolution_date_to: string;
+
+  // Report Info
+  report_date: string;
+  generated_at: string;
+
+  // Invoice Range
+  first_invoice_number: string;
+  last_invoice_number: string;
+  total_invoices: number;
+
+  // Sales by Category
+  sales_by_category: CategorySalesDetail[];
+
+  // Sales by Tax Type
+  sales_by_tax: TaxBreakdownDetail[];
+
+  // Adjustments (Credit/Debit Notes)
+  credit_notes: NoteDetail[];
+  debit_notes: NoteDetail[];
+  total_credit_notes: number;
+  total_debit_notes: number;
+
+  // Payment Methods
+  payment_methods: PaymentMethodSummary[];
+
+  // Totals
+  total_transactions: number;
+  total_subtotal: number;
+  total_tax: number;
+  total_discount: number;
+  total_sales: number;
+  total_adjustments: number;
+  grand_total: number;
+}
 
 // Helper to check if Wails bindings are ready
 function areBindingsReady(): boolean {
@@ -260,6 +354,14 @@ class WailsSalesService {
     }
   }
 
+  async convertToElectronicInvoice(saleId: number): Promise<void> {
+    try {
+      await ConvertToElectronicInvoice(saleId);
+    } catch (error) {
+      throw new Error('Error al convertir a factura electrónica');
+    }
+  }
+
   async getSalesReport(startDate?: string, endDate?: string): Promise<any> {
     try {
       if (!areBindingsReady()) {
@@ -453,6 +555,24 @@ class WailsSalesService {
       await ResendElectronicInvoice(saleId);
     } catch (error: any) {
       throw new Error(error?.message || 'Error al enviar factura electrónica a DIAN');
+    }
+  }
+
+  // DIAN Closing Report Methods
+  async getDIANClosingReport(date: string): Promise<DIANClosingReport> {
+    try {
+      const report = await GetDIANClosingReport(date);
+      return report as unknown as DIANClosingReport;
+    } catch (error: any) {
+      throw new Error(error?.message || 'Error al generar reporte de cierre DIAN');
+    }
+  }
+
+  async printDIANClosingReport(date: string): Promise<void> {
+    try {
+      await PrintDIANClosingReport(date);
+    } catch (error: any) {
+      throw new Error(error?.message || 'Error al imprimir reporte de cierre DIAN');
     }
   }
 }

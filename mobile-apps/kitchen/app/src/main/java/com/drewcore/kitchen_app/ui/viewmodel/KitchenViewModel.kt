@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.drewcore.kitchen_app.data.models.ItemChangeStatus
 import com.drewcore.kitchen_app.data.models.Order
 import com.drewcore.kitchen_app.data.models.OrderDisplayState
+import com.drewcore.kitchen_app.data.models.OrderItem
 import com.drewcore.kitchen_app.data.network.ServerDiscovery
 import com.drewcore.kitchen_app.data.network.WebSocketManager
 import kotlinx.coroutines.delay
@@ -247,9 +248,6 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun calculateItemChanges(oldOrder: Order, newOrder: Order): Order {
-        val oldItemsMap = oldOrder.items.associateBy { "${it.productId}-${it.notes}" }
-        val newItemsMap = newOrder.items.associateBy { "${it.productId}-${it.notes}" }
-
         // Get items that were marked as ready with their quantities (if order was previously ready)
         val readyItems = readyOrderItems[newOrder.id] ?: emptyMap()
 
@@ -257,42 +255,76 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             android.util.Log.d("KitchenViewModel", "Order ${newOrder.id} was previously marked ready. Ready items: $readyItems")
         }
 
+        // Group items by productId for smarter matching
+        val oldItemsByProduct = oldOrder.items.groupBy { it.productId }.toMutableMap()
+        val matchedOldItems = mutableSetOf<String>() // Track which old items were matched
+
         val updatedItems = newOrder.items.mapNotNull { newItem ->
-            val key = "${newItem.productId}-${newItem.notes}"
-            val oldItem = oldItemsMap[key]
-            val readyQuantity = readyItems[key]
+            val productId = newItem.productId
+            val exactKey = "${newItem.productId}-${newItem.notes}"
+            val readyQuantity = readyItems[exactKey]
+
+            // Handle ready items first
+            if (readyQuantity != null) {
+                val additionalQuantity = newItem.quantity - readyQuantity
+                if (additionalQuantity > 0) {
+                    android.util.Log.d("KitchenViewModel", "Item $exactKey had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
+                    val newSubtotal = (newItem.subtotal / newItem.quantity) * additionalQuantity
+                    return@mapNotNull newItem.copy(
+                        quantity = additionalQuantity,
+                        subtotal = newSubtotal
+                    ).apply {
+                        changeStatus = ItemChangeStatus.ADDED
+                        previousQuantity = 0
+                    }
+                } else {
+                    android.util.Log.d("KitchenViewModel", "Filtering out item $exactKey: no additional units")
+                    return@mapNotNull null
+                }
+            }
+
+            // Find matching old item - first try exact match (same productId and notes)
+            val oldItemsForProduct = oldItemsByProduct[productId]?.toMutableList() ?: mutableListOf()
+            var matchedOldItem: OrderItem? = null
+
+            // First: try to find exact match (same productId and notes)
+            val exactMatchIndex = oldItemsForProduct.indexOfFirst {
+                it.notes == newItem.notes && "${it.productId}-${it.notes}" !in matchedOldItems
+            }
+            if (exactMatchIndex >= 0) {
+                matchedOldItem = oldItemsForProduct[exactMatchIndex]
+                matchedOldItems.add("${matchedOldItem.productId}-${matchedOldItem.notes}")
+            } else {
+                // Second: find any unmatched item with same productId (notes changed case)
+                val anyMatchIndex = oldItemsForProduct.indexOfFirst {
+                    "${it.productId}-${it.notes}" !in matchedOldItems
+                }
+                if (anyMatchIndex >= 0) {
+                    matchedOldItem = oldItemsForProduct[anyMatchIndex]
+                    matchedOldItems.add("${matchedOldItem.productId}-${matchedOldItem.notes}")
+                    // This is likely a notes change - mark as modified
+                    android.util.Log.d("KitchenViewModel", "Item ${productId} notes changed from '${matchedOldItem.notes}' to '${newItem.notes}'")
+                }
+            }
 
             when {
-                readyQuantity != null -> {
-                    // Item was already marked as ready - check if there are additional units
-                    val additionalQuantity = newItem.quantity - readyQuantity
-                    if (additionalQuantity > 0) {
-                        // There are additional units - show only those
-                        android.util.Log.d("KitchenViewModel", "Item $key had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
-                        val newSubtotal = (newItem.subtotal / newItem.quantity) * additionalQuantity
-                        newItem.copy(
-                            quantity = additionalQuantity,
-                            subtotal = newSubtotal
-                        ).apply {
-                            changeStatus = ItemChangeStatus.ADDED
-                            previousQuantity = 0
-                        }
-                    } else {
-                        // No additional units or fewer units than before - don't show
-                        android.util.Log.d("KitchenViewModel", "Filtering out item $key: no additional units (ready: $readyQuantity, current: ${newItem.quantity})")
-                        null
-                    }
-                }
-                oldItem == null -> {
-                    // New item added
+                matchedOldItem == null -> {
+                    // Truly new item
                     newItem.changeStatus = ItemChangeStatus.ADDED
-                    android.util.Log.d("KitchenViewModel", "New item added: $key")
+                    android.util.Log.d("KitchenViewModel", "New item added: $exactKey")
                     newItem
                 }
-                oldItem.quantity != newItem.quantity -> {
-                    // Item quantity modified
+                matchedOldItem.notes != newItem.notes -> {
+                    // Notes changed - mark as modified (not as new item)
                     newItem.changeStatus = ItemChangeStatus.MODIFIED
-                    newItem.previousQuantity = oldItem.quantity
+                    newItem.previousQuantity = matchedOldItem.quantity
+                    android.util.Log.d("KitchenViewModel", "Item ${productId} modified (notes changed)")
+                    newItem
+                }
+                matchedOldItem.quantity != newItem.quantity -> {
+                    // Quantity changed
+                    newItem.changeStatus = ItemChangeStatus.MODIFIED
+                    newItem.previousQuantity = matchedOldItem.quantity
                     newItem
                 }
                 else -> {
@@ -303,9 +335,13 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             }
         }.toMutableList()
 
-        // Find removed items (only from non-ready items)
-        val removedItems = oldItemsMap.filterKeys { !newItemsMap.containsKey(it) && !readyItems.containsKey(it) }
-            .values.map { oldItem ->
+        // Find removed items (old items that weren't matched and aren't in ready items)
+        val removedItems = oldOrder.items
+            .filter { oldItem ->
+                val key = "${oldItem.productId}-${oldItem.notes}"
+                key !in matchedOldItems && key !in readyItems.keys
+            }
+            .map { oldItem ->
                 oldItem.changeStatus = ItemChangeStatus.REMOVED
                 oldItem
             }

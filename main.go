@@ -43,7 +43,9 @@ type App struct {
 	GoogleSheetsService     *services.GoogleSheetsService
 	ReportSchedulerService  *services.ReportSchedulerService
 	RappiConfigService      *services.RappiConfigService
+	RappiWebhookServer      *services.RappiWebhookServer
 	InvoiceLimitService     *services.InvoiceLimitService
+	ConfigAPIServer         *services.ConfigAPIServer
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -143,6 +145,18 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		a.InvoiceLimitService.StopPeriodicSync()
 	}
 
+	// Stop Rappi webhook server
+	if a.RappiWebhookServer != nil {
+		a.LoggerService.LogInfo("Stopping Rappi webhook server")
+		a.RappiWebhookServer.Stop()
+	}
+
+	// Stop Config API server
+	if a.ConfigAPIServer != nil {
+		a.LoggerService.LogInfo("Stopping Config API server")
+		a.ConfigAPIServer.Stop()
+	}
+
 	// Stop WebSocket server
 	if a.WSServer != nil {
 		a.LoggerService.LogInfo("Stopping WebSocket server")
@@ -205,6 +219,30 @@ func (a *App) InitializeServicesAfterSetup() error {
 
 	// Initialize Rappi service
 	a.RappiConfigService = services.NewRappiConfigService()
+	a.RappiWebhookServer = services.NewRappiWebhookServer(a.RappiConfigService, a.OrderService, a.ProductService)
+
+	// Start Rappi webhook server
+	a.LoggerService.LogInfo("Starting Rappi webhook server")
+	go func() {
+		defer a.LoggerService.RecoverPanic()
+		if err := a.RappiWebhookServer.Start(); err != nil {
+			a.LoggerService.LogWarning("Rappi webhook server start error", err.Error())
+		}
+	}()
+
+	// Start Config API server for external configuration management
+	configAPIPort := os.Getenv("CONFIG_API_PORT")
+	if configAPIPort == "" {
+		configAPIPort = "8082" // Default port
+	}
+	a.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, a.InvoiceLimitService, a.LoggerService)
+	a.LoggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
+	go func() {
+		defer a.LoggerService.RecoverPanic()
+		if err := a.ConfigAPIServer.Start(); err != nil {
+			a.LoggerService.LogWarning("Config API server start error", err.Error())
+		}
+	}()
 
 	// Initialize default system configurations
 	if err := a.ConfigService.InitializeDefaultSystemConfigs(); err != nil {
@@ -363,6 +401,30 @@ func main() {
 
 			// Initialize Rappi service
 			app.RappiConfigService = services.NewRappiConfigService()
+			app.RappiWebhookServer = services.NewRappiWebhookServer(app.RappiConfigService, app.OrderService, app.ProductService)
+
+			// Start Rappi webhook server
+			loggerService.LogInfo("Starting Rappi webhook server")
+			go func() {
+				defer loggerService.RecoverPanic()
+				if err := app.RappiWebhookServer.Start(); err != nil {
+					loggerService.LogWarning("Rappi webhook server start error", err.Error())
+				}
+			}()
+
+			// Start Config API server for external configuration management
+			configAPIPort := os.Getenv("CONFIG_API_PORT")
+			if configAPIPort == "" {
+				configAPIPort = "8082" // Default port
+			}
+			app.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, app.InvoiceLimitService, loggerService)
+			loggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
+			go func() {
+				defer loggerService.RecoverPanic()
+				if err := app.ConfigAPIServer.Start(); err != nil {
+					loggerService.LogWarning("Config API server start error", err.Error())
+				}
+			}()
 
 			loggerService.LogInfo("Initializing default system configurations")
 			app.ConfigService.InitializeDefaultSystemConfigs()

@@ -3362,6 +3362,28 @@ export namespace services {
 	        this.growth_percent = source["growth_percent"];
 	    }
 	}
+	export class CategorySalesDetail {
+	    category_id: number;
+	    category_name: string;
+	    quantity: number;
+	    subtotal: number;
+	    tax: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CategorySalesDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.category_id = source["category_id"];
+	        this.category_name = source["category_name"];
+	        this.quantity = source["quantity"];
+	        this.subtotal = source["subtotal"];
+	        this.tax = source["tax"];
+	        this.total = source["total"];
+	    }
+	}
 	export class ConnectionStatus {
 	    is_configured: boolean;
 	    is_enabled: boolean;
@@ -3433,6 +3455,190 @@ export namespace services {
 	        this.average_value_per_customer = source["average_value_per_customer"];
 	        this.visit_frequency = source["visit_frequency"];
 	    }
+	}
+	export class PaymentMethodSummary {
+	    method_id: number;
+	    method_name: string;
+	    method_type: string;
+	    transactions: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaymentMethodSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.method_id = source["method_id"];
+	        this.method_name = source["method_name"];
+	        this.method_type = source["method_type"];
+	        this.transactions = source["transactions"];
+	        this.total = source["total"];
+	    }
+	}
+	export class NoteDetail {
+	    number: string;
+	    prefix: string;
+	    reason: string;
+	    amount: number;
+	    status: string;
+	    created_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.prefix = source["prefix"];
+	        this.reason = source["reason"];
+	        this.amount = source["amount"];
+	        this.status = source["status"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TaxBreakdownDetail {
+	    tax_type_id: number;
+	    tax_type_name: string;
+	    tax_percent: number;
+	    base_amount: number;
+	    tax_amount: number;
+	    total: number;
+	    item_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TaxBreakdownDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tax_type_id = source["tax_type_id"];
+	        this.tax_type_name = source["tax_type_name"];
+	        this.tax_percent = source["tax_percent"];
+	        this.base_amount = source["base_amount"];
+	        this.tax_amount = source["tax_amount"];
+	        this.total = source["total"];
+	        this.item_count = source["item_count"];
+	    }
+	}
+	export class DIANClosingReport {
+	    business_name: string;
+	    commercial_name: string;
+	    nit: string;
+	    dv: string;
+	    regime: string;
+	    liability: string;
+	    address: string;
+	    city: string;
+	    department: string;
+	    phone: string;
+	    email: string;
+	    resolution: string;
+	    resolution_prefix: string;
+	    resolution_from: number;
+	    resolution_to: number;
+	    resolution_date_from: string;
+	    resolution_date_to: string;
+	    report_date: string;
+	    generated_at: time.Time;
+	    first_invoice_number: string;
+	    last_invoice_number: string;
+	    total_invoices: number;
+	    sales_by_category: CategorySalesDetail[];
+	    sales_by_tax: TaxBreakdownDetail[];
+	    credit_notes: NoteDetail[];
+	    debit_notes: NoteDetail[];
+	    total_credit_notes: number;
+	    total_debit_notes: number;
+	    payment_methods: PaymentMethodSummary[];
+	    total_transactions: number;
+	    total_subtotal: number;
+	    total_tax: number;
+	    total_discount: number;
+	    total_sales: number;
+	    total_adjustments: number;
+	    grand_total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DIANClosingReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.business_name = source["business_name"];
+	        this.commercial_name = source["commercial_name"];
+	        this.nit = source["nit"];
+	        this.dv = source["dv"];
+	        this.regime = source["regime"];
+	        this.liability = source["liability"];
+	        this.address = source["address"];
+	        this.city = source["city"];
+	        this.department = source["department"];
+	        this.phone = source["phone"];
+	        this.email = source["email"];
+	        this.resolution = source["resolution"];
+	        this.resolution_prefix = source["resolution_prefix"];
+	        this.resolution_from = source["resolution_from"];
+	        this.resolution_to = source["resolution_to"];
+	        this.resolution_date_from = source["resolution_date_from"];
+	        this.resolution_date_to = source["resolution_date_to"];
+	        this.report_date = source["report_date"];
+	        this.generated_at = this.convertValues(source["generated_at"], time.Time);
+	        this.first_invoice_number = source["first_invoice_number"];
+	        this.last_invoice_number = source["last_invoice_number"];
+	        this.total_invoices = source["total_invoices"];
+	        this.sales_by_category = this.convertValues(source["sales_by_category"], CategorySalesDetail);
+	        this.sales_by_tax = this.convertValues(source["sales_by_tax"], TaxBreakdownDetail);
+	        this.credit_notes = this.convertValues(source["credit_notes"], NoteDetail);
+	        this.debit_notes = this.convertValues(source["debit_notes"], NoteDetail);
+	        this.total_credit_notes = source["total_credit_notes"];
+	        this.total_debit_notes = source["total_debit_notes"];
+	        this.payment_methods = this.convertValues(source["payment_methods"], PaymentMethodSummary);
+	        this.total_transactions = source["total_transactions"];
+	        this.total_subtotal = source["total_subtotal"];
+	        this.total_tax = source["total_tax"];
+	        this.total_discount = source["total_discount"];
+	        this.total_sales = source["total_sales"];
+	        this.total_adjustments = source["total_adjustments"];
+	        this.grand_total = source["grand_total"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class DIANInvoiceAllowanceCharge {
 	    discount_id?: number;
@@ -4061,6 +4267,7 @@ export namespace services {
 	        this.growth_percent = source["growth_percent"];
 	    }
 	}
+	
 	export class ProductDetail {
 	    product_name: string;
 	    quantity: number;
@@ -4147,6 +4354,7 @@ export namespace services {
 	        this.count = source["count"];
 	    }
 	}
+	
 	
 	
 	export class ProductSalesData {
@@ -4291,6 +4499,7 @@ export namespace services {
 		    return a;
 		}
 	}
+	
 	export class TestConnectionResponse {
 	    success: boolean;
 	    message: string;

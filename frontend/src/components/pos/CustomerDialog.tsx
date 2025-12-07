@@ -33,9 +33,11 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   History as HistoryIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import { Customer } from '../../types/models';
 import { wailsSalesService } from '../../services/wailsSalesService';
+import { wailsPrinterService } from '../../services/wailsPrinterService';
 import { toast } from 'react-toastify';
 
 interface CustomerDialogProps {
@@ -207,6 +209,15 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
     onClose();
   };
 
+  const handlePrintCustomerForm = async () => {
+    try {
+      await wailsPrinterService.printCustomerDataForm();
+      toast.success('Formato impreso correctamente');
+    } catch (error) {
+      toast.error('Error al imprimir formato');
+    }
+  };
+
   const calculateDV = (nit: string): string => {
     // Colombian NIT check digit calculation
     const primes = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
@@ -315,6 +326,16 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
 
         <TabPanel value={tabValue} index={1}>
           {/* New Customer Tab */}
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PrintIcon />}
+              onClick={handlePrintCustomerForm}
+            >
+              Imprimir Formato Datos
+            </Button>
+          </Box>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={4}>
               <FormControl fullWidth>

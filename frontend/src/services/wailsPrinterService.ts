@@ -75,5 +75,11 @@ export const wailsPrinterService = {
     const svc = getPrinterService();
     if (!svc) throw new Error('Service not ready');
     await svc.TestPrinter(printerId);
+  },
+
+  async printCustomerDataForm(): Promise<void> {
+    const svc = getPrinterService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.PrintCustomerDataForm();
   }
 };

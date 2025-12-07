@@ -119,22 +119,48 @@ data class Order(
     @SerializedName("updated_at") val updatedAt: String
 ) {
     // Helper method to compare items
+    // Uses item ID as primary key for comparison to properly handle note/comment changes
     fun hasChangedItemsFrom(other: Order): Boolean {
         if (this.items.size != other.items.size) return true
 
-        val thisItemsMap = this.items.associateBy { "${it.productId}-${it.notes}" }
-        val otherItemsMap = other.items.associateBy { "${it.productId}-${it.notes}" }
+        // First try to match by item ID (for existing items that were updated)
+        val thisItemsById = this.items.associateBy { it.id }
+        val otherItemsById = other.items.associateBy { it.id }
 
-        // Check if any item is different
-        for ((key, thisItem) in thisItemsMap) {
-            val otherItem = otherItemsMap[key]
-            if (otherItem == null || otherItem.quantity != thisItem.quantity) {
-                return true
+        // Check if items were modified (same ID but different data)
+        for ((id, thisItem) in thisItemsById) {
+            val otherItem = otherItemsById[id]
+            if (otherItem != null) {
+                // Same item exists, check if quantity or notes changed
+                if (otherItem.quantity != thisItem.quantity ||
+                    otherItem.notes != thisItem.notes) {
+                    return true
+                }
             }
         }
 
-        // Check if other has items this doesn't have
-        return otherItemsMap.keys != thisItemsMap.keys
+        // Fallback: compare by productId for items without matching IDs
+        // This handles cases where backend recreates items with new IDs
+        val thisProductGroups = this.items.groupBy { it.productId }
+        val otherProductGroups = other.items.groupBy { it.productId }
+
+        // Check if product composition changed
+        if (thisProductGroups.keys != otherProductGroups.keys) return true
+
+        // Check total quantities per product
+        for ((productId, thisItems) in thisProductGroups) {
+            val otherItems = otherProductGroups[productId] ?: return true
+            val thisTotalQty = thisItems.sumOf { it.quantity }
+            val otherTotalQty = otherItems.sumOf { it.quantity }
+            if (thisTotalQty != otherTotalQty) return true
+
+            // Check if notes changed for this product (any note difference is a change)
+            val thisNotes = thisItems.map { it.notes ?: "" }.sorted()
+            val otherNotes = otherItems.map { it.notes ?: "" }.sorted()
+            if (thisNotes != otherNotes) return true
+        }
+
+        return false
     }
 }
 

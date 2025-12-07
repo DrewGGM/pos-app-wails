@@ -14,6 +14,14 @@ export function PrintCashRegisterReport(arg1) {
   return window['go']['services']['PrinterService']['PrintCashRegisterReport'](arg1);
 }
 
+export function PrintCustomerDataForm() {
+  return window['go']['services']['PrinterService']['PrintCustomerDataForm']();
+}
+
+export function PrintDIANClosingReport(arg1) {
+  return window['go']['services']['PrinterService']['PrintDIANClosingReport'](arg1);
+}
+
 export function PrintKitchenOrder(arg1) {
   return window['go']['services']['PrinterService']['PrintKitchenOrder'](arg1);
 }

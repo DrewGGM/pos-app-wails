@@ -70,5 +70,19 @@ export const wailsDashboardService = {
     const svc = getDashboardService();
     if (!svc) return [];
     return await svc.GetActiveTables();
+  },
+
+  // Get dashboard statistics filtered by DIAN electronic invoices only
+  async getDashboardStatsDIAN(): Promise<DashboardStats | null> {
+    const svc = getDashboardService();
+    if (!svc) return null;
+    return await svc.GetDashboardStatsDIAN();
+  },
+
+  // Get sales chart data filtered by DIAN electronic invoices only
+  async getSalesChartDataDIAN(days: number = 7): Promise<SalesChartData[]> {
+    const svc = getDashboardService();
+    if (!svc) return [];
+    return await svc.GetSalesChartDataDIAN(days);
   }
 };

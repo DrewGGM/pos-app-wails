@@ -15,6 +15,7 @@ import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { DIANModeProvider } from './contexts/DIANModeContext';
 import wailsLoggerService from './services/wailsLoggerService';
 import './index.css';
 
@@ -30,19 +31,21 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
             <AuthProvider>
               <WebSocketProvider>
-                <App />
-                <ToastContainer
-                  position="top-right"
-                  autoClose={5000}
-                  hideProgressBar={false}
-                  newestOnTop={false}
-                  closeOnClick
-                  rtl={false}
-                  pauseOnFocusLoss
-                  draggable
-                  pauseOnHover
-                  theme="light"
-                />
+                <DIANModeProvider>
+                  <App />
+                  <ToastContainer
+                    position="top-right"
+                    autoClose={5000}
+                    hideProgressBar={false}
+                    newestOnTop={false}
+                    closeOnClick
+                    rtl={false}
+                    pauseOnFocusLoss
+                    draggable
+                    pauseOnHover
+                    theme="light"
+                  />
+                </DIANModeProvider>
               </WebSocketProvider>
             </AuthProvider>
           </LocalizationProvider>

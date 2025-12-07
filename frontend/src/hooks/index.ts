@@ -4,6 +4,9 @@ export { useAuth } from './useAuth';
 // useWebSocket.ts
 export { useWebSocket } from './useWebSocket';
 
+// useDIANMode.ts
+export { useDIANMode } from './useDIANMode';
+
 // Utility functions for handling optional IDs
 export const useIdGenerator = () => {
   const generateTempId = () => {

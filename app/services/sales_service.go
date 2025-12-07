@@ -644,12 +644,51 @@ func (s *SalesService) ResendElectronicInvoice(saleID uint) error {
 		return err
 	}
 
+	// Check if already has electronic invoice that was accepted
+	if sale.ElectronicInvoice != nil && sale.ElectronicInvoice.Status == "accepted" {
+		return fmt.Errorf("sale already has a valid electronic invoice")
+	}
+
+	// Delete existing failed electronic invoice record to avoid duplicates
+	// This also ensures a fresh consecutive number will be used
+	if sale.ElectronicInvoice != nil && sale.ElectronicInvoice.ID > 0 {
+		s.db.Delete(&models.ElectronicInvoice{}, sale.ElectronicInvoice.ID)
+		sale.ElectronicInvoice = nil
+	}
+
+	// Send invoice (default to true when resending - send email)
+	invoice, err := s.invoiceSvc.SendInvoice(sale, true)
+	if err != nil {
+		return fmt.Errorf("failed to send electronic invoice: %w", err)
+	}
+
+	// Update sale
+	sale.InvoiceType = "electronic"
+	sale.ElectronicInvoice = invoice
+	s.db.Save(sale)
+
+	return nil
+}
+
+// ConvertToElectronicInvoice converts a N/A sale to electronic invoice
+func (s *SalesService) ConvertToElectronicInvoice(saleID uint) error {
+	sale, err := s.GetSale(saleID)
+	if err != nil {
+		return err
+	}
+
 	// Check if already has electronic invoice
 	if sale.ElectronicInvoice != nil && sale.ElectronicInvoice.Status == "accepted" {
 		return fmt.Errorf("sale already has a valid electronic invoice")
 	}
 
-	// Send invoice (default to true when resending - send email)
+	// Mark sale as needing electronic invoice
+	sale.NeedsElectronicInvoice = true
+	if err := s.db.Save(sale).Error; err != nil {
+		return fmt.Errorf("failed to update sale: %w", err)
+	}
+
+	// Send invoice
 	invoice, err := s.invoiceSvc.SendInvoice(sale, true)
 	if err != nil {
 		return fmt.Errorf("failed to send electronic invoice: %w", err)
@@ -899,4 +938,389 @@ func (s *SalesService) PrintReceiptWithPrinter(saleID uint, printerID uint) erro
 		return s.printerSvc.PrintReceiptWithPrinter(&sale, isElectronicInvoice, printerID)
 	}
 	return s.printerSvc.PrintReceipt(&sale, isElectronicInvoice)
+}
+
+// ==================== DIAN CLOSING REPORT ====================
+
+// DIANClosingReport represents the daily DIAN closing report
+type DIANClosingReport struct {
+	// Business Info
+	BusinessName       string `json:"business_name"`
+	CommercialName     string `json:"commercial_name"`
+	NIT                string `json:"nit"`
+	DV                 string `json:"dv"`
+	Regime             string `json:"regime"`
+	Liability          string `json:"liability"`
+	Address            string `json:"address"`
+	City               string `json:"city"`
+	Department         string `json:"department"`
+	Phone              string `json:"phone"`
+	Email              string `json:"email"`
+	Resolution         string `json:"resolution"`
+	ResolutionPrefix   string `json:"resolution_prefix"`
+	ResolutionFrom     int    `json:"resolution_from"`
+	ResolutionTo       int    `json:"resolution_to"`
+	ResolutionDateFrom string `json:"resolution_date_from"`
+	ResolutionDateTo   string `json:"resolution_date_to"`
+
+	// Report Info
+	ReportDate  string    `json:"report_date"`
+	GeneratedAt time.Time `json:"generated_at"`
+
+	// Invoice Range
+	FirstInvoiceNumber string `json:"first_invoice_number"`
+	LastInvoiceNumber  string `json:"last_invoice_number"`
+	TotalInvoices      int    `json:"total_invoices"`
+
+	// Sales by Category
+	SalesByCategory []CategorySalesDetail `json:"sales_by_category"`
+
+	// Sales by Tax Type
+	SalesByTax []TaxBreakdownDetail `json:"sales_by_tax"`
+
+	// Adjustments (Credit/Debit Notes)
+	CreditNotes      []NoteDetail `json:"credit_notes"`
+	DebitNotes       []NoteDetail `json:"debit_notes"`
+	TotalCreditNotes float64      `json:"total_credit_notes"`
+	TotalDebitNotes  float64      `json:"total_debit_notes"`
+
+	// Payment Methods
+	PaymentMethods []PaymentMethodSummary `json:"payment_methods"`
+
+	// Totals
+	TotalTransactions int     `json:"total_transactions"`
+	TotalSubtotal     float64 `json:"total_subtotal"`
+	TotalTax          float64 `json:"total_tax"`
+	TotalDiscount     float64 `json:"total_discount"`
+	TotalSales        float64 `json:"total_sales"`
+	TotalAdjustments  float64 `json:"total_adjustments"`
+	GrandTotal        float64 `json:"grand_total"`
+}
+
+// CategorySalesDetail represents sales breakdown by category
+type CategorySalesDetail struct {
+	CategoryID   uint    `json:"category_id"`
+	CategoryName string  `json:"category_name"`
+	Quantity     int     `json:"quantity"`
+	Subtotal     float64 `json:"subtotal"`
+	Tax          float64 `json:"tax"`
+	Total        float64 `json:"total"`
+}
+
+// TaxBreakdownDetail represents sales breakdown by tax type
+type TaxBreakdownDetail struct {
+	TaxTypeID   int     `json:"tax_type_id"`
+	TaxTypeName string  `json:"tax_type_name"`
+	TaxPercent  float64 `json:"tax_percent"`
+	BaseAmount  float64 `json:"base_amount"`
+	TaxAmount   float64 `json:"tax_amount"`
+	Total       float64 `json:"total"`
+	ItemCount   int     `json:"item_count"`
+}
+
+// NoteDetail represents credit/debit note detail
+type NoteDetail struct {
+	Number    string    `json:"number"`
+	Prefix    string    `json:"prefix"`
+	Reason    string    `json:"reason"`
+	Amount    float64   `json:"amount"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PaymentMethodSummary represents payment method summary
+type PaymentMethodSummary struct {
+	MethodID     uint    `json:"method_id"`
+	MethodName   string  `json:"method_name"`
+	MethodType   string  `json:"method_type"`
+	Transactions int     `json:"transactions"`
+	Total        float64 `json:"total"`
+}
+
+// GetDIANClosingReport generates the DIAN closing report for a specific date
+func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport, error) {
+	// Parse date
+	reportDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid date format: %w", err)
+	}
+
+	// Get DIAN config
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("DIAN config not found: %w", err)
+	}
+
+	// Get restaurant config
+	var restaurantConfig models.RestaurantConfig
+	if err := s.db.First(&restaurantConfig).Error; err != nil {
+		return nil, fmt.Errorf("restaurant config not found: %w", err)
+	}
+
+	// Get parametric data
+	parametricData := models.GetDIANParametricData()
+
+	// Initialize report
+	report := &DIANClosingReport{
+		ReportDate:  dateStr,
+		GeneratedAt: time.Now(),
+	}
+
+	// Fill business info
+	report.BusinessName = dianConfig.BusinessName
+	if report.BusinessName == "" {
+		report.BusinessName = restaurantConfig.BusinessName
+	}
+	report.CommercialName = restaurantConfig.Name
+	report.NIT = dianConfig.IdentificationNumber
+	if report.NIT == "" {
+		report.NIT = restaurantConfig.IdentificationNumber
+	}
+	report.DV = dianConfig.DV
+	if report.DV == "" {
+		report.DV = restaurantConfig.DV
+	}
+
+	// Get regime and liability names
+	if regime, ok := parametricData.TypeRegimes[dianConfig.TypeRegimeID]; ok {
+		report.Regime = regime.Name
+	}
+	if liability, ok := parametricData.TypeLiabilities[dianConfig.TypeLiabilityID]; ok {
+		report.Liability = liability.Name
+	}
+
+	report.Address = restaurantConfig.Address
+	report.Phone = restaurantConfig.Phone
+	report.Email = restaurantConfig.Email
+
+	// Get city and department
+	if dianConfig.MunicipalityID > 0 {
+		if municipality, ok := parametricData.Municipalities[dianConfig.MunicipalityID]; ok {
+			report.City = municipality.Name
+			if dept, ok := parametricData.Departments[municipality.DepartmentID]; ok {
+				report.Department = dept.Name
+			}
+		}
+	}
+
+	// Resolution info
+	report.Resolution = dianConfig.ResolutionNumber
+	report.ResolutionPrefix = dianConfig.ResolutionPrefix
+	report.ResolutionFrom = dianConfig.ResolutionFrom
+	report.ResolutionTo = dianConfig.ResolutionTo
+	if !dianConfig.ResolutionDateFrom.IsZero() {
+		report.ResolutionDateFrom = dianConfig.ResolutionDateFrom.Format("2006-01-02")
+	}
+	if !dianConfig.ResolutionDateTo.IsZero() {
+		report.ResolutionDateTo = dianConfig.ResolutionDateTo.Format("2006-01-02")
+	}
+
+	// Get all DIAN sales for the date (only sales with electronic invoices)
+	startOfDay := time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	var sales []models.Sale
+	err = s.db.Preload("Order.Items.Product.Category").
+		Preload("Order.Items.Modifiers.Modifier").
+		Preload("Customer").
+		Preload("PaymentDetails.PaymentMethod").
+		Preload("ElectronicInvoice.CreditNotes").
+		Preload("ElectronicInvoice.DebitNotes").
+		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
+		Where("needs_electronic_invoice = ?", true).
+		Order("created_at ASC").
+		Find(&sales).Error
+	if err != nil {
+		return nil, fmt.Errorf("error getting sales: %w", err)
+	}
+
+	// Calculate invoice range by finding min/max invoice numbers (not by date order)
+	if len(sales) > 0 {
+		var minInvoiceNum, maxInvoiceNum int
+		var minPrefix, maxPrefix string
+		firstFound := false
+
+		for _, sale := range sales {
+			if sale.ElectronicInvoice != nil {
+				report.TotalInvoices++
+
+				// Parse invoice number to compare numerically
+				invoiceNum := 0
+				fmt.Sscanf(sale.ElectronicInvoice.InvoiceNumber, "%d", &invoiceNum)
+
+				if !firstFound {
+					minInvoiceNum = invoiceNum
+					maxInvoiceNum = invoiceNum
+					minPrefix = sale.ElectronicInvoice.Prefix
+					maxPrefix = sale.ElectronicInvoice.Prefix
+					firstFound = true
+				} else {
+					if invoiceNum < minInvoiceNum {
+						minInvoiceNum = invoiceNum
+						minPrefix = sale.ElectronicInvoice.Prefix
+					}
+					if invoiceNum > maxInvoiceNum {
+						maxInvoiceNum = invoiceNum
+						maxPrefix = sale.ElectronicInvoice.Prefix
+					}
+				}
+			}
+		}
+
+		if firstFound {
+			report.FirstInvoiceNumber = fmt.Sprintf("%s%d", minPrefix, minInvoiceNum)
+			report.LastInvoiceNumber = fmt.Sprintf("%s%d", maxPrefix, maxInvoiceNum)
+		}
+	}
+
+	// Initialize maps for aggregation
+	categoryMap := make(map[uint]*CategorySalesDetail)
+	taxMap := make(map[int]*TaxBreakdownDetail)
+	paymentMap := make(map[uint]*PaymentMethodSummary)
+
+	// Process each sale
+	for _, sale := range sales {
+		report.TotalTransactions++
+		report.TotalSubtotal += sale.Subtotal
+		report.TotalTax += sale.Tax
+		report.TotalDiscount += sale.Discount
+		report.TotalSales += sale.Total
+
+		// Process order items for category and tax breakdown
+		if sale.Order != nil {
+			for _, item := range sale.Order.Items {
+				if item.Product == nil {
+					continue
+				}
+
+				// Calculate item totals
+				itemSubtotal := item.Subtotal
+				taxTypeID := item.Product.TaxTypeID
+				if taxTypeID == 0 {
+					taxTypeID = 1 // Default to IVA 19%
+				}
+
+				// Get tax info
+				taxType, ok := parametricData.TaxTypes[taxTypeID]
+				if !ok {
+					taxType = models.TaxType{ID: taxTypeID, Name: "IVA", Percent: 19.0}
+				}
+
+				// Calculate tax amount for this item
+				itemTax := itemSubtotal * (taxType.Percent / 100)
+				itemTotal := itemSubtotal + itemTax
+
+				// Aggregate by category
+				categoryID := item.Product.CategoryID
+				categoryName := "Sin Categoría"
+				if item.Product.Category != nil {
+					categoryName = item.Product.Category.Name
+				}
+
+				if _, exists := categoryMap[categoryID]; !exists {
+					categoryMap[categoryID] = &CategorySalesDetail{
+						CategoryID:   categoryID,
+						CategoryName: categoryName,
+					}
+				}
+				categoryMap[categoryID].Quantity += item.Quantity
+				categoryMap[categoryID].Subtotal += itemSubtotal
+				categoryMap[categoryID].Tax += itemTax
+				categoryMap[categoryID].Total += itemTotal
+
+				// Aggregate by tax type
+				if _, exists := taxMap[taxTypeID]; !exists {
+					taxMap[taxTypeID] = &TaxBreakdownDetail{
+						TaxTypeID:   taxTypeID,
+						TaxTypeName: taxType.Name,
+						TaxPercent:  taxType.Percent,
+					}
+				}
+				taxMap[taxTypeID].BaseAmount += itemSubtotal
+				taxMap[taxTypeID].TaxAmount += itemTax
+				taxMap[taxTypeID].Total += itemTotal
+				taxMap[taxTypeID].ItemCount += item.Quantity
+			}
+		}
+
+		// Process payment methods
+		for _, payment := range sale.PaymentDetails {
+			if payment.PaymentMethod == nil {
+				continue
+			}
+			methodID := payment.PaymentMethod.ID
+			if _, exists := paymentMap[methodID]; !exists {
+				paymentMap[methodID] = &PaymentMethodSummary{
+					MethodID:   methodID,
+					MethodName: payment.PaymentMethod.Name,
+					MethodType: payment.PaymentMethod.Type,
+				}
+			}
+			paymentMap[methodID].Transactions++
+			paymentMap[methodID].Total += payment.Amount
+		}
+
+		// Process credit notes and debit notes
+		if sale.ElectronicInvoice != nil {
+			for _, cn := range sale.ElectronicInvoice.CreditNotes {
+				// Only count credit notes created on the report date
+				if cn.CreatedAt.Year() == reportDate.Year() &&
+					cn.CreatedAt.Month() == reportDate.Month() &&
+					cn.CreatedAt.Day() == reportDate.Day() {
+					report.CreditNotes = append(report.CreditNotes, NoteDetail{
+						Number:    cn.Number,
+						Prefix:    cn.Prefix,
+						Reason:    cn.Reason,
+						Amount:    cn.Amount,
+						Status:    cn.Status,
+						CreatedAt: cn.CreatedAt,
+					})
+					report.TotalCreditNotes += cn.Amount
+				}
+			}
+			for _, dn := range sale.ElectronicInvoice.DebitNotes {
+				// Only count debit notes created on the report date
+				if dn.CreatedAt.Year() == reportDate.Year() &&
+					dn.CreatedAt.Month() == reportDate.Month() &&
+					dn.CreatedAt.Day() == reportDate.Day() {
+					report.DebitNotes = append(report.DebitNotes, NoteDetail{
+						Number:    dn.Number,
+						Prefix:    dn.Prefix,
+						Reason:    dn.Reason,
+						Amount:    dn.Amount,
+						Status:    dn.Status,
+						CreatedAt: dn.CreatedAt,
+					})
+					report.TotalDebitNotes += dn.Amount
+				}
+			}
+		}
+	}
+
+	// Convert maps to slices
+	for _, cat := range categoryMap {
+		report.SalesByCategory = append(report.SalesByCategory, *cat)
+	}
+	for _, tax := range taxMap {
+		report.SalesByTax = append(report.SalesByTax, *tax)
+	}
+	for _, pm := range paymentMap {
+		report.PaymentMethods = append(report.PaymentMethods, *pm)
+	}
+
+	// Calculate adjustments and grand total
+	report.TotalAdjustments = report.TotalDebitNotes - report.TotalCreditNotes
+	report.GrandTotal = report.TotalSales + report.TotalAdjustments
+
+	return report, nil
+}
+
+// PrintDIANClosingReport prints the DIAN closing report
+func (s *SalesService) PrintDIANClosingReport(dateStr string) error {
+	report, err := s.GetDIANClosingReport(dateStr)
+	if err != nil {
+		return err
+	}
+
+	return s.printerSvc.PrintDIANClosingReport(report)
 }

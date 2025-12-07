@@ -41,6 +41,12 @@ export const wailsDianService = {
     await svc.ConfigureCertificate();
   },
 
+  async configureLogo(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ConfigureLogo();
+  },
+
   async configureResolution(): Promise<void> {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');

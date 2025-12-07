@@ -9,6 +9,10 @@ export function GetAvailableSerialPorts():Promise<Array<string>>;
 
 export function PrintCashRegisterReport(arg1:models.CashRegisterReport):Promise<void>;
 
+export function PrintCustomerDataForm():Promise<void>;
+
+export function PrintDIANClosingReport(arg1:services.DIANClosingReport):Promise<void>;
+
 export function PrintKitchenOrder(arg1:models.Order):Promise<void>;
 
 export function PrintOrder(arg1:models.Order):Promise<void>;

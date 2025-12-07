@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react'
 import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail, type CashMovementDetail } from './services/googleSheets'
+import { InvoiceLimitsSettings } from './components/InvoiceLimitsSettings'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
+type AppView = 'reports' | 'settings'
 
 function App() {
+  // App navigation
+  const [currentView, setCurrentView] = useState<AppView>('reports')
+
   // Helper function to get current date/time in Colombia timezone
   const getColombiaDate = (): Date => {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
@@ -393,10 +398,61 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>Reportes POS</h1>
-        <p className="subtitle">Sistema de reportes diarios</p>
+        <p className="subtitle">Sistema de reportes y configuración</p>
+
+        {/* Navigation Tabs */}
+        <div className="nav-tabs" style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          marginTop: '1rem',
+        }}>
+          <button
+            onClick={() => setCurrentView('reports')}
+            className={`nav-tab ${currentView === 'reports' ? 'active' : ''}`}
+            style={{
+              padding: '0.5rem 1.5rem',
+              border: 'none',
+              background: currentView === 'reports' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+              color: currentView === 'reports' ? 'var(--primary-color)' : 'white',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            📊 Reportes
+          </button>
+          <button
+            onClick={() => setCurrentView('settings')}
+            className={`nav-tab ${currentView === 'settings' ? 'active' : ''}`}
+            style={{
+              padding: '0.5rem 1.5rem',
+              border: 'none',
+              background: currentView === 'settings' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+              color: currentView === 'settings' ? 'var(--primary-color)' : 'white',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            ⚙️ Configuración
+          </button>
+        </div>
       </header>
 
       <main className="main">
+        {/* Settings View */}
+        {currentView === 'settings' && (
+          <InvoiceLimitsSettings />
+        )}
+
+        {/* Reports View */}
+        {currentView === 'reports' && (
+          <>
         {/* Controls */}
         <div className="controls">
           <div className="date-nav">
@@ -718,6 +774,8 @@ function App() {
             <p>No hay datos para la fecha seleccionada</p>
             <p className="empty-hint">Intenta seleccionar otra fecha o actualiza los reportes</p>
           </div>
+        )}
+          </>
         )}
       </main>
 

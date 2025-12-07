@@ -10,6 +10,10 @@ export function GetDashboardStats() {
   return window['go']['services']['DashboardService']['GetDashboardStats']();
 }
 
+export function GetDashboardStatsDIAN() {
+  return window['go']['services']['DashboardService']['GetDashboardStatsDIAN']();
+}
+
 export function GetLowStockProducts() {
   return window['go']['services']['DashboardService']['GetLowStockProducts']();
 }
@@ -20,4 +24,8 @@ export function GetPendingOrdersDetails() {
 
 export function GetSalesChartData(arg1) {
   return window['go']['services']['DashboardService']['GetSalesChartData'](arg1);
+}
+
+export function GetSalesChartDataDIAN(arg1) {
+  return window['go']['services']['DashboardService']['GetSalesChartDataDIAN'](arg1);
 }

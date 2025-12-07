@@ -364,13 +364,15 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 	expectedAmount := s.calculateExpectedCash(&register)
 
 	// Create temporary report for current status
+	// For partial report: ClosingBalance = OpeningAmount (no cash counted yet)
+	// This matches the UI behavior where current_amount = opening_amount
 	report := &models.CashRegisterReport{
 		CashRegisterID:  register.ID,
 		Date:            register.OpenedAt,
 		OpeningBalance:  register.OpeningAmount,
-		ClosingBalance:  expectedAmount, // Use expected as current
-		ExpectedBalance: expectedAmount,
-		Difference:      0, // No difference since we're using expected
+		ClosingBalance:  register.OpeningAmount,                      // Use opening as "current" (no count yet)
+		ExpectedBalance: expectedAmount,                              // Expected cash based on sales/movements
+		Difference:      register.OpeningAmount - expectedAmount,     // Same calculation as UI
 		Notes:           fmt.Sprintf("Reporte parcial - %s", time.Now().Format("2006-01-02 15:04:05")),
 		GeneratedBy:     register.EmployeeID,
 		Employee:        register.Employee, // Assign employee from register

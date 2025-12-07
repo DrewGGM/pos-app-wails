@@ -7,8 +7,12 @@ export function GetActiveTables():Promise<Array<models.Table>>;
 
 export function GetDashboardStats():Promise<services.DashboardStats>;
 
+export function GetDashboardStatsDIAN():Promise<services.DashboardStats>;
+
 export function GetLowStockProducts():Promise<Array<models.Product>>;
 
 export function GetPendingOrdersDetails():Promise<Array<models.Order>>;
 
 export function GetSalesChartData(arg1:number):Promise<Array<services.SalesChartData>>;
+
+export function GetSalesChartDataDIAN(arg1:number):Promise<Array<services.SalesChartData>>;

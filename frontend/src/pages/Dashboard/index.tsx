@@ -40,11 +40,14 @@ import {
   RestaurantMenu as WaiterIcon,
   PowerSettingsNew as ResetIcon,
   Router as RouterIcon,
+  CloudSync as CloudSyncIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks';
+import { useAuth, useDIANMode } from '../../hooks';
 import { wailsDashboardService } from '../../services/wailsDashboardService';
 import { wailsWebSocketService, WebSocketStatus } from '../../services/wailsWebSocketService';
+import { wailsGoogleSheetsService } from '../../services/wailsGoogleSheetsService';
+import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import {
   LineChart,
@@ -86,16 +89,18 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, cashRegisterId } = useAuth();
+  const { isDIANMode } = useDIANMode();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
   const [hourlySales, setHourlySales] = useState<any[]>([]);
   const [wsStatus, setWsStatus] = useState<WebSocketStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [isDIANMode]); // Reload when DIAN mode changes
 
   const handleRestartServer = async () => {
     if (confirm('¿Estás seguro de que quieres reiniciar el servidor? Todas las conexiones de apps móviles se desconectarán temporalmente.')) {
@@ -111,11 +116,25 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleSyncGoogleSheets = async () => {
+    try {
+      setSyncing(true);
+      await wailsGoogleSheetsService.syncNow();
+      toast.success('Reporte enviado correctamente a Google Sheets');
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al enviar reporte a Google Sheets');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Get dashboard stats
-      const dashboardStats = await wailsDashboardService.getDashboardStats();
+      // Get dashboard stats (use DIAN-filtered version if in DIAN mode)
+      const dashboardStats = isDIANMode
+        ? await wailsDashboardService.getDashboardStatsDIAN()
+        : await wailsDashboardService.getDashboardStats();
       if (dashboardStats) {
         setStats(dashboardStats);
       }
@@ -128,8 +147,10 @@ const Dashboard: React.FC = () => {
       const lowStockList = await wailsDashboardService.getLowStockProducts();
       setLowStockProducts(lowStockList || []);
 
-      // Get sales chart data (last 7 days)
-      const salesData = await wailsDashboardService.getSalesChartData(7);
+      // Get sales chart data (last 7 days) - use DIAN-filtered version if in DIAN mode
+      const salesData = isDIANMode
+        ? await wailsDashboardService.getSalesChartDataDIAN(7)
+        : await wailsDashboardService.getSalesChartData(7);
       setHourlySales(salesData || []);
 
       // Get WebSocket server status
@@ -359,6 +380,19 @@ const Dashboard: React.FC = () => {
                   sx={{ py: 2 }}
                 >
                   Reportes
+                </Button>
+              </Grid>
+              <Grid item xs={12}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="success"
+                  startIcon={<CloudSyncIcon />}
+                  onClick={handleSyncGoogleSheets}
+                  disabled={syncing}
+                  sx={{ py: 2 }}
+                >
+                  {syncing ? 'Enviando...' : 'Enviar Reporte a Google Sheets'}
                 </Button>
               </Grid>
             </Grid>

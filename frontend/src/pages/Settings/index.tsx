@@ -642,8 +642,9 @@ const Settings: React.FC = () => {
         resolution_from: dianSettings.startNumber,
         resolution_to: dianSettings.endNumber,
         technical_key: dianSettings.technicalKey,
-        resolution_date_from: new Date(dianSettings.dateFrom),
-        resolution_date_to: new Date(dianSettings.dateTo),
+        // Use noon time to avoid timezone issues (UTC midnight can shift to previous day)
+        resolution_date_from: new Date(dianSettings.dateFrom + 'T12:00:00'),
+        resolution_date_to: new Date(dianSettings.dateTo + 'T12:00:00'),
         test_set_id: dianSettings.testSetId,
         use_test_set_id: dianSettings.useTestSetId,
         last_invoice_number: dianSettings.consecutiveNumber,
@@ -968,6 +969,21 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleConfigureLogo = async () => {
+    try {
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar el Paso 1 para obtener el token.');
+        return;
+      }
+
+      toast.info('Subiendo logo a DIAN...');
+      await wailsDianService.configureLogo();
+      toast.success('Logo subido exitosamente a DIAN');
+    } catch (e: any) {
+      toast.error(e?.message || 'Error subiendo logo. Asegúrate de tener un logo configurado en la información del restaurante.');
+    }
+  };
+
   const handleConfigureResolution = async () => {
     try {
       // Validate required fields
@@ -992,8 +1008,9 @@ const Settings: React.FC = () => {
         resolution_from: dianSettings.startNumber,
         resolution_to: dianSettings.endNumber,
         technical_key: dianSettings.technicalKey,
-        resolution_date_from: new Date(dianSettings.dateFrom),
-        resolution_date_to: new Date(dianSettings.dateTo),
+        // Use noon time to avoid timezone issues (UTC midnight can shift to previous day)
+        resolution_date_from: new Date(dianSettings.dateFrom + 'T12:00:00'),
+        resolution_date_to: new Date(dianSettings.dateTo + 'T12:00:00'),
         test_set_id: dianSettings.testSetId,
         use_test_set_id: dianSettings.useTestSetId,
         last_invoice_number: dianSettings.consecutiveNumber,
@@ -2401,6 +2418,22 @@ const Settings: React.FC = () => {
                           Completa el Paso 4 primero
                         </Typography>
                       )}
+                    </Grid>
+
+                    {/* Optional: Configure Logo */}
+                    <Grid item xs={12}>
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        fullWidth
+                        onClick={handleConfigureLogo}
+                        disabled={!completedSteps.company}
+                      >
+                        📷 Subir Logo a DIAN (Opcional)
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, ml: 2 }}>
+                        Sube el logo configurado en "Información del Restaurante" al sistema de facturación DIAN
+                      </Typography>
                     </Grid>
 
                     {/* Step 7: Migrate to Production */}

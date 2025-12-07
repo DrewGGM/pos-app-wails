@@ -19,6 +19,7 @@ import {
   MenuItem,
   Chip,
   Collapse,
+  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -41,8 +42,9 @@ import {
   Group as GroupIcon,
   AccountCircle,
   Kitchen as KitchenIcon,
+  VerifiedUser as DIANIcon,
 } from '@mui/icons-material';
-import { useAuth, useWebSocket } from '../hooks';
+import { useAuth, useWebSocket, useDIANMode } from '../hooks';
 
 const drawerWidth = 240;
 
@@ -141,7 +143,8 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout, cashRegisterId } = useAuth();
   const { isConnected } = useWebSocket();
-  
+  const { isDIANMode, toggleDIANMode } = useDIANMode();
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -279,7 +282,7 @@ const MainLayout: React.FC = () => {
         </Typography>
       </Toolbar>
       <Divider />
-      
+
       {/* User Info */}
       <Box sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -294,14 +297,14 @@ const MainLayout: React.FC = () => {
           </Box>
         </Box>
       </Box>
-      
+
       <Divider />
-      
+
       {/* Menu Items */}
       <List>
         {menuItems.map(item => renderMenuItem(item))}
       </List>
-      
+
       <Divider />
 
       {/* Status */}
@@ -349,6 +352,10 @@ const MainLayout: React.FC = () => {
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
+          ...(isDIANMode && {
+            bgcolor: '#1565c0',
+            backgroundImage: 'linear-gradient(45deg, #1565c0 30%, #1976d2 90%)',
+          }),
         }}
       >
         <Toolbar>
@@ -361,10 +368,29 @@ const MainLayout: React.FC = () => {
           >
             <MenuIcon />
           </IconButton>
-          
+
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Restaurant POS'}
           </Typography>
+
+          {/* DIAN Mode Toggle */}
+          <Tooltip title={isDIANMode ? 'Desactivar' : 'Activar'}>
+            <IconButton
+              color="inherit"
+              onClick={toggleDIANMode}
+              disableRipple
+              sx={{
+                transition: 'none',   
+                bgcolor: isDIANMode ? 'rgba(255,255,0,0.15)' : 'transparent', // cambio suave
+                '&:hover': {
+                  bgcolor: isDIANMode ? 'rgba(255,255,0,0.20)' : 'transparent',
+                },
+              }}
+            >
+              <DIANIcon sx={{ color: isDIANMode ? '#ffeb3b' : 'inherit' }} />
+            </IconButton>
+          </Tooltip>
+
 
           {/* Notifications */}
           <IconButton
@@ -383,7 +409,7 @@ const MainLayout: React.FC = () => {
           </IconButton>
         </Toolbar>
       </AppBar>
-      
+
       {/* User Menu */}
       <Menu
         anchorEl={anchorEl}
@@ -454,7 +480,7 @@ const MainLayout: React.FC = () => {
           {drawer}
         </Drawer>
       </Box>
-      
+
       {/* Main Content */}
       <Box
         component="main"

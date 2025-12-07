@@ -756,15 +756,15 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 			}
 		}
 
-		// Calculate effective unit price (includes modifiers)
-		// This matches what's sent to DIAN: effectiveUnitPrice = Subtotal / Quantity
-		effectiveUnitPrice := item.Subtotal / float64(item.Quantity)
+		// Use base product price (not including modifiers)
+		// Modifiers are shown separately below
+		baseUnitPrice := item.UnitPrice
 
 		// Item description and quantity
 		s.write(fmt.Sprintf("%s\n", description))
 		s.write(fmt.Sprintf("  %d x $%s = $%s\n",
 			item.Quantity,
-			s.formatMoney(effectiveUnitPrice),
+			s.formatMoney(baseUnitPrice),
 			s.formatMoney(item.Subtotal)))
 
 		// Print modifiers detail if any price changes
@@ -798,17 +798,26 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.setEmphasize(false)
 	s.setAlign("left")
 
-	// Print payment method
+	// Print payment method with DIAN parametric names (only one per invoice)
 	s.write(s.printSeparator())
-	s.write("FORMA DE PAGO\n")
+	s.write("Forma de pago: Contado\n")
 	s.db.Preload("PaymentDetails.PaymentMethod").First(sale, sale.ID)
-	for _, payment := range sale.PaymentDetails {
-		s.write(fmt.Sprintf("%s: $%s\n",
-			payment.PaymentMethod.Name,
-			s.formatMoney(payment.Amount)))
-		if payment.Reference != "" {
-			s.write(fmt.Sprintf("  Ref: %s\n", payment.Reference))
+
+	if len(sale.PaymentDetails) > 0 {
+		payment := sale.PaymentDetails[0]
+		dianParams := models.GetDIANParametricData()
+
+		var methodName string
+		if payment.PaymentMethod.DIANPaymentMethodID != nil {
+			if dianMethod, ok := dianParams.PaymentMethods[*payment.PaymentMethod.DIANPaymentMethodID]; ok {
+				methodName = dianMethod.Name
+			} else {
+				methodName = payment.PaymentMethod.Name
+			}
+		} else {
+			methodName = payment.PaymentMethod.Name
 		}
+		s.write(fmt.Sprintf("Medio de pago: %s\n", methodName))
 	}
 
 	// Print footer
@@ -967,12 +976,13 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 			}
 		}
 
-		// Calculate effective unit price (includes modifiers)
-		effectiveUnitPrice := item.Subtotal / float64(item.Quantity)
+		// Use base product price (not including modifiers)
+		// Modifiers are shown separately below
+		baseUnitPrice := item.UnitPrice
 
 		s.write(fmt.Sprintf("%d x %s\n", item.Quantity, description))
 		s.write(fmt.Sprintf("  $%s c/u = $%s\n",
-			s.formatMoney(effectiveUnitPrice),
+			s.formatMoney(baseUnitPrice),
 			s.formatMoney(item.Subtotal)))
 
 		// Print modifiers detail if any price changes
@@ -1392,15 +1402,14 @@ func (s *PrinterService) PrintCashRegisterReport(report *models.CashRegisterRepo
 	s.write(fmt.Sprintf("Efectivo Esperado: $%s\n", s.formatMoney(report.ExpectedBalance)))
 	s.write(fmt.Sprintf("Efectivo Contado: $%s\n", s.formatMoney(report.ClosingBalance)))
 
-	// Difference
-	if report.Difference != 0 {
-		if report.Difference > 0 {
-			s.write(fmt.Sprintf("Sobrante: +$%s\n", s.formatMoney(report.Difference)))
-		} else {
-			s.write(fmt.Sprintf("Faltante: -$%s\n", s.formatMoney(-report.Difference)))
-		}
+	// Difference - Always show the numeric value
+	s.write(fmt.Sprintf("Diferencia: $%s\n", s.formatMoney(report.Difference)))
+	if report.Difference > 0 {
+		s.write("(SOBRANTE)\n")
+	} else if report.Difference < 0 {
+		s.write("(FALTANTE)\n")
 	} else {
-		s.write("CUADRE PERFECTO\n")
+		s.write("(CUADRE PERFECTO)\n")
 	}
 	s.setEmphasize(false)
 
@@ -1872,4 +1881,349 @@ func (s *PrinterService) GetAvailablePrinters() ([]DetectedPrinter, error) {
 // GetAvailableSerialPorts detects available serial/USB ports
 func (s *PrinterService) GetAvailableSerialPorts() ([]string, error) {
 	return DetectSerialPorts()
+}
+
+// PrintDIANClosingReport prints the daily DIAN closing report
+func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport) error {
+	// Get default printer config
+	config, err := s.getDefaultPrinterConfig()
+	if err != nil {
+		return fmt.Errorf("no default printer configured: %w", err)
+	}
+
+	// Connect to printer
+	if err := s.connectPrinter(config); err != nil {
+		return fmt.Errorf("failed to connect to printer: %w", err)
+	}
+	defer s.closePrinter()
+
+	// Initialize and center
+	s.init()
+	s.setAlign("center")
+
+	// Print header - REPORTE DIARIO DE CIERRE DIAN
+	s.setEmphasize(true)
+	s.setSize(2, 2)
+	s.write("REPORTE DIARIO\n")
+	s.write("CIERRE DIAN\n")
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.lineFeed()
+
+	// Print business info
+	s.setEmphasize(true)
+	s.write(fmt.Sprintf("%s\n", report.BusinessName))
+	s.setEmphasize(false)
+	if report.CommercialName != "" && report.CommercialName != report.BusinessName {
+		s.write(fmt.Sprintf("%s\n", report.CommercialName))
+	}
+	nitLine := fmt.Sprintf("NIT: %s", report.NIT)
+	if report.DV != "" {
+		nitLine += fmt.Sprintf("-%s", report.DV)
+	}
+	s.write(nitLine + "\n")
+	if report.Regime != "" {
+		s.write(fmt.Sprintf("%s\n", report.Regime))
+	}
+	if report.Liability != "" {
+		s.write(fmt.Sprintf("%s\n", report.Liability))
+	}
+	if report.Address != "" {
+		s.write(fmt.Sprintf("%s\n", report.Address))
+	}
+	if report.City != "" {
+		cityLine := report.City
+		if report.Department != "" {
+			cityLine += ", " + report.Department
+		}
+		s.write(cityLine + "\n")
+	}
+	if report.Phone != "" {
+		s.write(fmt.Sprintf("Tel: %s\n", report.Phone))
+	}
+
+	s.lineFeed()
+	s.setAlign("left")
+
+	// Print report date
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write(fmt.Sprintf("FECHA DEL REPORTE: %s\n", report.ReportDate))
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("Generado: %s\n", report.GeneratedAt.Format("2006-01-02 15:04:05")))
+
+	// Print resolution info
+	if report.Resolution != "" {
+		s.write(s.printSeparator())
+		s.write(fmt.Sprintf("Resolucion No. %s\n", report.Resolution))
+		s.write(fmt.Sprintf("Prefijo: %s, Rango: %d-%d\n", report.ResolutionPrefix, report.ResolutionFrom, report.ResolutionTo))
+		if report.ResolutionDateFrom != "" && report.ResolutionDateTo != "" {
+			s.write(fmt.Sprintf("Vigencia: %s a %s\n", report.ResolutionDateFrom, report.ResolutionDateTo))
+		}
+	}
+
+	// Print invoice range
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write("RANGO DE FACTURAS\n")
+	s.setEmphasize(false)
+	if report.TotalInvoices > 0 {
+		s.write(fmt.Sprintf("Primera: %s\n", report.FirstInvoiceNumber))
+		s.write(fmt.Sprintf("Ultima:  %s\n", report.LastInvoiceNumber))
+		s.write(fmt.Sprintf("Total:   %d facturas\n", report.TotalInvoices))
+	} else {
+		s.write("Sin facturas emitidas\n")
+	}
+
+	// Print sales by tax type
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write("VENTAS POR TIPO DE IMPUESTO\n")
+	s.setEmphasize(false)
+	if len(report.SalesByTax) > 0 {
+		for _, tax := range report.SalesByTax {
+			taxPercentDisplay := "N/A"
+			if tax.TaxPercent > 0 {
+				taxPercentDisplay = fmt.Sprintf("%.0f%%", tax.TaxPercent)
+			}
+			s.write(fmt.Sprintf("%s (%s):\n", tax.TaxTypeName, taxPercentDisplay))
+			s.write(fmt.Sprintf("  Base:     $%s\n", s.formatMoney(tax.BaseAmount)))
+			s.write(fmt.Sprintf("  Impuesto: $%s\n", s.formatMoney(tax.TaxAmount)))
+			s.write(fmt.Sprintf("  Items:    %d\n", tax.ItemCount))
+		}
+	} else {
+		s.write("Sin ventas\n")
+	}
+
+	// Print sales by category
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write("VENTAS POR CATEGORIA\n")
+	s.setEmphasize(false)
+	if len(report.SalesByCategory) > 0 {
+		for _, cat := range report.SalesByCategory {
+			s.write(fmt.Sprintf("%s:\n", cat.CategoryName))
+			s.write(fmt.Sprintf("  Cant: %d  Total: $%s\n", cat.Quantity, s.formatMoney(cat.Total)))
+		}
+	} else {
+		s.write("Sin ventas por categoria\n")
+	}
+
+	// Print payment methods
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write("MEDIOS DE PAGO\n")
+	s.setEmphasize(false)
+	if len(report.PaymentMethods) > 0 {
+		for _, pm := range report.PaymentMethods {
+			s.write(fmt.Sprintf("%-20s %d trans.\n", pm.MethodName, pm.Transactions))
+			s.write(fmt.Sprintf("                     $%s\n", s.formatMoney(pm.Total)))
+		}
+	} else {
+		s.write("Sin pagos registrados\n")
+	}
+
+	// Print adjustments (credit/debit notes)
+	if len(report.CreditNotes) > 0 || len(report.DebitNotes) > 0 {
+		s.write(s.printSeparator())
+		s.setEmphasize(true)
+		s.write("AJUSTES (NC/ND)\n")
+		s.setEmphasize(false)
+
+		if len(report.CreditNotes) > 0 {
+			s.write("Notas Credito:\n")
+			for _, cn := range report.CreditNotes {
+				s.write(fmt.Sprintf("  %s%s -$%s\n", cn.Prefix, cn.Number, s.formatMoney(cn.Amount)))
+			}
+			s.write(fmt.Sprintf("  Total NC: -$%s\n", s.formatMoney(report.TotalCreditNotes)))
+		}
+
+		if len(report.DebitNotes) > 0 {
+			s.write("Notas Debito:\n")
+			for _, dn := range report.DebitNotes {
+				s.write(fmt.Sprintf("  %s%s +$%s\n", dn.Prefix, dn.Number, s.formatMoney(dn.Amount)))
+			}
+			s.write(fmt.Sprintf("  Total ND: +$%s\n", s.formatMoney(report.TotalDebitNotes)))
+		}
+	}
+
+	// Print totals
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+	s.write("RESUMEN TOTALES\n")
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("Transacciones:   %d\n", report.TotalTransactions))
+	s.write(fmt.Sprintf("Subtotal:        $%s\n", s.formatMoney(report.TotalSubtotal)))
+	s.write(fmt.Sprintf("Impuestos:       $%s\n", s.formatMoney(report.TotalTax)))
+	if report.TotalDiscount > 0 {
+		s.write(fmt.Sprintf("Descuentos:      -$%s\n", s.formatMoney(report.TotalDiscount)))
+	}
+	s.write(fmt.Sprintf("Total Ventas:    $%s\n", s.formatMoney(report.TotalSales)))
+	if report.TotalAdjustments != 0 {
+		if report.TotalAdjustments > 0 {
+			s.write(fmt.Sprintf("Ajustes:         +$%s\n", s.formatMoney(report.TotalAdjustments)))
+		} else {
+			s.write(fmt.Sprintf("Ajustes:         -$%s\n", s.formatMoney(-report.TotalAdjustments)))
+		}
+	}
+	s.lineFeed()
+	s.setAlign("center")
+	s.setEmphasize(true)
+	s.setSize(2, 1)
+	s.write(fmt.Sprintf("TOTAL: $%s\n", s.formatMoney(report.GrandTotal)))
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.setAlign("left")
+
+	// Footer
+	s.write(s.printSeparator())
+	s.setAlign("center")
+	s.write("Este documento es un reporte interno\n")
+	s.write("de cierre de caja para control fiscal.\n")
+	s.lineFeed()
+
+	// Cut paper if enabled
+	if config.AutoCut {
+		s.lineFeed()
+		s.cut()
+	} else {
+		s.lineFeed()
+		s.lineFeed()
+		s.lineFeed()
+	}
+
+	return s.print()
+}
+
+// PrintCustomerDataForm prints a blank form for customers to fill out their data
+func (s *PrinterService) PrintCustomerDataForm() error {
+	// Get default printer config
+	config, err := s.getDefaultPrinterConfig()
+	if err != nil {
+		return fmt.Errorf("no default printer configured: %w", err)
+	}
+
+	// Connect to printer
+	if err := s.connectPrinter(config); err != nil {
+		return fmt.Errorf("failed to connect to printer: %w", err)
+	}
+	defer s.closePrinter()
+
+	// Initialize and center
+	s.init()
+	s.setAlign("center")
+
+	// Get restaurant config for logo
+	var restaurant models.RestaurantConfig
+	s.db.First(&restaurant)
+
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
+	// Header
+	s.setEmphasize(true)
+	s.setSize(2, 2)
+	s.write("REGISTRO DE\n")
+	s.write("DATOS CLIENTE\n")
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.lineFeed()
+	s.setAlign("left")
+
+	// Instructions
+	s.write("Por favor llene los siguientes datos:\n")
+	s.write("Los campos marcados con (*) son\n")
+	s.write("OBLIGATORIOS para facturacion.\n")
+	s.write(s.printSeparator())
+	s.lineFeed()
+
+	// Form fields
+	// Tipo de Identificación (*)
+	s.setEmphasize(true)
+	s.write("TIPO DE IDENTIFICACION (*)\n")
+	s.setEmphasize(false)
+	s.write("Marque una opcion:\n")
+	s.write("[ ] CC - Cedula de Ciudadania\n")
+	s.write("[ ] NIT - Numero Identif. Tributaria\n")
+	s.write("[ ] CE - Cedula de Extranjeria\n")
+	s.write("[ ] PA - Pasaporte\n")
+	s.write("[ ] TI - Tarjeta de Identidad\n")
+	s.lineFeed()
+
+	// Número de Identificación (*)
+	s.setEmphasize(true)
+	s.write("NUMERO DE IDENTIFICACION (*)\n")
+	s.setEmphasize(false)
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.lineFeed()
+
+	// Nombre Completo / Razón Social (*)
+	s.setEmphasize(true)
+	s.write("NOMBRE COMPLETO / RAZON SOCIAL (*)\n")
+	s.setEmphasize(false)
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.lineFeed()
+
+	// Email (*)
+	s.setEmphasize(true)
+	s.write("CORREO ELECTRONICO (*)\n")
+	s.setEmphasize(false)
+	s.write("(A este correo llegara su factura\n")
+	s.write(" electronica)\n")
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.lineFeed()
+
+	// Teléfono (Opcional)
+	s.setEmphasize(true)
+	s.write("TELEFONO (Opcional)\n")
+	s.setEmphasize(false)
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.lineFeed()
+
+	// Dirección (Opcional)
+	s.setEmphasize(true)
+	s.write("DIRECCION (Opcional)\n")
+	s.setEmphasize(false)
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.write("________________________________\n")
+	s.lineFeed()
+	s.lineFeed()
+
+	// Footer
+	s.write(s.printSeparator())
+	s.setAlign("center")
+	s.write("Gracias por proporcionar\n")
+	s.write("sus datos para facturacion.\n")
+	s.lineFeed()
+
+	// Cut paper if enabled
+	if config.AutoCut {
+		s.lineFeed()
+		s.cut()
+	} else {
+		s.lineFeed()
+		s.lineFeed()
+		s.lineFeed()
+	}
+
+	return s.print()
 }
