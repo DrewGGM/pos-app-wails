@@ -87,10 +87,14 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		Total:          order.Total,
 		Status:         "completed",
 		InvoiceType:    "none",
-		EmployeeID:     employeeID,
-		CashRegisterID: cashRegisterID,
 		Notes:          order.Notes,
 		IsSynced:       false,
+	}
+	if employeeID > 0 {
+		sale.EmployeeID = &employeeID
+	}
+	if cashRegisterID > 0 {
+		sale.CashRegisterID = &cashRegisterID
 	}
 
 	// Set customer if provided, or use default CONSUMIDOR FINAL
@@ -307,6 +311,154 @@ type PaymentData struct {
 	Reference       string  `json:"reference"`
 }
 
+// QuickSaleItem represents an item in a quick sale
+type QuickSaleItem struct {
+	ProductID uint    `json:"product_id"`
+	Quantity  int     `json:"quantity"`
+	UnitPrice float64 `json:"unit_price,omitempty"` // Optional, uses product price if 0
+}
+
+// QuickSaleRequest represents a request to create a quick sale
+type QuickSaleRequest struct {
+	Items                  []QuickSaleItem `json:"items"`
+	PaymentMethodID        uint            `json:"payment_method_id"`
+	CustomerID             *uint           `json:"customer_id,omitempty"`
+	NeedsElectronicInvoice bool            `json:"needs_electronic_invoice"`
+	SendEmailToCustomer    bool            `json:"send_email_to_customer"`
+	Notes                  string          `json:"notes,omitempty"`
+	Discount               float64         `json:"discount,omitempty"`
+	DiscountType           string          `json:"discount_type,omitempty"` // "amount" or "percentage"
+}
+
+// CreateQuickSale creates an order and processes the sale in one step
+// This is designed for MCP/API integration where you want to create a sale directly
+func (s *SalesService) CreateQuickSale(req QuickSaleRequest) (*models.Sale, error) {
+	log.Printf("🛒 CreateQuickSale: Starting quick sale with %d items", len(req.Items))
+
+	if len(req.Items) == 0 {
+		return nil, fmt.Errorf("at least one item is required")
+	}
+
+	// Get default order type (takeout/para llevar)
+	var orderType models.OrderType
+	if err := s.db.Where("code = ?", "takeout").First(&orderType).Error; err != nil {
+		// Try to find any active order type
+		if err := s.db.Where("is_active = ?", true).First(&orderType).Error; err != nil {
+			return nil, fmt.Errorf("no order type available: %w", err)
+		}
+	}
+
+	// Create order items
+	var orderItems []models.OrderItem
+	var orderTotal float64
+
+	for _, item := range req.Items {
+		// Get product
+		product, err := s.productSvc.GetProduct(item.ProductID)
+		if err != nil {
+			return nil, fmt.Errorf("product %d not found: %w", item.ProductID, err)
+		}
+
+		// Use provided price or product price
+		unitPrice := item.UnitPrice
+		if unitPrice == 0 {
+			unitPrice = product.Price
+		}
+
+		subtotal := unitPrice * float64(item.Quantity)
+		orderTotal += subtotal
+
+		orderItems = append(orderItems, models.OrderItem{
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+			UnitPrice: unitPrice,
+			Subtotal:  subtotal,
+			Status:    "ready",
+		})
+	}
+
+	// Apply discount
+	if req.Discount > 0 {
+		if req.DiscountType == "percentage" {
+			orderTotal = orderTotal * (1 - req.Discount/100)
+		} else {
+			orderTotal = orderTotal - req.Discount
+		}
+		if orderTotal < 0 {
+			orderTotal = 0
+		}
+	}
+
+	// Create order - use employee ID 1 (admin) as default for MCP operations
+	orderTypeID := orderType.ID
+	order := &models.Order{
+		OrderTypeID: &orderTypeID,
+		EmployeeID:  1,
+		Status:      models.OrderStatusPending,
+		Items:       orderItems,
+		Subtotal:    orderTotal,
+		Total:       orderTotal,
+		Notes:       req.Notes,
+	}
+
+	createdOrder, err := s.orderSvc.CreateOrder(order)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+
+	log.Printf("📝 Created order #%s (ID: %d) for quick sale", createdOrder.OrderNumber, createdOrder.ID)
+
+	// Get customer if specified
+	var customer *models.Customer
+	if req.CustomerID != nil && *req.CustomerID > 0 {
+		customer, err = s.GetCustomer(*req.CustomerID)
+		if err != nil {
+			return nil, fmt.Errorf("customer not found: %w", err)
+		}
+	} else if req.NeedsElectronicInvoice {
+		// For electronic invoice without customer, use CONSUMIDOR FINAL
+		customer, err = s.GetConsumidorFinal()
+		if err != nil {
+			return nil, fmt.Errorf("consumidor final not found: %w", err)
+		}
+	}
+
+	// Create payment data
+	payments := []PaymentData{
+		{
+			PaymentMethodID: req.PaymentMethodID,
+			Amount:          orderTotal,
+		},
+	}
+
+	// Process the sale - use employee ID 1 (admin) as default for MCP operations
+	sale, err := s.ProcessSale(
+		createdOrder.ID,
+		payments,
+		customer,
+		req.NeedsElectronicInvoice,
+		req.SendEmailToCustomer,
+		1, // employeeID - always use admin (ID 1) for MCP
+		0, // cashRegisterID - 0 for MCP (no cash register)
+		false,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process sale: %w", err)
+	}
+
+	log.Printf("✅ Quick sale completed: Sale ID %d, Total: %.2f", sale.ID, sale.Total)
+	return sale, nil
+}
+
+// GetConsumidorFinal returns the default CONSUMIDOR FINAL customer
+func (s *SalesService) GetConsumidorFinal() (*models.Customer, error) {
+	var customer models.Customer
+	if err := s.db.Where("identification_number = ?", "222222222222").First(&customer).Error; err != nil {
+		return nil, fmt.Errorf("CONSUMIDOR FINAL not found in database")
+	}
+	return &customer, nil
+}
+
 // RefundSale processes a refund for a sale
 func (s *SalesService) RefundSale(saleID uint, amount float64, reason string, employeeID uint) error {
 	var sale models.Sale
@@ -354,8 +506,8 @@ func (s *SalesService) RefundSale(saleID uint, amount float64, reason string, em
 		}
 
 		// Record cash movement (negative)
-		if sale.CashRegisterID > 0 {
-			s.recordCashMovement(tx, sale.CashRegisterID, -amount, "refund",
+		if sale.CashRegisterID != nil && *sale.CashRegisterID > 0 {
+			s.recordCashMovement(tx, *sale.CashRegisterID, -amount, "refund",
 				sale.SaleNumber, employeeID)
 		}
 
@@ -393,8 +545,8 @@ func (s *SalesService) DeleteSale(saleID uint, employeeID uint) error {
 		}
 
 		// 2. Delete cash movements related to this sale
-		if sale.CashRegisterID > 0 {
-			if err := tx.Where("cash_register_id = ? AND reference = ?", sale.CashRegisterID, sale.SaleNumber).
+		if sale.CashRegisterID != nil && *sale.CashRegisterID > 0 {
+			if err := tx.Where("cash_register_id = ? AND reference = ?", *sale.CashRegisterID, sale.SaleNumber).
 				Delete(&models.CashMovement{}).Error; err != nil {
 				log.Printf("Warning: Failed to delete cash movements: %v", err)
 				// Continue even if cash movement deletion fails

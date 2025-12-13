@@ -100,6 +100,47 @@ export const wailsDianService = {
     const svc = getDian();
     if (!svc) throw new Error('Service not ready');
     await svc.ResendInvoiceEmail(prefix, invoiceNumber);
+  },
+
+  async resetTestResolution(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.ResetTestResolution();
+  },
+
+  async registerNewResolution(): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.RegisterNewResolution();
+  },
+
+  async getResolutionLimitStatus(): Promise<{
+    remaining_invoices: number;
+    alert_threshold: number;
+    is_near_limit: boolean;
+    current_number: number;
+    end_number: number;
+  }> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    return await svc.GetResolutionLimitStatus();
+  },
+
+  async updateAlertThreshold(threshold: number): Promise<void> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    await svc.UpdateAlertThreshold(threshold);
+  },
+
+  async getNextConsecutive(typeDocumentId: number, prefix: string): Promise<{
+    success: boolean;
+    type_document_id: number;
+    prefix: string;
+    number: number;
+  }> {
+    const svc = getDian();
+    if (!svc) throw new Error('Service not ready');
+    return await svc.GetNextConsecutive(typeDocumentId, prefix);
   }
 };
 

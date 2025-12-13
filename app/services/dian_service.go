@@ -1585,3 +1585,178 @@ func (s *DIANService) ResendInvoiceEmail(prefix string, invoiceNumber string) er
 	fmt.Printf("✅ Invoice email resent successfully: %s%s\n", prefix, invoiceNumber)
 	return nil
 }
+
+// NextConsecutiveResponse represents the response from the next-consecutive API
+type NextConsecutiveResponse struct {
+	Success        bool   `json:"success"`
+	TypeDocumentID int    `json:"type_document_id"`
+	Prefix         string `json:"prefix"`
+	Number         int    `json:"number"`
+}
+
+// GetNextConsecutive gets the next consecutive number from DIAN API
+func (s *DIANService) GetNextConsecutive(typeDocumentID int, prefix string) (*NextConsecutiveResponse, error) {
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return nil, fmt.Errorf("API token not found. Please complete DIAN configuration first")
+	}
+
+	url := fmt.Sprintf("%s/api/ubl2.1/next-consecutive", dianConfig.APIURL)
+
+	data := map[string]interface{}{
+		"type_document_id": typeDocumentID,
+		"prefix":           prefix,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", dianConfig.APIToken))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var result NextConsecutiveResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	fmt.Printf("✅ Next consecutive fetched: prefix=%s, number=%d\n", result.Prefix, result.Number)
+	return &result, nil
+}
+
+// ResetTestResolution resets the resolution to default test values
+func (s *DIANService) ResetTestResolution() error {
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	// Default test resolution values (date should be 19th, not 16th)
+	dianConfig.ResolutionNumber = "18760000001"
+	dianConfig.ResolutionPrefix = "SETP"
+	dianConfig.ResolutionFrom = 990000000
+	dianConfig.ResolutionTo = 995000000
+	dianConfig.TechnicalKey = "fc8eac422eba16e22ffd8c6f94b3f40a6e38162c"
+	dianConfig.ResolutionDateFrom, _ = time.Parse("2006-01-02", "2019-01-19")
+	dianConfig.ResolutionDateTo, _ = time.Parse("2006-01-02", "2030-01-19")
+	dianConfig.LastInvoiceNumber = 0
+	dianConfig.Environment = "test"
+	dianConfig.Step4Completed = false
+	dianConfig.Step7Completed = false
+
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Println("✅ Test resolution reset to default values")
+	return nil
+}
+
+// RegisterNewResolution registers the current resolution with DIAN API and updates consecutive
+func (s *DIANService) RegisterNewResolution() error {
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	if dianConfig.APIToken == "" {
+		return fmt.Errorf("API token not found. Please complete DIAN configuration first")
+	}
+
+	// Get next consecutive from API
+	typeDocID := 1 // Invoice type
+	nextConsec, err := s.GetNextConsecutive(typeDocID, dianConfig.ResolutionPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to get next consecutive: %w", err)
+	}
+
+	// Update consecutive number
+	dianConfig.LastInvoiceNumber = nextConsec.Number - 1 // -1 because next will increment
+
+	// Now configure the resolution with DIAN API
+	if err := s.ConfigureResolution(); err != nil {
+		return fmt.Errorf("failed to configure resolution: %w", err)
+	}
+
+	// Save updated config
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("✅ New resolution registered. Next consecutive: %d\n", nextConsec.Number)
+	return nil
+}
+
+// ResolutionLimitStatus represents the status of resolution invoice numbering limits
+type ResolutionLimitStatus struct {
+	RemainingInvoices int  `json:"remaining_invoices"`
+	AlertThreshold    int  `json:"alert_threshold"`
+	IsNearLimit       bool `json:"is_near_limit"`
+	CurrentNumber     int  `json:"current_number"`
+	EndNumber         int  `json:"end_number"`
+}
+
+// GetResolutionLimitStatus returns the current resolution limit status for notifications
+func (s *DIANService) GetResolutionLimitStatus() (*ResolutionLimitStatus, error) {
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("DIAN configuration not found")
+	}
+
+	remaining := dianConfig.ResolutionTo - dianConfig.LastInvoiceNumber
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	threshold := dianConfig.InvoiceLimitAlertThreshold
+	if threshold == 0 {
+		threshold = 100 // Default
+	}
+
+	return &ResolutionLimitStatus{
+		RemainingInvoices: remaining,
+		AlertThreshold:    threshold,
+		IsNearLimit:       remaining <= threshold,
+		CurrentNumber:     dianConfig.LastInvoiceNumber,
+		EndNumber:         dianConfig.ResolutionTo,
+	}, nil
+}
+
+// UpdateAlertThreshold updates the invoice limit alert threshold
+func (s *DIANService) UpdateAlertThreshold(threshold int) error {
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return fmt.Errorf("DIAN configuration not found")
+	}
+
+	dianConfig.InvoiceLimitAlertThreshold = threshold
+
+	if err := s.db.Save(&dianConfig).Error; err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("✅ Alert threshold updated to: %d\n", threshold)
+	return nil
+}

@@ -208,6 +208,7 @@ func RunMigrations() error {
 		&models.TableLayout{},
 		&models.UITheme{},
 		&models.GoogleSheetsConfig{},
+		&models.MCPConfig{},
 
 		// Rappi integration models
 		&models.RappiConfig{},

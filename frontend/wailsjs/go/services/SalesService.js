@@ -14,6 +14,10 @@ export function CreatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['CreatePaymentMethod'](arg1);
 }
 
+export function CreateQuickSale(arg1) {
+  return window['go']['services']['SalesService']['CreateQuickSale'](arg1);
+}
+
 export function DeactivatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['DeactivatePaymentMethod'](arg1);
 }
@@ -32,6 +36,10 @@ export function DeleteSale(arg1, arg2) {
 
 export function GetAllPaymentMethods() {
   return window['go']['services']['SalesService']['GetAllPaymentMethods']();
+}
+
+export function GetConsumidorFinal() {
+  return window['go']['services']['SalesService']['GetConsumidorFinal']();
 }
 
 export function GetCustomer(arg1) {

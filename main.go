@@ -46,6 +46,7 @@ type App struct {
 	RappiWebhookServer      *services.RappiWebhookServer
 	InvoiceLimitService     *services.InvoiceLimitService
 	ConfigAPIServer         *services.ConfigAPIServer
+	MCPService              *services.MCPService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -157,6 +158,12 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		a.ConfigAPIServer.Stop()
 	}
 
+	// Stop MCP server
+	if a.MCPService != nil {
+		a.LoggerService.LogInfo("Stopping MCP server")
+		a.MCPService.Stop()
+	}
+
 	// Stop WebSocket server
 	if a.WSServer != nil {
 		a.LoggerService.LogInfo("Stopping WebSocket server")
@@ -242,6 +249,22 @@ func (a *App) InitializeServicesAfterSetup() error {
 		if err := a.ConfigAPIServer.Start(); err != nil {
 			a.LoggerService.LogWarning("Config API server start error", err.Error())
 		}
+	}()
+
+	// Initialize MCP service
+	a.MCPService = services.NewMCPService(
+		a.ProductService,
+		a.SalesService,
+		a.OrderService,
+		a.IngredientService,
+		a.DashboardService,
+		a.ReportsService,
+	)
+	a.LoggerService.LogInfo("MCP Service initialized")
+	// Auto-start MCP server if enabled
+	go func() {
+		defer a.LoggerService.RecoverPanic()
+		a.MCPService.AutoStart()
 	}()
 
 	// Initialize default system configurations
@@ -361,6 +384,7 @@ func main() {
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
 	app.RappiConfigService = services.NewRappiConfigService()
 	app.InvoiceLimitService = services.NewInvoiceLimitService(nil)
+	// MCP Service initialized later when database is available
 
 	if !isFirstRun {
 		loggerService.LogInfo("Loading configuration from config.json")
@@ -426,6 +450,22 @@ func main() {
 				}
 			}()
 
+			// Initialize MCP service
+			app.MCPService = services.NewMCPService(
+				app.ProductService,
+				app.SalesService,
+				app.OrderService,
+				app.IngredientService,
+				app.DashboardService,
+				app.ReportsService,
+			)
+			loggerService.LogInfo("MCP Service initialized")
+			// Auto-start MCP server if enabled
+			go func() {
+				defer loggerService.RecoverPanic()
+				app.MCPService.AutoStart()
+			}()
+
 			loggerService.LogInfo("Initializing default system configurations")
 			app.ConfigService.InitializeDefaultSystemConfigs()
 
@@ -461,6 +501,7 @@ func main() {
 		app.RappiConfigService,
 		app.InvoiceLimitService,
 		app.WSManagementService,
+		app.MCPService,
 	}
 
 	err = wails.Run(&options.App{

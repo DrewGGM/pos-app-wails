@@ -12,9 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.drewcore.kitchen_app.data.models.ItemChangeStatus
 import com.drewcore.kitchen_app.data.models.Order
 import com.drewcore.kitchen_app.data.models.OrderItem
 import com.drewcore.kitchen_app.data.models.OrderDisplayState
@@ -340,22 +342,58 @@ fun OrderCardDisplay(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 cardData.items.forEach { item ->
+                    // Determine colors and styles based on item change status
+                    val isRemoved = item.changeStatus == ItemChangeStatus.REMOVED
+                    val isAdded = item.changeStatus == ItemChangeStatus.ADDED
+                    val isModified = item.changeStatus == ItemChangeStatus.MODIFIED
+
+                    val badgeColor = when {
+                        isRemoved -> Color(0xFFE53935) // Red for removed
+                        isAdded -> Color(0xFF4CAF50)   // Green for added
+                        isModified -> Color(0xFFFF9800) // Orange for modified
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+
+                    val textColor = when {
+                        isRemoved -> Color(0xFFE53935).copy(alpha = 0.7f)
+                        else -> Color.Unspecified
+                    }
+
+                    val textDecoration = if (isRemoved) TextDecoration.LineThrough else TextDecoration.None
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isRemoved) Modifier.padding(vertical = 2.dp) else Modifier
+                            ),
                         verticalAlignment = Alignment.Top
                     ) {
-                        // Quantity badge
+                        // Quantity badge with status indicator
                         Surface(
-                            color = MaterialTheme.colorScheme.primary,
+                            color = badgeColor,
                             shape = MaterialTheme.shapes.extraSmall
                         ) {
-                            Text(
-                                text = "${item.quantity}",
+                            Row(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                color = Color.White,
-                                fontSize = preferences.itemFontSize.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Status prefix for removed items
+                                if (isRemoved) {
+                                    Text(
+                                        text = "X ",
+                                        color = Color.White,
+                                        fontSize = (preferences.itemFontSize - 2).sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Text(
+                                    text = "${item.quantity}",
+                                    color = Color.White,
+                                    fontSize = preferences.itemFontSize.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
@@ -368,7 +406,9 @@ fun OrderCardDisplay(
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                fontSize = preferences.itemFontSize.sp
+                                fontSize = preferences.itemFontSize.sp,
+                                color = textColor,
+                                textDecoration = textDecoration
                             )
                             // Modifiers
                             if (!item.modifiers.isNullOrEmpty()) {
@@ -376,11 +416,12 @@ fun OrderCardDisplay(
                                     Text(
                                         text = "  + ${modifier.modifier?.name ?: ""}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        color = if (isRemoved) textColor else MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        fontSize = (preferences.itemFontSize - 2).sp
+                                        fontSize = (preferences.itemFontSize - 2).sp,
+                                        textDecoration = textDecoration
                                     )
                                 }
                             }
@@ -389,11 +430,29 @@ fun OrderCardDisplay(
                                 Text(
                                     text = item.notes,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFFF6F00),
+                                    color = if (isRemoved) textColor else Color(0xFFFF6F00),
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontSize = (preferences.itemFontSize - 2).sp
+                                    fontSize = (preferences.itemFontSize - 2).sp,
+                                    textDecoration = textDecoration
+                                )
+                            }
+                        }
+
+                        // Status indicator badge on the right
+                        if (isAdded || isModified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                color = badgeColor.copy(alpha = 0.2f),
+                                shape = MaterialTheme.shapes.extraSmall
+                            ) {
+                                Text(
+                                    text = if (isAdded) "+" else "~",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = badgeColor
                                 )
                             }
                         }

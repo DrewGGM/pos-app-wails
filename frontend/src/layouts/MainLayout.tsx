@@ -20,6 +20,7 @@ import {
   Chip,
   Collapse,
   Tooltip,
+  Badge,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -44,7 +45,8 @@ import {
   Kitchen as KitchenIcon,
   VerifiedUser as DIANIcon,
 } from '@mui/icons-material';
-import { useAuth, useWebSocket, useDIANMode } from '../hooks';
+import { useAuth, useWebSocket, useDIANMode, useNotifications } from '../hooks';
+import { Warning as WarningIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, Info as InfoIcon } from '@mui/icons-material';
 
 const drawerWidth = 240;
 
@@ -144,11 +146,25 @@ const MainLayout: React.FC = () => {
   const { user, logout, cashRegisterId } = useAuth();
   const { isConnected } = useWebSocket();
   const { isDIANMode, toggleDIANMode } = useDIANMode();
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'warning':
+        return <WarningIcon sx={{ color: 'warning.main' }} />;
+      case 'error':
+        return <ErrorIcon sx={{ color: 'error.main' }} />;
+      case 'success':
+        return <CheckCircleIcon sx={{ color: 'success.main' }} />;
+      default:
+        return <InfoIcon sx={{ color: 'info.main' }} />;
+    }
+  };
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -397,7 +413,9 @@ const MainLayout: React.FC = () => {
             color="inherit"
             onClick={handleNotificationClick}
           >
-            <NotificationsIcon />
+            <Badge badgeContent={unreadCount} color="error">
+              <NotificationsIcon />
+            </Badge>
           </IconButton>
 
           {/* User Menu */}
@@ -442,12 +460,67 @@ const MainLayout: React.FC = () => {
         anchorEl={notificationAnchor}
         open={Boolean(notificationAnchor)}
         onClose={handleNotificationClose}
+        PaperProps={{
+          sx: { minWidth: 320, maxWidth: 400, maxHeight: 400 }
+        }}
       >
-        <MenuItem>
-          <Typography variant="body2" color="text.secondary">
-            No hay notificaciones
-          </Typography>
-        </MenuItem>
+        {notifications.length > 0 ? (
+          <>
+            <Box sx={{ px: 2, py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="subtitle2">Notificaciones</Typography>
+              {unreadCount > 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{ cursor: 'pointer', color: 'primary.main' }}
+                  onClick={() => markAllAsRead()}
+                >
+                  Marcar todas como leídas
+                </Typography>
+              )}
+            </Box>
+            <Divider />
+            {notifications.map((notification) => (
+              <MenuItem
+                key={notification.id}
+                onClick={() => {
+                  markAsRead(notification.id);
+                  if (notification.action?.path) {
+                    navigate(notification.action.path);
+                    handleNotificationClose();
+                  }
+                }}
+                sx={{
+                  bgcolor: notification.read ? 'transparent' : 'action.hover',
+                  whiteSpace: 'normal',
+                  py: 1.5,
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  {getNotificationIcon(notification.type)}
+                </ListItemIcon>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: notification.read ? 400 : 600 }}>
+                    {notification.title}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                    {notification.message}
+                  </Typography>
+                  {notification.action && (
+                    <Typography variant="caption" color="primary">
+                      {notification.action.label}
+                    </Typography>
+                  )}
+                </Box>
+              </MenuItem>
+            ))}
+          </>
+        ) : (
+          <MenuItem disabled>
+            <Typography variant="body2" color="text.secondary">
+              No hay notificaciones
+            </Typography>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Drawer */}

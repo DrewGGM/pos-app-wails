@@ -16,6 +16,7 @@ import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { DIANModeProvider } from './contexts/DIANModeContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import wailsLoggerService from './services/wailsLoggerService';
 import './index.css';
 
@@ -32,8 +33,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <AuthProvider>
               <WebSocketProvider>
                 <DIANModeProvider>
-                  <App />
-                  <ToastContainer
+                  <NotificationProvider>
+                    <App />
+                    <ToastContainer
                     position="top-right"
                     autoClose={5000}
                     hideProgressBar={false}
@@ -43,8 +45,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     pauseOnFocusLoss
                     draggable
                     pauseOnHover
-                    theme="light"
-                  />
+                      theme="light"
+                    />
+                  </NotificationProvider>
                 </DIANModeProvider>
               </WebSocketProvider>
             </AuthProvider>

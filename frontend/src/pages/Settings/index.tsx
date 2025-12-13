@@ -65,6 +65,7 @@ import {
   Category as CategoryIcon,
   ViewModule as ViewModuleIcon,
   Smartphone as SmartphoneIcon,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
@@ -88,6 +89,7 @@ import OrderTypesSettings from './OrderTypesSettings';
 import CustomPagesSettings from './CustomPagesSettings';
 import RappiSettings from './RappiSettings';
 import DIANDatabaseSettings from './DIANDatabaseSettings';
+import MCPSettings from './MCPSettings';
 
 interface Department {
   id: number;
@@ -203,6 +205,8 @@ const Settings: React.FC = () => {
     prodResolutionDate: '',
     prodDateFrom: '',
     prodDateTo: '',
+    // Alert Settings
+    alertThreshold: 100,
   });
 
   // Track which configuration steps are completed
@@ -442,6 +446,8 @@ const Settings: React.FC = () => {
           prodResolutionDate: '',
           prodDateFrom: '',
           prodDateTo: '',
+          // Alert Settings
+          alertThreshold: config.invoice_limit_alert_threshold || 100,
         });
 
         // Load step completion status from database
@@ -984,6 +990,169 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleUpdateAlertThreshold = async () => {
+    try {
+      const threshold = dianSettings.alertThreshold || 100;
+      await wailsDianService.updateAlertThreshold(threshold);
+      toast.success(`Umbral de alerta actualizado a ${threshold} facturas`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al actualizar el umbral de alerta');
+    }
+  };
+
+  const handleResetTestResolution = async () => {
+    if (!confirm('¿Estás seguro de que quieres restablecer los valores de resolución de prueba y configurarla con DIAN? Esto sobrescribirá la configuración actual.')) {
+      return;
+    }
+    try {
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar el Paso 1 para obtener el token.');
+        return;
+      }
+
+      toast.info('Restableciendo valores de resolución de prueba...');
+
+      // Default test resolution values (date should be 19th, not 16th)
+      const defaultTestValues = {
+        resolution: '18760000001',
+        prefix: 'SETP',
+        startNumber: 990000000,
+        endNumber: 995000000,
+        technicalKey: 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c',
+        resolutionDate: '2019-01-19',
+        dateFrom: '2019-01-19',
+        dateTo: '2030-01-19',
+        consecutiveNumber: 0,
+      };
+
+      // Update state with default values
+      setDianSettings(prev => ({
+        ...prev,
+        ...defaultTestValues,
+        testMode: true,
+      }));
+
+      // Save config with default values
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        resolution_number: defaultTestValues.resolution,
+        resolution_prefix: defaultTestValues.prefix,
+        resolution_from: defaultTestValues.startNumber,
+        resolution_to: defaultTestValues.endNumber,
+        technical_key: defaultTestValues.technicalKey,
+        resolution_date_from: new Date(defaultTestValues.dateFrom + 'T12:00:00'),
+        resolution_date_to: new Date(defaultTestValues.dateTo + 'T12:00:00'),
+        last_invoice_number: defaultTestValues.consecutiveNumber,
+        environment: 'test',
+        step4_completed: false,
+        step7_completed: false,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure resolution with DIAN API
+      await wailsDianService.configureResolution();
+
+      toast.success('Resolución de prueba restablecida y configurada con DIAN exitosamente');
+      setCompletedSteps(prev => ({ ...prev, resolution: true, production: false }));
+
+      // Reload to ensure UI is in sync
+      await loadDianConfig();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al restablecer la resolución de prueba');
+    }
+  };
+
+  const handleRegisterNewResolution = async () => {
+    if (!confirm('¿Estás seguro de que quieres registrar la resolución actual con DIAN? Esto obtendrá el consecutivo actual desde el servidor.')) {
+      return;
+    }
+    try {
+      if (!dianSettings.apiToken) {
+        toast.error('Primero debes completar el Paso 1 para obtener el token.');
+        return;
+      }
+
+      // Validate required fields
+      if (!dianSettings.resolution || !dianSettings.prefix || !dianSettings.technicalKey) {
+        toast.error('Por favor completa todos los campos requeridos de la resolución (Número, Prefijo y Clave Técnica)');
+        return;
+      }
+
+      toast.info('Obteniendo consecutivo actual y registrando resolución...');
+
+      // Get next consecutive from API
+      const nextConsec = await wailsDianService.getNextConsecutive(1, dianSettings.prefix);
+      const newConsecutive = nextConsec.number - 1; // -1 because next will increment
+
+      // Update state with new consecutive
+      setDianSettings(prev => ({
+        ...prev,
+        consecutiveNumber: newConsecutive,
+      }));
+
+      // Save config with current values and updated consecutive
+      const currentDianConfig = await wailsDianService.getConfig();
+      const updatedConfig = {
+        ...currentDianConfig,
+        resolution_number: dianSettings.resolution,
+        resolution_prefix: dianSettings.prefix,
+        resolution_from: dianSettings.startNumber,
+        resolution_to: dianSettings.endNumber,
+        technical_key: dianSettings.technicalKey,
+        resolution_date_from: new Date(dianSettings.dateFrom + 'T12:00:00'),
+        resolution_date_to: new Date(dianSettings.dateTo + 'T12:00:00'),
+        test_set_id: dianSettings.testSetId,
+        use_test_set_id: dianSettings.useTestSetId,
+        last_invoice_number: newConsecutive,
+      };
+      await wailsDianService.updateConfig(updatedConfig as any);
+
+      // Call backend to configure resolution with DIAN API
+      await wailsDianService.configureResolution();
+
+      toast.success(`Resolución registrada exitosamente. Próximo consecutivo: ${nextConsec.number}`);
+      setCompletedSteps(prev => ({ ...prev, resolution: true }));
+
+      // Reload to ensure UI is in sync
+      await loadDianConfig();
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al registrar la resolución');
+    }
+  };
+
+  const handleSyncConsecutive = async () => {
+    try {
+      if (!dianSettings.prefix) {
+        toast.error('Debes configurar el prefijo de resolución primero');
+        return;
+      }
+
+      toast.info('Sincronizando consecutivo con el servidor...');
+
+      // Get next consecutive from API
+      const nextConsec = await wailsDianService.getNextConsecutive(1, dianSettings.prefix);
+      const newConsecutive = nextConsec.number - 1; // -1 because next will increment
+
+      // Update state
+      setDianSettings(prev => ({
+        ...prev,
+        consecutiveNumber: newConsecutive,
+      }));
+
+      // Save to backend
+      const currentDianConfig = await wailsDianService.getConfig();
+      await wailsDianService.updateConfig({
+        ...currentDianConfig,
+        last_invoice_number: newConsecutive,
+      } as any);
+
+      toast.success(`Consecutivo sincronizado. Próximo número: ${nextConsec.number}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al sincronizar el consecutivo');
+    }
+  };
+
   const handleConfigureResolution = async () => {
     try {
       // Validate required fields
@@ -1140,8 +1309,15 @@ const Settings: React.FC = () => {
 
   const handleChangeEnvironment = async () => {
     try {
-      await wailsDianService.changeEnvironment(dianSettings.testMode ? 'test' : 'production');
-      toast.success('Ambiente actualizado');
+      const targetEnv = dianSettings.testMode ? 'test' : 'production';
+      const envLabel = targetEnv === 'test' ? 'Pruebas' : 'Producción';
+
+      toast.info(`Cambiando ambiente a ${envLabel}...`);
+      await wailsDianService.changeEnvironment(targetEnv);
+      toast.success(`Ambiente cambiado a ${envLabel} exitosamente`);
+
+      // Reload config to ensure UI is in sync
+      await loadDianConfig();
     } catch (e:any) {
       toast.error(e?.message || 'Error cambiando ambiente');
     }
@@ -1264,6 +1440,7 @@ const Settings: React.FC = () => {
           <Tab icon={<SecurityIcon />} label="Sistema" />
           <Tab icon={<WifiIcon />} label="WebSocket" />
           <Tab icon={<StorageIcon />} label="BD DIAN" />
+          <Tab icon={<SmartToyIcon />} label="IA (MCP)" />
         </Tabs>
 
         <TabPanel value={selectedTab} index={0}>
@@ -1630,33 +1807,46 @@ const Settings: React.FC = () => {
 
             {/* Test/Production Mode Toggle */}
             <Grid item xs={12} sm={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={!dianSettings.testMode}
-                    onChange={(e) => setDianSettings({
-                      ...dianSettings,
-                      testMode: !e.target.checked,
-                    })}
-                    color={dianSettings.testMode ? "default" : "error"}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                <Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!dianSettings.testMode}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          testMode: !e.target.checked,
+                        })}
+                        color={dianSettings.testMode ? "default" : "error"}
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <span>Modo: {dianSettings.testMode ? 'Pruebas' : 'Producción'}</span>
+                        <Chip
+                          size="small"
+                          label={dianSettings.testMode ? 'TEST' : 'PROD'}
+                          color={dianSettings.testMode ? 'info' : 'error'}
+                        />
+                      </Box>
+                    }
                   />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <span>Modo: {dianSettings.testMode ? 'Pruebas' : 'Producción'}</span>
-                    <Chip
-                      size="small"
-                      label={dianSettings.testMode ? 'TEST' : 'PROD'}
-                      color={dianSettings.testMode ? 'info' : 'error'}
-                    />
-                  </Box>
-                }
-              />
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4 }}>
-                {dianSettings.testMode
-                  ? 'Las facturas se envían al ambiente de pruebas de DIAN'
-                  : '⚠️ Las facturas se envían al ambiente REAL de DIAN'}
-              </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4 }}>
+                    {dianSettings.testMode
+                      ? 'Las facturas se envían al ambiente de pruebas de DIAN'
+                      : '⚠️ Las facturas se envían al ambiente REAL de DIAN'}
+                  </Typography>
+                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleChangeEnvironment}
+                  startIcon={<SyncIcon />}
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                >
+                  Cambiar Ambiente
+                </Button>
+              </Box>
             </Grid>
 
             {/* Configuration Status */}
@@ -1815,6 +2005,70 @@ const Settings: React.FC = () => {
                         })}
                         InputLabelProps={{ shrink: true }}
                       />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Divider sx={{ my: 2 }} />
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        Configuración de Alertas
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Umbral de Alerta (Facturas Restantes)"
+                        value={dianSettings.alertThreshold || 100}
+                        onChange={(e) => setDianSettings({
+                          ...dianSettings,
+                          alertThreshold: Number(e.target.value),
+                        })}
+                        helperText="Recibirás una notificación cuando queden menos facturas que este número"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        fullWidth
+                        onClick={handleUpdateAlertThreshold}
+                        sx={{ height: 56 }}
+                      >
+                        Guardar Umbral de Alerta
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Divider sx={{ my: 2 }} />
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        Acciones de Resolución
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        fullWidth
+                        onClick={handleResetTestResolution}
+                        startIcon={<RefreshIcon />}
+                      >
+                        Restablecer Resolución de Prueba
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        Restaura los valores por defecto para ambiente de prueba (fecha 19 de enero)
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        fullWidth
+                        onClick={handleRegisterNewResolution}
+                        startIcon={<SyncIcon />}
+                      >
+                        Registrar Nueva Resolución
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        Registra la resolución actual en DIAN y sincroniza el consecutivo
+                      </Typography>
                     </Grid>
                   </Grid>
                 </AccordionDetails>
@@ -2030,17 +2284,28 @@ const Settings: React.FC = () => {
                       </Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Último Consecutivo"
-                        type="number"
-                        value={dianSettings.consecutiveNumber}
-                        onChange={(e) => setDianSettings({
-                          ...dianSettings,
-                          consecutiveNumber: Number(e.target.value),
-                        })}
-                        helperText="Último número de factura generado"
-                      />
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                        <TextField
+                          fullWidth
+                          label="Último Consecutivo"
+                          type="number"
+                          value={dianSettings.consecutiveNumber}
+                          onChange={(e) => setDianSettings({
+                            ...dianSettings,
+                            consecutiveNumber: Number(e.target.value),
+                          })}
+                          helperText="Último número de factura generado"
+                        />
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          onClick={handleSyncConsecutive}
+                          startIcon={<SyncIcon />}
+                          sx={{ mt: 1, minWidth: 'auto', whiteSpace: 'nowrap' }}
+                        >
+                          Sincronizar
+                        </Button>
+                      </Box>
                     </Grid>
                   </Grid>
                 </AccordionDetails>
@@ -3312,6 +3577,11 @@ const Settings: React.FC = () => {
         <TabPanel value={selectedTab} index={11}>
           {/* DIAN Database Settings */}
           <DIANDatabaseSettings />
+        </TabPanel>
+
+        <TabPanel value={selectedTab} index={12}>
+          {/* MCP (AI) Settings */}
+          <MCPSettings />
         </TabPanel>
       </Paper>
 

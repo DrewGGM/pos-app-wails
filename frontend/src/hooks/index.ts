@@ -7,6 +7,9 @@ export { useWebSocket } from './useWebSocket';
 // useDIANMode.ts
 export { useDIANMode } from './useDIANMode';
 
+// useNotifications.ts
+export { useNotifications } from '../contexts/NotificationContext';
+
 // Utility functions for handling optional IDs
 export const useIdGenerator = () => {
   const generateTempId = () => {

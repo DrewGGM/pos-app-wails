@@ -1587,9 +1587,12 @@ const POS: React.FC = () => {
                 if (!originalItem) throw new Error('Item not found');
 
                 const unitPrice = (originalItem.subtotal || 0) / originalItem.quantity;
+                // Ensure product_id is defined (fallback to product.id if needed)
+                const productId = originalItem.product_id || originalItem.product?.id;
+                if (!productId) throw new Error('Product ID not found');
+
                 return {
-                  product_id: originalItem.product_id,
-                  product: originalItem.product,
+                  product_id: productId,
                   quantity: splitItem.quantity,
                   unit_price: unitPrice,
                   subtotal: unitPrice * splitItem.quantity,
@@ -1601,7 +1604,8 @@ const POS: React.FC = () => {
               const orderData: CreateOrderData = {
                 type: selectedOrderType?.code as 'dine_in' | 'takeout' | 'delivery' || 'takeout',
                 order_type_id: selectedOrderType?.id as unknown as number,
-                table_id: selectedTable?.id,
+                // Don't assign table to split orders - original order keeps the table if items remain
+                table_id: unallocatedItems.length > 0 ? undefined : selectedTable?.id,
                 customer_id: selectedCustomer?.id,
                 employee_id: user?.id,
                 items: splitOrderItems,
@@ -1622,12 +1626,12 @@ const POS: React.FC = () => {
             // Handle the original order based on unallocated items
             if (currentOrder?.id) {
               if (unallocatedItems.length === 0) {
-                // All items allocated - cancel the original order
+                // All items allocated - delete the original order
                 try {
-                  await wailsOrderService.cancelOrder(currentOrder.id, 'Orden dividida en cuentas separadas');
-                  toast.info('Orden original cancelada (todos los productos fueron divididos)');
-                } catch (cancelError) {
-                  console.error('Error cancelling original order:', cancelError);
+                  await wailsOrderService.deleteOrder(currentOrder.id);
+                  toast.info('Orden original eliminada (todos los productos fueron divididos)');
+                } catch (deleteError) {
+                  console.error('Error deleting original order:', deleteError);
                 }
               } else {
                 // Some items remain - update the original order with only unallocated items
@@ -1636,9 +1640,11 @@ const POS: React.FC = () => {
                   if (!originalItem) throw new Error('Item not found');
 
                   const unitPrice = (originalItem.subtotal || 0) / originalItem.quantity;
+                  const productId = originalItem.product_id || originalItem.product?.id;
+                  if (!productId) throw new Error('Product ID not found');
+
                   return {
-                    product_id: originalItem.product_id,
-                    product: originalItem.product,
+                    product_id: productId,
                     quantity: unalloc.quantity,
                     unit_price: unitPrice,
                     subtotal: unitPrice * unalloc.quantity,
@@ -1754,10 +1760,10 @@ const POS: React.FC = () => {
                     // All splits paid - cancel/delete the original order if it exists
                     if (originalOrderIdForSplit) {
                       try {
-                        await wailsOrderService.cancelOrder(originalOrderIdForSplit, 'Orden dividida en cuentas separadas');
-                      } catch (cancelError) {
-                        console.error('Error cancelling original order:', cancelError);
-                        // Don't fail the whole operation if cancel fails
+                        await wailsOrderService.deleteOrder(originalOrderIdForSplit);
+                      } catch (deleteError) {
+                        console.error('Error deleting original order:', deleteError);
+                        // Don't fail the whole operation if delete fails
                       }
                     }
                     // Clear everything

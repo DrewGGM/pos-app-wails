@@ -134,6 +134,9 @@ type DIANConfig struct {
 	LastCreditNoteNumber int `json:"last_credit_note_number"`
 	LastDebitNoteNumber  int `json:"last_debit_note_number"`
 
+	// Alert Settings
+	InvoiceLimitAlertThreshold int `json:"invoice_limit_alert_threshold" gorm:"default:100"` // Alert when remaining invoices <= threshold
+
 	// Email Settings
 	SendEmail       bool   `json:"send_email"`
 	EmailHost       string `json:"email_host"`
@@ -236,6 +239,26 @@ type GoogleSheetsConfig struct {
 	LastSyncStatus string     `json:"last_sync_status"` // "success", "error", "pending"
 	LastSyncError  string     `json:"last_sync_error"`
 	TotalSyncs     int        `json:"total_syncs"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// MCPConfig represents MCP (Model Context Protocol) server configuration
+type MCPConfig struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	// Server Settings
+	Enabled bool `json:"enabled" gorm:"default:false"`
+	Port    int  `json:"port" gorm:"default:8090"`
+
+	// Security
+	APIKey     string `json:"api_key"`     // Optional API key for authentication
+	AllowedIPs string `json:"allowed_ips"` // Comma-separated list of allowed IPs (empty = all allowed)
+
+	// Features
+	ReadOnlyMode  bool   `json:"read_only_mode" gorm:"default:false"` // If true, only read operations are allowed
+	DisabledTools string `json:"disabled_tools"`                      // Comma-separated list of disabled tool names
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

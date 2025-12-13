@@ -1548,9 +1548,9 @@ export namespace models {
 	    invoice_type: string;
 	    needs_electronic_invoice: boolean;
 	    electronic_invoice?: ElectronicInvoice;
-	    employee_id: number;
+	    employee_id?: number;
 	    employee?: Employee;
-	    cash_register_id: number;
+	    cash_register_id?: number;
 	    cash_register?: CashRegister;
 	    notes: string;
 	    is_synced: boolean;
@@ -1835,6 +1835,7 @@ export namespace models {
 	    last_invoice_number: number;
 	    last_credit_note_number: number;
 	    last_debit_note_number: number;
+	    invoice_limit_alert_threshold: number;
 	    send_email: boolean;
 	    email_host: string;
 	    email_port: number;
@@ -1899,6 +1900,7 @@ export namespace models {
 	        this.last_invoice_number = source["last_invoice_number"];
 	        this.last_credit_note_number = source["last_credit_note_number"];
 	        this.last_debit_note_number = source["last_debit_note_number"];
+	        this.invoice_limit_alert_threshold = source["invoice_limit_alert_threshold"];
 	        this.send_email = source["send_email"];
 	        this.email_host = source["email_host"];
 	        this.email_port = source["email_port"];
@@ -2415,6 +2417,52 @@ export namespace models {
 	        this.employee = this.convertValues(source["employee"], Employee);
 	        this.notes = source["notes"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MCPConfig {
+	    id: number;
+	    enabled: boolean;
+	    port: number;
+	    api_key: string;
+	    allowed_ips: string;
+	    read_only_mode: boolean;
+	    disabled_tools: string;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.enabled = source["enabled"];
+	        this.port = source["port"];
+	        this.api_key = source["api_key"];
+	        this.allowed_ips = source["allowed_ips"];
+	        this.read_only_mode = source["read_only_mode"];
+	        this.disabled_tools = source["disabled_tools"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -4267,6 +4315,24 @@ export namespace services {
 	        this.growth_percent = source["growth_percent"];
 	    }
 	}
+	export class NextConsecutiveResponse {
+	    success: boolean;
+	    type_document_id: number;
+	    prefix: string;
+	    number: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NextConsecutiveResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.type_document_id = source["type_document_id"];
+	        this.prefix = source["prefix"];
+	        this.number = source["number"];
+	    }
+	}
 	
 	export class ProductDetail {
 	    product_name: string;
@@ -4377,6 +4443,66 @@ export namespace services {
 	        this.percentage = source["percentage"];
 	    }
 	}
+	export class QuickSaleItem {
+	    product_id: number;
+	    quantity: number;
+	    unit_price?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new QuickSaleItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product_id = source["product_id"];
+	        this.quantity = source["quantity"];
+	        this.unit_price = source["unit_price"];
+	    }
+	}
+	export class QuickSaleRequest {
+	    items: QuickSaleItem[];
+	    payment_method_id: number;
+	    customer_id?: number;
+	    needs_electronic_invoice: boolean;
+	    send_email_to_customer: boolean;
+	    notes?: string;
+	    discount?: number;
+	    discount_type?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QuickSaleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], QuickSaleItem);
+	        this.payment_method_id = source["payment_method_id"];
+	        this.customer_id = source["customer_id"];
+	        this.needs_electronic_invoice = source["needs_electronic_invoice"];
+	        this.send_email_to_customer = source["send_email_to_customer"];
+	        this.notes = source["notes"];
+	        this.discount = source["discount"];
+	        this.discount_type = source["discount_type"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ReportData {
 	    fecha: string;
 	    ventas_totales: number;
@@ -4430,6 +4556,26 @@ export namespace services {
 		    }
 		    return a;
 		}
+	}
+	export class ResolutionLimitStatus {
+	    remaining_invoices: number;
+	    alert_threshold: number;
+	    is_near_limit: boolean;
+	    current_number: number;
+	    end_number: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResolutionLimitStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remaining_invoices = source["remaining_invoices"];
+	        this.alert_threshold = source["alert_threshold"];
+	        this.is_near_limit = source["is_near_limit"];
+	        this.current_number = source["current_number"];
+	        this.end_number = source["end_number"];
+	    }
 	}
 	export class SalesChartData {
 	    date: string;

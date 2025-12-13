@@ -22,6 +22,10 @@ export function ConfigureDebitNoteResolution() {
   return window['go']['services']['DIANService']['ConfigureDebitNoteResolution']();
 }
 
+export function ConfigureLogo() {
+  return window['go']['services']['DIANService']['ConfigureLogo']();
+}
+
 export function ConfigureResolution() {
   return window['go']['services']['DIANService']['ConfigureResolution']();
 }
@@ -34,16 +38,36 @@ export function GetDIANConfig() {
   return window['go']['services']['DIANService']['GetDIANConfig']();
 }
 
+export function GetNextConsecutive(arg1, arg2) {
+  return window['go']['services']['DIANService']['GetNextConsecutive'](arg1, arg2);
+}
+
 export function GetNumberingRanges() {
   return window['go']['services']['DIANService']['GetNumberingRanges']();
+}
+
+export function GetResolutionLimitStatus() {
+  return window['go']['services']['DIANService']['GetResolutionLimitStatus']();
 }
 
 export function MigrateToProduction() {
   return window['go']['services']['DIANService']['MigrateToProduction']();
 }
 
+export function RegisterNewResolution() {
+  return window['go']['services']['DIANService']['RegisterNewResolution']();
+}
+
+export function ResendInvoiceEmail(arg1, arg2) {
+  return window['go']['services']['DIANService']['ResendInvoiceEmail'](arg1, arg2);
+}
+
 export function ResetConfigurationSteps() {
   return window['go']['services']['DIANService']['ResetConfigurationSteps']();
+}
+
+export function ResetTestResolution() {
+  return window['go']['services']['DIANService']['ResetTestResolution']();
 }
 
 export function SendInvoice(arg1) {
@@ -52,6 +76,10 @@ export function SendInvoice(arg1) {
 
 export function TestConnection() {
   return window['go']['services']['DIANService']['TestConnection']();
+}
+
+export function UpdateAlertThreshold(arg1) {
+  return window['go']['services']['DIANService']['UpdateAlertThreshold'](arg1);
 }
 
 export function UpdateDIANConfig(arg1) {

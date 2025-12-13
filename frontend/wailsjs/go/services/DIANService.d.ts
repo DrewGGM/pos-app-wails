@@ -13,20 +13,34 @@ export function ConfigureCreditNoteResolution():Promise<void>;
 
 export function ConfigureDebitNoteResolution():Promise<void>;
 
+export function ConfigureLogo():Promise<void>;
+
 export function ConfigureResolution():Promise<void>;
 
 export function ConfigureSoftware():Promise<void>;
 
 export function GetDIANConfig():Promise<models.DIANConfig>;
 
+export function GetNextConsecutive(arg1:number,arg2:string):Promise<services.NextConsecutiveResponse>;
+
 export function GetNumberingRanges():Promise<Record<string, any>>;
+
+export function GetResolutionLimitStatus():Promise<services.ResolutionLimitStatus>;
 
 export function MigrateToProduction():Promise<void>;
 
+export function RegisterNewResolution():Promise<void>;
+
+export function ResendInvoiceEmail(arg1:string,arg2:string):Promise<void>;
+
 export function ResetConfigurationSteps():Promise<void>;
+
+export function ResetTestResolution():Promise<void>;
 
 export function SendInvoice(arg1:services.DIANInvoice):Promise<services.DIANInvoiceResponse>;
 
 export function TestConnection():Promise<void>;
+
+export function UpdateAlertThreshold(arg1:number):Promise<void>;
 
 export function UpdateDIANConfig(arg1:models.DIANConfig):Promise<void>;

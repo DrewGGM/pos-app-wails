@@ -10,6 +10,8 @@ export function CreateCustomer(arg1:models.Customer):Promise<void>;
 
 export function CreatePaymentMethod(arg1:models.PaymentMethod):Promise<void>;
 
+export function CreateQuickSale(arg1:services.QuickSaleRequest):Promise<models.Sale>;
+
 export function DeactivatePaymentMethod(arg1:number):Promise<void>;
 
 export function DeleteCustomer(arg1:number):Promise<void>;
@@ -19,6 +21,8 @@ export function DeletePaymentMethod(arg1:number):Promise<void>;
 export function DeleteSale(arg1:number,arg2:number):Promise<void>;
 
 export function GetAllPaymentMethods():Promise<Array<models.PaymentMethod>>;
+
+export function GetConsumidorFinal():Promise<models.Customer>;
 
 export function GetCustomer(arg1:number):Promise<models.Customer>;
 

@@ -24,9 +24,9 @@ type Sale struct {
 	InvoiceType            string             `json:"invoice_type"`             // "none", "electronic", "pos_equivalent"
 	NeedsElectronicInvoice bool               `json:"needs_electronic_invoice"` // Flag for electronic invoice per sale
 	ElectronicInvoice      *ElectronicInvoice `gorm:"foreignKey:SaleID" json:"electronic_invoice,omitempty"`
-	EmployeeID             uint               `gorm:"index" json:"employee_id"`
+	EmployeeID             *uint              `gorm:"index" json:"employee_id,omitempty"`
 	Employee               *Employee          `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`
-	CashRegisterID         uint               `gorm:"index" json:"cash_register_id"`
+	CashRegisterID         *uint              `gorm:"index" json:"cash_register_id,omitempty"`
 	CashRegister           *CashRegister      `gorm:"foreignKey:CashRegisterID" json:"cash_register,omitempty"`
 	Notes                  string             `json:"notes"`
 	IsSynced               bool               `gorm:"default:false" json:"is_synced"`
