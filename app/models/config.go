@@ -220,10 +220,11 @@ type GoogleSheetsConfig struct {
 	SheetName     string `json:"sheet_name"`     // Tab name (default: "Reportes")
 
 	// Sync Settings
-	AutoSync     bool `json:"auto_sync"`      // Enable automatic sync
-	SyncInterval int  `json:"sync_interval"`  // Minutes (default: 60 = hourly)
-	SyncTime     string `json:"sync_time"`    // Specific time for daily sync (format: "23:00")
-	SyncMode     string `json:"sync_mode"`    // "interval" or "daily"
+	AutoSync      bool   `json:"auto_sync"`       // Enable automatic sync
+	SyncInterval  int    `json:"sync_interval"`   // Minutes (default: 60 = hourly)
+	SyncTime      string `json:"sync_time"`       // Specific time for daily sync (format: "23:00")
+	SyncMode      string `json:"sync_mode"`       // "interval" or "daily"
+	SyncOnPayment bool   `json:"sync_on_payment"` // Sync immediately after each payment
 
 	// Data to Export
 	IncludeSales    bool `json:"include_sales"`

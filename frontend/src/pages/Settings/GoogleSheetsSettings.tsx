@@ -475,6 +475,26 @@ const GoogleSheetsSettings: React.FC = () => {
             />
           </Grid>
 
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={config.sync_on_payment || false}
+                  onChange={(e) => updateConfig({ sync_on_payment: e.target.checked })}
+                  color="secondary"
+                />
+              }
+              label={
+                <Box>
+                  <Typography component="span">Sincronizar inmediatamente con cada pago</Typography>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Actualiza Google Sheets automáticamente cada vez que se procesa un pago
+                  </Typography>
+                </Box>
+              }
+            />
+          </Grid>
+
           {config.auto_sync && (
             <>
               <Grid item xs={12} md={6}>

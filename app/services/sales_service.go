@@ -14,23 +14,26 @@ import (
 
 // SalesService handles sales operations
 type SalesService struct {
-	db            *gorm.DB
-	orderSvc      *OrderService
-	invoiceSvc    *InvoiceService
-	printerSvc    *PrinterService
-	productSvc    *ProductService
-	ingredientSvc *IngredientService
+	db              *gorm.DB
+	orderSvc        *OrderService
+	invoiceSvc      *InvoiceService
+	printerSvc      *PrinterService
+	productSvc      *ProductService
+	ingredientSvc   *IngredientService
+	googleSheetsSvc *GoogleSheetsService
 }
 
 // NewSalesService creates a new sales service
 func NewSalesService() *SalesService {
+	db := database.GetDB()
 	return &SalesService{
-		db:            database.GetDB(),
-		orderSvc:      NewOrderService(),
-		invoiceSvc:    NewInvoiceService(),
-		printerSvc:    NewPrinterService(),
-		productSvc:    NewProductService(),
-		ingredientSvc: NewIngredientService(),
+		db:              db,
+		orderSvc:        NewOrderService(),
+		invoiceSvc:      NewInvoiceService(),
+		printerSvc:      NewPrinterService(),
+		productSvc:      NewProductService(),
+		ingredientSvc:   NewIngredientService(),
+		googleSheetsSvc: NewGoogleSheetsService(db),
 	}
 }
 
@@ -300,6 +303,9 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 			fmt.Printf("🖨️  Simple receipt printing skipped (user disabled printReceipt)\n")
 		}
 	}
+
+	// Sync to Google Sheets if enabled (sync_on_payment)
+	go s.syncToGoogleSheetsIfEnabled()
 
 	return sale, nil
 }
@@ -1475,4 +1481,38 @@ func (s *SalesService) PrintDIANClosingReport(dateStr string) error {
 	}
 
 	return s.printerSvc.PrintDIANClosingReport(report)
+}
+
+// syncToGoogleSheetsIfEnabled syncs to Google Sheets if sync_on_payment is enabled
+func (s *SalesService) syncToGoogleSheetsIfEnabled() {
+	// Recover from any panics to prevent crashing the application
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("❌ PANIC recovered in Google Sheets sync: %v", r)
+		}
+	}()
+
+	if s.googleSheetsSvc == nil {
+		return
+	}
+
+	// Get config to check if sync_on_payment is enabled
+	config, err := s.googleSheetsSvc.GetConfig()
+	if err != nil {
+		log.Printf("Google Sheets: Error getting config: %v", err)
+		return
+	}
+
+	// Check if integration is enabled and sync_on_payment is active
+	if !config.IsEnabled || !config.SyncOnPayment {
+		return
+	}
+
+	// Sync now
+	log.Printf("📊 Google Sheets: Syncing after payment (sync_on_payment enabled)...")
+	if err := s.googleSheetsSvc.SyncNow(); err != nil {
+		log.Printf("❌ Google Sheets: Sync failed: %v", err)
+	} else {
+		log.Printf("✅ Google Sheets: Sync completed successfully")
+	}
 }
