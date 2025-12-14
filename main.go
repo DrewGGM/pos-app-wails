@@ -405,7 +405,8 @@ func main() {
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
 	app.RappiConfigService = services.NewRappiConfigService()
 	app.InvoiceLimitService = services.NewInvoiceLimitService(nil)
-	// MCP Service initialized later when database is available
+	// Initialize MCP Service with nil services (will be reinitialized when database is available)
+	app.MCPService = services.NewMCPService(nil, nil, nil, nil, nil, nil)
 
 	if !isFirstRun {
 		loggerService.LogInfo("Loading configuration from config.json")

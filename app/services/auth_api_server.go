@@ -359,7 +359,7 @@ func (s *AuthAPIServer) handleValidateToken(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	employee, err := s.employeeService.GetEmployeeByID(employeeID)
+	employee, err := s.employeeService.GetEmployee(employeeID)
 	if err != nil || !employee.IsActive {
 		s.sendJSON(w, http.StatusUnauthorized, AuthResponse{
 			Success: false,
