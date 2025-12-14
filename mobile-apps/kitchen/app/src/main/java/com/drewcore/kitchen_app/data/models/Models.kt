@@ -92,9 +92,10 @@ data class OrderItem(
     val subtotal: Double,
     val notes: String? = null,
     val modifiers: List<OrderItemModifier>? = null,
-    // Local metadata - included in constructor for proper copy() behavior
-    @Transient var changeStatus: ItemChangeStatus = ItemChangeStatus.UNCHANGED,
-    @Transient var previousQuantity: Int? = null
+    // Local metadata - in constructor for proper copy() behavior
+    // Not marked @Transient to avoid Gson deserialization issues
+    var changeStatus: ItemChangeStatus = ItemChangeStatus.UNCHANGED,
+    var previousQuantity: Int? = null
 )
 
 // Order

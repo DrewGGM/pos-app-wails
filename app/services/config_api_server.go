@@ -14,6 +14,7 @@ type ConfigAPIServer struct {
 	server              *http.Server
 	port                string
 	invoiceLimitService *InvoiceLimitService
+	employeeService     *EmployeeService
 	loggerService       *LoggerService
 }
 
@@ -22,6 +23,23 @@ type InvoiceLimitConfigRequest struct {
 	Enabled      *bool              `json:"enabled,omitempty"`
 	SyncInterval *int               `json:"sync_interval,omitempty"`
 	DayLimits    map[string]float64 `json:"day_limits,omitempty"`
+}
+
+// LoginRequest represents the login request body
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// AuthUserData represents the user data returned on successful authentication
+type AuthUserData struct {
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Token    string `json:"token"`
 }
 
 // APIResponse represents a standard API response
@@ -33,10 +51,11 @@ type APIResponse struct {
 }
 
 // NewConfigAPIServer creates a new config API server
-func NewConfigAPIServer(port string, invoiceLimitService *InvoiceLimitService, loggerService *LoggerService) *ConfigAPIServer {
+func NewConfigAPIServer(port string, invoiceLimitService *InvoiceLimitService, employeeService *EmployeeService, loggerService *LoggerService) *ConfigAPIServer {
 	return &ConfigAPIServer{
 		port:                port,
 		invoiceLimitService: invoiceLimitService,
+		employeeService:     employeeService,
 		loggerService:       loggerService,
 	}
 }
@@ -56,6 +75,9 @@ func (s *ConfigAPIServer) Start() error {
 	mux.HandleFunc("/api/v1/config/invoice-limits/status", s.handleInvoiceLimitsStatus)
 	mux.HandleFunc("/api/v1/config/invoice-limits/sync", s.handleInvoiceLimitsSync)
 
+	// Authentication endpoint
+	mux.HandleFunc("/api/v1/auth/login", s.handleLogin)
+
 	s.server = &http.Server{
 		Addr:         s.port,
 		Handler:      s.corsMiddleware(s.loggingMiddleware(mux)),
@@ -70,6 +92,7 @@ func (s *ConfigAPIServer) Start() error {
 	log.Printf("[CONFIG API]   PUT    /api/v1/config/invoice-limits")
 	log.Printf("[CONFIG API]   GET    /api/v1/config/invoice-limits/status")
 	log.Printf("[CONFIG API]   POST   /api/v1/config/invoice-limits/sync")
+	log.Printf("[CONFIG API]   POST   /api/v1/auth/login")
 
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("config API server error: %w", err)
@@ -310,5 +333,78 @@ func (s *ConfigAPIServer) handleInvoiceLimitsSync(w http.ResponseWriter, r *http
 		Success: true,
 		Message: "Configuration synced from Google Sheets",
 		Data:    config,
+	})
+}
+
+// generateToken creates a simple token for the session
+func (s *ConfigAPIServer) generateToken(employeeID uint) string {
+	return fmt.Sprintf("%d:%d", employeeID, time.Now().UnixNano())
+}
+
+// handleLogin handles username/password login
+func (s *ConfigAPIServer) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use POST.",
+		})
+		return
+	}
+
+	if s.employeeService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Employee service not available",
+		})
+		return
+	}
+
+	// Parse request body
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+		return
+	}
+
+	// Validate required fields
+	if req.Username == "" || req.Password == "" {
+		s.sendJSON(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Username and password are required",
+		})
+		return
+	}
+
+	// Authenticate
+	employee, err := s.employeeService.AuthenticateEmployee(req.Username, req.Password)
+	if err != nil {
+		log.Printf("[CONFIG API] Failed login attempt for user: %s", req.Username)
+		s.sendJSON(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Invalid credentials",
+		})
+		return
+	}
+
+	// Generate token
+	token := s.generateToken(employee.ID)
+
+	log.Printf("[CONFIG API] Successful login for user: %s (ID: %d, Role: %s)", employee.Username, employee.ID, employee.Role)
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "Login successful",
+		Data: AuthUserData{
+			ID:       employee.ID,
+			Name:     employee.Name,
+			Username: employee.Username,
+			Role:     employee.Role,
+			Email:    employee.Email,
+			Phone:    employee.Phone,
+			Token:    token,
+		},
 	})
 }

@@ -18,13 +18,15 @@ export interface AuthResponse {
   error?: string
 }
 
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || ''
+// Use the same Config API URL since auth is now part of the Config API server
+const AUTH_API_URL = import.meta.env.VITE_CONFIG_API_URL || ''
 
 class AuthApiService {
   private baseUrl: string
 
   constructor() {
-    this.baseUrl = AUTH_API_URL
+    // Remove trailing slash to avoid double slashes in URLs
+    this.baseUrl = AUTH_API_URL.replace(/\/$/, '')
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

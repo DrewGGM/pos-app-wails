@@ -46,7 +46,6 @@ type App struct {
 	RappiWebhookServer      *services.RappiWebhookServer
 	InvoiceLimitService     *services.InvoiceLimitService
 	ConfigAPIServer         *services.ConfigAPIServer
-	AuthAPIServer           *services.AuthAPIServer
 	MCPService              *services.MCPService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
@@ -159,12 +158,6 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		a.ConfigAPIServer.Stop()
 	}
 
-	// Stop Auth API server
-	if a.AuthAPIServer != nil {
-		a.LoggerService.LogInfo("Stopping Auth API server")
-		a.AuthAPIServer.Stop()
-	}
-
 	// Stop MCP server
 	if a.MCPService != nil {
 		a.LoggerService.LogInfo("Stopping MCP server")
@@ -249,26 +242,12 @@ func (a *App) InitializeServicesAfterSetup() error {
 	if configAPIPort == "" {
 		configAPIPort = "8082" // Default port
 	}
-	a.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, a.InvoiceLimitService, a.LoggerService)
+	a.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, a.InvoiceLimitService, a.EmployeeService, a.LoggerService)
 	a.LoggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 	go func() {
 		defer a.LoggerService.RecoverPanic()
 		if err := a.ConfigAPIServer.Start(); err != nil {
 			a.LoggerService.LogWarning("Config API server start error", err.Error())
-		}
-	}()
-
-	// Start Auth API server for external authentication
-	authAPIPort := os.Getenv("AUTH_API_PORT")
-	if authAPIPort == "" {
-		authAPIPort = "8083" // Default port
-	}
-	a.AuthAPIServer = services.NewAuthAPIServer(":"+authAPIPort, a.EmployeeService, a.LoggerService)
-	a.LoggerService.LogInfo("Starting Auth API server", "Port: "+authAPIPort)
-	go func() {
-		defer a.LoggerService.RecoverPanic()
-		if err := a.AuthAPIServer.Start(); err != nil {
-			a.LoggerService.LogWarning("Auth API server start error", err.Error())
 		}
 	}()
 
@@ -463,26 +442,12 @@ func main() {
 			if configAPIPort == "" {
 				configAPIPort = "8082" // Default port
 			}
-			app.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, app.InvoiceLimitService, loggerService)
+			app.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, app.InvoiceLimitService, app.EmployeeService, loggerService)
 			loggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 			go func() {
 				defer loggerService.RecoverPanic()
 				if err := app.ConfigAPIServer.Start(); err != nil {
 					loggerService.LogWarning("Config API server start error", err.Error())
-				}
-			}()
-
-			// Start Auth API server for external authentication
-			authAPIPort := os.Getenv("AUTH_API_PORT")
-			if authAPIPort == "" {
-				authAPIPort = "8083" // Default port
-			}
-			app.AuthAPIServer = services.NewAuthAPIServer(":"+authAPIPort, app.EmployeeService, loggerService)
-			loggerService.LogInfo("Starting Auth API server", "Port: "+authAPIPort)
-			go func() {
-				defer loggerService.RecoverPanic()
-				if err := app.AuthAPIServer.Start(); err != nil {
-					loggerService.LogWarning("Auth API server start error", err.Error())
 				}
 			}()
 

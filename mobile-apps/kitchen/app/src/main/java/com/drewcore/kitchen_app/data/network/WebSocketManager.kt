@@ -1,10 +1,15 @@
 package com.drewcore.kitchen_app.data.network
 
 import android.util.Log
+import com.drewcore.kitchen_app.data.models.ItemChangeStatus
 import com.drewcore.kitchen_app.data.models.Order
+import com.drewcore.kitchen_app.data.models.OrderItem
+import com.drewcore.kitchen_app.data.models.Product
 import com.drewcore.kitchen_app.data.models.WebSocketMessage
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import java.lang.reflect.Type
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
@@ -20,7 +25,55 @@ class WebSocketManager {
         .pingInterval(30, TimeUnit.SECONDS)
         .build()
 
-    private val gson = Gson()
+    // Custom Gson that handles Kotlin default values for OrderItem
+    private val gson: Gson = GsonBuilder()
+        .registerTypeAdapter(OrderItem::class.java, OrderItemDeserializer())
+        .create()
+
+    // Custom deserializer to handle OrderItem with default values for changeStatus
+    private class OrderItemDeserializer : com.google.gson.JsonDeserializer<OrderItem> {
+        private val defaultGson = Gson()
+
+        override fun deserialize(
+            json: com.google.gson.JsonElement,
+            typeOfT: Type,
+            context: com.google.gson.JsonDeserializationContext
+        ): OrderItem {
+            val jsonObject = json.asJsonObject
+
+            // Parse required fields
+            val id = jsonObject.get("id")?.asString ?: ""
+            val productId = jsonObject.get("product_id")?.asString ?: ""
+            val product = context.deserialize<Product>(jsonObject.get("product"), Product::class.java)
+            val quantity = jsonObject.get("quantity")?.asInt ?: 0
+            val price = jsonObject.get("price")?.asDouble ?: 0.0
+            val subtotal = jsonObject.get("subtotal")?.asDouble ?: 0.0
+            val notes = jsonObject.get("notes")?.asString
+
+            // Parse modifiers if present
+            val modifiersJson = jsonObject.get("modifiers")
+            val modifiers = if (modifiersJson != null && !modifiersJson.isJsonNull) {
+                val listType = object : TypeToken<List<com.drewcore.kitchen_app.data.models.OrderItemModifier>>() {}.type
+                context.deserialize<List<com.drewcore.kitchen_app.data.models.OrderItemModifier>>(modifiersJson, listType)
+            } else {
+                null
+            }
+
+            // Create OrderItem with default values for local metadata
+            return OrderItem(
+                id = id,
+                productId = productId,
+                product = product,
+                quantity = quantity,
+                price = price,
+                subtotal = subtotal,
+                notes = notes,
+                modifiers = modifiers,
+                changeStatus = ItemChangeStatus.UNCHANGED,
+                previousQuantity = null
+            )
+        }
+    }
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState
