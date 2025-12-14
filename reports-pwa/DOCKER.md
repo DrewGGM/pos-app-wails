@@ -56,6 +56,7 @@ docker build \
   --build-arg VITE_GOOGLE_SHEETS_SPREADSHEET_ID=tu_spreadsheet_id \
   --build-arg VITE_GOOGLE_SHEETS_RANGE=Reportes!A1:Z1000 \
   --build-arg VITE_CONFIG_API_URL=https://tu-config-api.example.com \
+  --build-arg VITE_AUTH_API_URL=https://tu-auth-api.example.com \
   -t pos-reports-pwa .
 ```
 
@@ -66,6 +67,7 @@ docker build \
 | `VITE_GOOGLE_SHEETS_SPREADSHEET_ID` | ID del spreadsheet |
 | `VITE_GOOGLE_SHEETS_RANGE` | Rango de datos (ej: `Reportes!A1:Z1000`) |
 | `VITE_CONFIG_API_URL` | URL del servidor Config API para límites de facturación |
+| `VITE_AUTH_API_URL` | URL del servidor Auth API para autenticación |
 
 ---
 

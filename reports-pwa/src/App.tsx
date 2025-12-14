@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react'
 import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail, type CashMovementDetail } from './services/googleSheets'
 import { InvoiceLimitsSettings } from './components/InvoiceLimitsSettings'
+import { Login } from './components/Login'
+import { authApiService, type AuthUser } from './services/authApi'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
 type AppView = 'reports' | 'settings'
 
 function App() {
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const [authChecking, setAuthChecking] = useState(true)
+
   // App navigation
   const [currentView, setCurrentView] = useState<AppView>('reports')
 
@@ -32,7 +39,23 @@ function App() {
   // Cash movements accordion state
   const [showCashMovements, setShowCashMovements] = useState(false)
 
+  // Check authentication on mount
   useEffect(() => {
+    const checkAuth = async () => {
+      const user = authApiService.getUser()
+      if (user && authApiService.isAuthenticated()) {
+        setCurrentUser(user)
+        setIsAuthenticated(true)
+      }
+      setAuthChecking(false)
+    }
+    checkAuth()
+  }, [])
+
+  useEffect(() => {
+    // Only check config and load reports if authenticated
+    if (!isAuthenticated) return
+
     const configured = googleSheetsService.isConfigured()
     setIsConfigured(configured)
 
@@ -44,7 +67,7 @@ function App() {
       // Pass true to skip the isConfigured check since we just verified it
       loadReports(true)
     }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     // Update current report when date or reports change
@@ -334,6 +357,19 @@ function App() {
     setSelectedDate(getColombiaDate())
   }
 
+  const handleLoginSuccess = (user: AuthUser) => {
+    setCurrentUser(user)
+    setIsAuthenticated(true)
+  }
+
+  const handleLogout = () => {
+    authApiService.logout()
+    setCurrentUser(null)
+    setIsAuthenticated(false)
+    setReports([])
+    setCurrentReport(null)
+  }
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
@@ -364,6 +400,26 @@ function App() {
       case 'year':
         return date.getFullYear().toString()
     }
+  }
+
+  // Show loading while checking auth
+  if (authChecking) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%)',
+      }}>
+        <div style={{ color: 'white', fontSize: '18px' }}>Cargando...</div>
+      </div>
+    )
+  }
+
+  // Show login if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />
   }
 
   if (!isConfigured) {
@@ -397,8 +453,48 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Reportes POS</h1>
-        <p className="subtitle">Sistema de reportes y configuración</p>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          width: '100%',
+          maxWidth: '1200px',
+          margin: '0 auto',
+        }}>
+          <div>
+            <h1 style={{ margin: 0 }}>Reportes POS</h1>
+            <p className="subtitle" style={{ margin: '4px 0 0 0' }}>Sistema de reportes y configuración</p>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}>
+            <span style={{
+              color: 'rgba(255,255,255,0.9)',
+              fontSize: '14px',
+            }}>
+              {currentUser?.name || currentUser?.username}
+            </span>
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '6px',
+                background: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+              onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+            >
+              Salir
+            </button>
+          </div>
+        </div>
 
         {/* Navigation Tabs */}
         <div className="nav-tabs" style={{

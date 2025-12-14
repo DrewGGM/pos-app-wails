@@ -201,8 +201,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     when {
                         readyQuantity == null -> {
                             // Item wasn't in the ready order - it's completely new
-                            item.changeStatus = ItemChangeStatus.ADDED
-                            item
+                            item.copy(changeStatus = ItemChangeStatus.ADDED)
                         }
                         item.quantity > readyQuantity -> {
                             // Item quantity increased - show only additional units
@@ -210,11 +209,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                             val newSubtotal = (item.subtotal / item.quantity) * additionalQuantity
                             item.copy(
                                 quantity = additionalQuantity,
-                                subtotal = newSubtotal
-                            ).apply {
-                                changeStatus = ItemChangeStatus.ADDED
+                                subtotal = newSubtotal,
+                                changeStatus = ItemChangeStatus.ADDED,
                                 previousQuantity = 0
-                            }
+                            )
                         }
                         else -> {
                             // Item quantity is same or less - don't show
@@ -272,11 +270,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     val newSubtotal = (newItem.subtotal / newItem.quantity) * additionalQuantity
                     return@mapNotNull newItem.copy(
                         quantity = additionalQuantity,
-                        subtotal = newSubtotal
-                    ).apply {
-                        changeStatus = ItemChangeStatus.ADDED
+                        subtotal = newSubtotal,
+                        changeStatus = ItemChangeStatus.ADDED,
                         previousQuantity = 0
-                    }
+                    )
                 } else {
                     android.util.Log.d("KitchenViewModel", "Filtering out item $exactKey: no additional units")
                     return@mapNotNull null
@@ -310,27 +307,28 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             when {
                 matchedOldItem == null -> {
                     // Truly new item
-                    newItem.changeStatus = ItemChangeStatus.ADDED
                     android.util.Log.d("KitchenViewModel", "New item added: $exactKey")
-                    newItem
+                    newItem.copy(changeStatus = ItemChangeStatus.ADDED)
                 }
                 matchedOldItem.notes != newItem.notes -> {
                     // Notes changed - mark as modified (not as new item)
-                    newItem.changeStatus = ItemChangeStatus.MODIFIED
-                    newItem.previousQuantity = matchedOldItem.quantity
                     android.util.Log.d("KitchenViewModel", "Item ${productId} modified (notes changed)")
-                    newItem
+                    newItem.copy(
+                        changeStatus = ItemChangeStatus.MODIFIED,
+                        previousQuantity = matchedOldItem.quantity
+                    )
                 }
                 matchedOldItem.quantity != newItem.quantity -> {
                     // Quantity changed
-                    newItem.changeStatus = ItemChangeStatus.MODIFIED
-                    newItem.previousQuantity = matchedOldItem.quantity
-                    newItem
+                    android.util.Log.d("KitchenViewModel", "Item ${productId} quantity changed: ${matchedOldItem.quantity} -> ${newItem.quantity}")
+                    newItem.copy(
+                        changeStatus = ItemChangeStatus.MODIFIED,
+                        previousQuantity = matchedOldItem.quantity
+                    )
                 }
                 else -> {
                     // Item unchanged
-                    newItem.changeStatus = ItemChangeStatus.UNCHANGED
-                    newItem
+                    newItem.copy(changeStatus = ItemChangeStatus.UNCHANGED)
                 }
             }
         }.toMutableList()
@@ -342,8 +340,8 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 key !in matchedOldItems && key !in readyItems.keys
             }
             .map { oldItem ->
-                oldItem.changeStatus = ItemChangeStatus.REMOVED
-                oldItem
+                android.util.Log.d("KitchenViewModel", "Item REMOVED: ${oldItem.product.name}")
+                oldItem.copy(changeStatus = ItemChangeStatus.REMOVED)
             }
 
         // Add removed items to the list (they will be shown with strikethrough)

@@ -2230,6 +2230,7 @@ export namespace models {
 	    sync_interval: number;
 	    sync_time: string;
 	    sync_mode: string;
+	    sync_on_payment: boolean;
 	    include_sales: boolean;
 	    include_orders: boolean;
 	    include_products: boolean;
@@ -2258,6 +2259,7 @@ export namespace models {
 	        this.sync_interval = source["sync_interval"];
 	        this.sync_time = source["sync_time"];
 	        this.sync_mode = source["sync_mode"];
+	        this.sync_on_payment = source["sync_on_payment"];
 	        this.include_sales = source["include_sales"];
 	        this.include_orders = source["include_orders"];
 	        this.include_products = source["include_products"];
