@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   ordersApiService,
   type OrderType,
@@ -7,10 +7,22 @@ import {
   type CartItem,
   type CartItemModifier,
   type Modifier,
+  type PendingOrder,
 } from '../services/ordersApi'
 import { authApiService } from '../services/authApi'
 
+type OrdersView = 'create' | 'pending'
+
 export function Orders() {
+  // View state
+  const [currentOrdersView, setCurrentOrdersView] = useState<OrdersView>('create')
+
+  // Pending orders state
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
+  const [pendingError, setPendingError] = useState('')
+  const [expandedOrder, setExpandedOrder] = useState<number | null>(null)
+
   // Data state
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -48,6 +60,27 @@ export function Orders() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Load pending orders when switching to pending view
+  const loadPendingOrders = useCallback(async () => {
+    setPendingLoading(true)
+    setPendingError('')
+
+    try {
+      const orders = await ordersApiService.getPendingOrders()
+      setPendingOrders(orders)
+    } catch (err) {
+      setPendingError(err instanceof Error ? err.message : 'Error al cargar pedidos')
+    } finally {
+      setPendingLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentOrdersView === 'pending') {
+      loadPendingOrders()
+    }
+  }, [currentOrdersView, loadPendingOrders])
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -234,6 +267,34 @@ export function Orders() {
     }).format(amount)
   }
 
+  const formatOrderTime = (isoString: string) => {
+    const date = new Date(isoString)
+    return date.toLocaleString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: 'short',
+    })
+  }
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending': return 'Pendiente'
+      case 'preparing': return 'Preparando'
+      case 'ready': return 'Listo'
+      default: return status
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return '#FF9800'
+      case 'preparing': return '#2196F3'
+      case 'ready': return '#4CAF50'
+      default: return '#666'
+    }
+  }
+
   const filteredProducts = selectedCategory
     ? products.filter(p => p.category_id === selectedCategory)
     : products
@@ -250,6 +311,147 @@ export function Orders() {
 
   return (
     <div className="orders-container">
+      {/* View Tabs */}
+      <div className="orders-view-tabs">
+        <button
+          className={`orders-view-tab ${currentOrdersView === 'create' ? 'active' : ''}`}
+          onClick={() => setCurrentOrdersView('create')}
+        >
+          ➕ Crear Pedido
+        </button>
+        <button
+          className={`orders-view-tab ${currentOrdersView === 'pending' ? 'active' : ''}`}
+          onClick={() => setCurrentOrdersView('pending')}
+        >
+          📋 Ver Pedidos ({pendingOrders.length})
+        </button>
+      </div>
+
+      {/* Pending Orders View */}
+      {currentOrdersView === 'pending' && (
+        <div className="pending-orders-section">
+          <div className="pending-orders-header">
+            <h2>Pedidos Pendientes</h2>
+            <button
+              className="refresh-btn"
+              onClick={loadPendingOrders}
+              disabled={pendingLoading}
+            >
+              {pendingLoading ? 'Cargando...' : '🔄 Actualizar'}
+            </button>
+          </div>
+
+          {pendingError && (
+            <div className="orders-error">
+              {pendingError}
+              <button onClick={() => setPendingError('')}>×</button>
+            </div>
+          )}
+
+          {pendingLoading && <div className="orders-loading"><p>Cargando pedidos...</p></div>}
+
+          {!pendingLoading && pendingOrders.length === 0 && (
+            <div className="no-pending-orders">
+              <span className="no-orders-icon">📭</span>
+              <p>No hay pedidos pendientes</p>
+            </div>
+          )}
+
+          {!pendingLoading && pendingOrders.length > 0 && (
+            <div className="pending-orders-list">
+              {pendingOrders.map(order => (
+                <div
+                  key={order.id}
+                  className={`pending-order-card ${expandedOrder === order.id ? 'expanded' : ''}`}
+                  onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                >
+                  <div className="pending-order-header">
+                    <div className="pending-order-info">
+                      <span
+                        className="order-type-badge"
+                        style={{ backgroundColor: order.order_type_color || '#1976d2' }}
+                      >
+                        {order.order_type_icon} {order.order_type}
+                      </span>
+                      <span className="order-number">#{order.order_number}</span>
+                      {order.source === 'pwa' && (
+                        <span className="order-source-badge">📱 Remoto</span>
+                      )}
+                    </div>
+                    <div className="pending-order-meta">
+                      <span
+                        className="order-status-badge"
+                        style={{ backgroundColor: getStatusColor(order.status) }}
+                      >
+                        {getStatusLabel(order.status)}
+                      </span>
+                      <span className="order-time">{formatOrderTime(order.created_at)}</span>
+                    </div>
+                  </div>
+
+                  <div className="pending-order-summary">
+                    <span>{order.items.length} items</span>
+                    <span className="order-total">{formatCurrency(order.total)}</span>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedOrder === order.id && (
+                    <div className="pending-order-details" onClick={e => e.stopPropagation()}>
+                      {/* Delivery Info */}
+                      {order.delivery_customer_name && (
+                        <div className="delivery-info-display">
+                          <strong>🚚 Entrega:</strong>
+                          <p>{order.delivery_customer_name}</p>
+                          <p>{order.delivery_address}</p>
+                          <p>📞 {order.delivery_phone}</p>
+                        </div>
+                      )}
+
+                      {/* Order Notes */}
+                      {order.notes && (
+                        <div className="order-notes-display">
+                          <strong>📝 Notas:</strong> {order.notes}
+                        </div>
+                      )}
+
+                      {/* Items List */}
+                      <div className="pending-order-items">
+                        {order.items.map(item => (
+                          <div key={item.id} className="pending-order-item">
+                            <div className="item-main">
+                              <span className="item-quantity">{item.quantity}x</span>
+                              <span className="item-name">{item.product_name}</span>
+                              <span className="item-price">{formatCurrency(item.subtotal)}</span>
+                            </div>
+                            {item.modifiers && item.modifiers.length > 0 && (
+                              <div className="item-modifiers">
+                                {item.modifiers.filter(m => m).join(', ')}
+                              </div>
+                            )}
+                            {item.notes && (
+                              <div className="item-notes">{item.notes}</div>
+                            )}
+                            <div
+                              className="item-status"
+                              style={{ color: getStatusColor(item.status) }}
+                            >
+                              {getStatusLabel(item.status)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Order View */}
+      {currentOrdersView === 'create' && (
+        <>
       {error && (
         <div className="orders-error">
           {error}
@@ -434,6 +636,8 @@ export function Orders() {
               )}
             </div>
           </div>
+        </>
+      )}
         </>
       )}
 

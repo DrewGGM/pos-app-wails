@@ -136,6 +136,32 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
+  // Play notification sound
+  const playNotificationSound = useCallback(() => {
+    try {
+      // Create an audio context and play a notification beep
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // Pleasant notification sound (two-tone beep)
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+      oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1); // C#6
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.2); // A5
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.4);
+    } catch (error) {
+      console.debug('Could not play notification sound:', error);
+    }
+  }, []);
+
   const handleNotifications = (message: WebSocketMessage) => {
     switch (message.type) {
       case 'order_new':
@@ -143,14 +169,14 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           position: 'bottom-right',
         });
         break;
-      
+
       case 'order_ready':
         toast.success(`Orden lista: ${message.data.order_number}`, {
           position: 'bottom-right',
           autoClose: false,
         });
         break;
-      
+
       case 'kitchen_update':
         if (message.data.status === 'preparing') {
           toast.info(`Preparando: ${message.data.item_name}`, {
@@ -158,15 +184,32 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           });
         }
         break;
-      
+
       case 'table_update':
         // Handle table status updates silently
         break;
-      
+
       case 'notification':
-        toast(message.data.message, {
-          type: message.data.type || 'info',
-        });
+        // Check if this is a PWA order notification
+        if (message.data.type === 'pwa_order') {
+          // Play sound for remote orders
+          if (message.data.play_sound) {
+            playNotificationSound();
+          }
+          toast.info(`📱 ${message.data.message}`, {
+            position: 'top-center',
+            autoClose: 10000,
+            style: {
+              background: '#1976d2',
+              color: 'white',
+              fontWeight: 'bold',
+            },
+          });
+        } else {
+          toast(message.data.message, {
+            type: message.data.type || 'info',
+          });
+        }
         break;
     }
   };

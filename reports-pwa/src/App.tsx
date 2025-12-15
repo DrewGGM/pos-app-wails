@@ -8,12 +8,19 @@ import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
 type AppView = 'reports' | 'settings' | 'orders'
+type Theme = 'light' | 'dark' | 'system'
 
 function App() {
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
+
+  // Theme state
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('pwa-theme')
+    return (saved as Theme) || 'system'
+  })
 
   // App navigation
   const [currentView, setCurrentView] = useState<AppView>('reports')
@@ -39,6 +46,40 @@ function App() {
 
   // Cash movements accordion state
   const [showCashMovements, setShowCashMovements] = useState(false)
+
+  // Apply theme to document
+  useEffect(() => {
+    const applyTheme = (newTheme: Theme) => {
+      if (newTheme === 'system') {
+        // Remove data-theme to let CSS handle it via prefers-color-scheme
+        document.documentElement.removeAttribute('data-theme')
+      } else {
+        document.documentElement.setAttribute('data-theme', newTheme)
+      }
+      localStorage.setItem('pwa-theme', newTheme)
+    }
+    applyTheme(theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(current => {
+      if (current === 'system') return 'light'
+      if (current === 'light') return 'dark'
+      return 'system'
+    })
+  }
+
+  const getThemeIcon = () => {
+    if (theme === 'light') return '☀️'
+    if (theme === 'dark') return '🌙'
+    return '🔄' // system
+  }
+
+  const getThemeLabel = () => {
+    if (theme === 'light') return 'Claro'
+    if (theme === 'dark') return 'Oscuro'
+    return 'Auto'
+  }
 
   // Check authentication on mount
   useEffect(() => {
@@ -469,7 +510,7 @@ function App() {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
+            gap: '8px',
           }}>
             <span style={{
               color: 'rgba(255,255,255,0.9)',
@@ -477,6 +518,27 @@ function App() {
             }}>
               {currentUser?.name || currentUser?.username}
             </span>
+            <button
+              onClick={toggleTheme}
+              title={`Tema: ${getThemeLabel()}`}
+              style={{
+                padding: '8px 12px',
+                border: 'none',
+                borderRadius: '6px',
+                background: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+              onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+            >
+              {getThemeIcon()}
+            </button>
             <button
               onClick={handleLogout}
               style={{

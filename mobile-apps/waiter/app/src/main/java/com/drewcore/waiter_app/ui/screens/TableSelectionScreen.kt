@@ -117,7 +117,8 @@ fun TableSelectionScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        // Extra end padding to avoid FAB overlap
+                        contentPadding = PaddingValues(start = 16.dp, end = 90.dp, top = 8.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -139,7 +140,8 @@ fun TableSelectionScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         modifier = Modifier.weight(if (availableTables.isEmpty()) 1f else 0.5f),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        // Extra end padding to avoid FAB overlap
+                        contentPadding = PaddingValues(start = 16.dp, end = 90.dp, top = 8.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {

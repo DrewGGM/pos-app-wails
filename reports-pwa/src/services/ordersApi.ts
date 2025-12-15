@@ -77,6 +77,34 @@ export interface CreateOrderResponse {
   total: number
 }
 
+export interface PendingOrderItem {
+  id: number
+  product_name: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+  notes: string
+  status: string
+  modifiers: string[]
+}
+
+export interface PendingOrder {
+  id: number
+  order_number: string
+  status: string
+  order_type: string
+  order_type_color: string
+  order_type_icon: string
+  source: string
+  total: number
+  notes: string
+  items: PendingOrderItem[]
+  delivery_customer_name?: string
+  delivery_address?: string
+  delivery_phone?: string
+  created_at: string
+}
+
 export interface ApiResponse<T> {
   success: boolean
   message?: string
@@ -143,6 +171,17 @@ class OrdersApiService {
 
     if (!response.success || !response.data) {
       throw new Error(response.error || 'Failed to create order')
+    }
+
+    return response.data
+  }
+
+  // Get pending orders
+  async getPendingOrders(): Promise<PendingOrder[]> {
+    const response = await this.request<ApiResponse<PendingOrder[]>>('/api/v1/orders/pending')
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get pending orders')
     }
 
     return response.data

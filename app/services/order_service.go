@@ -149,7 +149,7 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	// Send to kitchen AFTER transaction is complete and order is reloaded
 	// NOTE: "split" source is used for split bills - these should NOT be sent to kitchen
 	// because the original order was already sent when it was first created
-	if order.Source == "pos" || order.Source == "waiter_app" {
+	if order.Source == "pos" || order.Source == "waiter_app" || order.Source == "pwa" {
 		go s.sendToKitchen(reloadedOrder)
 	}
 
@@ -910,6 +910,26 @@ func (s *OrderService) sendToKitchen(order *models.Order) {
 		// Broadcast to kitchen clients
 		s.wsServer.BroadcastToKitchen(message)
 		log.Printf("OrderService: Order %s sent to kitchen successfully", order.OrderNumber)
+
+		// If this is a PWA order, send a special notification to all clients with sound
+		if order.Source == "pwa" {
+			notificationData := map[string]interface{}{
+				"type":         "pwa_order",
+				"order_number": order.OrderNumber,
+				"order_id":     order.ID,
+				"message":      fmt.Sprintf("Nuevo pedido remoto: %s", order.OrderNumber),
+				"play_sound":   true,
+			}
+			notificationJSON, _ := json.Marshal(notificationData)
+
+			notificationMsg := websocket.Message{
+				Type:      websocket.TypeNotification,
+				Timestamp: time.Now(),
+				Data:      notificationJSON,
+			}
+			s.wsServer.BroadcastMessage(notificationMsg)
+			log.Printf("OrderService: PWA order notification sent for order %s", order.OrderNumber)
+		}
 
 		// Mark all items as sent to kitchen
 		now := time.Now()

@@ -125,6 +125,36 @@ type CreateOrderModifierRequest struct {
 	PriceChange float64 `json:"price_change"`
 }
 
+// PendingOrderResponse - order info for PWA pending orders view
+type PendingOrderResponse struct {
+	ID                   uint                        `json:"id"`
+	OrderNumber          string                      `json:"order_number"`
+	Status               string                      `json:"status"`
+	OrderType            string                      `json:"order_type"`
+	OrderTypeColor       string                      `json:"order_type_color"`
+	OrderTypeIcon        string                      `json:"order_type_icon"`
+	Source               string                      `json:"source"`
+	Total                float64                     `json:"total"`
+	Notes                string                      `json:"notes"`
+	Items                []PendingOrderItemResponse  `json:"items"`
+	DeliveryCustomerName string                      `json:"delivery_customer_name,omitempty"`
+	DeliveryAddress      string                      `json:"delivery_address,omitempty"`
+	DeliveryPhone        string                      `json:"delivery_phone,omitempty"`
+	CreatedAt            string                      `json:"created_at"`
+}
+
+// PendingOrderItemResponse - order item info for pending orders
+type PendingOrderItemResponse struct {
+	ID          uint     `json:"id"`
+	ProductName string   `json:"product_name"`
+	Quantity    int      `json:"quantity"`
+	UnitPrice   float64  `json:"unit_price"`
+	Subtotal    float64  `json:"subtotal"`
+	Notes       string   `json:"notes"`
+	Status      string   `json:"status"`
+	Modifiers   []string `json:"modifiers"`
+}
+
 // NewConfigAPIServer creates a new config API server
 func NewConfigAPIServer(
 	port string,
@@ -167,6 +197,7 @@ func (s *ConfigAPIServer) Start() error {
 	// Order endpoints for PWA
 	mux.HandleFunc("/api/v1/orders/types", s.handleGetOrderTypes)
 	mux.HandleFunc("/api/v1/orders/products", s.handleGetProducts)
+	mux.HandleFunc("/api/v1/orders/pending", s.handleGetPendingOrders)
 	mux.HandleFunc("/api/v1/orders", s.handleOrders)
 
 	s.server = &http.Server{
@@ -186,6 +217,7 @@ func (s *ConfigAPIServer) Start() error {
 	log.Printf("[CONFIG API]   POST   /api/v1/auth/login")
 	log.Printf("[CONFIG API]   GET    /api/v1/orders/types")
 	log.Printf("[CONFIG API]   GET    /api/v1/orders/products")
+	log.Printf("[CONFIG API]   GET    /api/v1/orders/pending")
 	log.Printf("[CONFIG API]   POST   /api/v1/orders")
 
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -769,5 +801,98 @@ func (s *ConfigAPIServer) handleOrders(w http.ResponseWriter, r *http.Request) {
 			"order_number": createdOrder.OrderNumber,
 			"total":        createdOrder.Total,
 		},
+	})
+}
+
+// handleGetPendingOrders returns pending orders for the PWA
+func (s *ConfigAPIServer) handleGetPendingOrders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use GET.",
+		})
+		return
+	}
+
+	if s.orderService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Order service not available",
+		})
+		return
+	}
+
+	// Get pending orders (status = pending or preparing)
+	orders, err := s.orderService.GetPendingOrders()
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to get pending orders: %v", err),
+		})
+		return
+	}
+
+	// Convert to response format
+	response := make([]PendingOrderResponse, len(orders))
+	for i, order := range orders {
+		// Get order type info
+		orderTypeName := ""
+		orderTypeColor := "#1976d2"
+		orderTypeIcon := "📦"
+		if order.OrderType != nil {
+			orderTypeName = order.OrderType.Name
+			orderTypeColor = order.OrderType.DisplayColor
+			orderTypeIcon = order.OrderType.Icon
+		}
+
+		// Convert items
+		items := make([]PendingOrderItemResponse, len(order.Items))
+		for j, item := range order.Items {
+			productName := ""
+			if item.Product != nil {
+				productName = item.Product.Name
+			}
+
+			// Get modifier names
+			modifierNames := make([]string, len(item.Modifiers))
+			for k, mod := range item.Modifiers {
+				if mod.Modifier != nil {
+					modifierNames[k] = mod.Modifier.Name
+				}
+			}
+
+			items[j] = PendingOrderItemResponse{
+				ID:          item.ID,
+				ProductName: productName,
+				Quantity:    item.Quantity,
+				UnitPrice:   item.UnitPrice,
+				Subtotal:    item.Subtotal,
+				Notes:       item.Notes,
+				Status:      item.Status,
+				Modifiers:   modifierNames,
+			}
+		}
+
+		response[i] = PendingOrderResponse{
+			ID:                   order.ID,
+			OrderNumber:          order.OrderNumber,
+			Status:               string(order.Status),
+			OrderType:            orderTypeName,
+			OrderTypeColor:       orderTypeColor,
+			OrderTypeIcon:        orderTypeIcon,
+			Source:               order.Source,
+			Total:                order.Total,
+			Notes:                order.Notes,
+			Items:                items,
+			DeliveryCustomerName: order.DeliveryCustomerName,
+			DeliveryAddress:      order.DeliveryAddress,
+			DeliveryPhone:        order.DeliveryPhone,
+			CreatedAt:            order.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    response,
 	})
 }
