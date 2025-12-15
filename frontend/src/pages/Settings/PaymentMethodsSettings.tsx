@@ -35,6 +35,7 @@ import {
   AccountBalance as BankIcon,
   QrCode as QRIcon,
   CheckCircle as CheckCircleIcon,
+  CameraAlt as CameraIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { PaymentMethod } from '../../types/models';
@@ -56,6 +57,7 @@ const PaymentMethodsSettings: React.FC = () => {
     type: 'cash',
     icon: '',
     requires_ref: false,
+    requires_voucher: false,
     dian_payment_method_id: undefined,
     affects_cash_register: true,
     show_in_cash_summary: true,
@@ -98,6 +100,7 @@ const PaymentMethodsSettings: React.FC = () => {
         type: method.type,
         icon: method.icon || '',
         requires_ref: method.requires_ref || false,
+        requires_voucher: method.requires_voucher || false,
         dian_payment_method_id: method.dian_payment_method_id,
         affects_cash_register: method.affects_cash_register !== false, // Default to true
         show_in_cash_summary: method.show_in_cash_summary !== false, // Default to true
@@ -112,6 +115,7 @@ const PaymentMethodsSettings: React.FC = () => {
         type: 'cash',
         icon: '',
         requires_ref: false,
+        requires_voucher: false,
         dian_payment_method_id: undefined,
         affects_cash_register: true,
         show_in_cash_summary: true,
@@ -237,6 +241,7 @@ const PaymentMethodsSettings: React.FC = () => {
                 <TableCell>Nombre</TableCell>
                 <TableCell>Tipo</TableCell>
                 <TableCell>Requiere Ref.</TableCell>
+                <TableCell>Comprobante</TableCell>
                 <TableCell>Afecta Caja</TableCell>
                 <TableCell>DIAN</TableCell>
                 <TableCell>Estado</TableCell>
@@ -266,6 +271,13 @@ const PaymentMethodsSettings: React.FC = () => {
                     <TableCell>
                       {method.requires_ref ? (
                         <CheckCircleIcon color="success" fontSize="small" />
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {method.requires_voucher ? (
+                        <CameraIcon color="secondary" fontSize="small" />
                       ) : (
                         '-'
                       )}
@@ -395,6 +407,26 @@ const PaymentMethodsSettings: React.FC = () => {
                     />
                   }
                   label="Requiere Referencia"
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.requires_voucher || false}
+                      onChange={(e) =>
+                        setFormData({ ...formData, requires_voucher: e.target.checked })
+                      }
+                      color="secondary"
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <CameraIcon fontSize="small" />
+                      Permite Comprobante
+                    </Box>
+                  }
                 />
               </Grid>
 

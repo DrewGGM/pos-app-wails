@@ -289,6 +289,22 @@ func runAdditionalMigrations() error {
 		return fmt.Errorf("failed to add show_in_reports column: %w", err)
 	}
 
+	// Add requires_voucher column to payment_methods if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE payment_methods
+		ADD COLUMN IF NOT EXISTS requires_voucher BOOLEAN DEFAULT false
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add requires_voucher column: %w", err)
+	}
+
+	// Add voucher_image column to payments if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE payments
+		ADD COLUMN IF NOT EXISTS voucher_image TEXT
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add voucher_image column: %w", err)
+	}
+
 	log.Println("✅ Additional migrations completed successfully")
 	return nil
 }

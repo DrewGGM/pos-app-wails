@@ -8,6 +8,7 @@ import {
   type CartItemModifier,
   type Modifier,
   type PendingOrder,
+  type Table,
 } from '../services/ordersApi'
 import { authApiService } from '../services/authApi'
 
@@ -32,6 +33,11 @@ export function Orders() {
   const [selectedOrderType, setSelectedOrderType] = useState<OrderType | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+
+  // Table selection state (for dine-in orders)
+  const [tables, setTables] = useState<Table[]>([])
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null)
+  const [tablesLoading, setTablesLoading] = useState(false)
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([])
@@ -119,11 +125,38 @@ export function Orders() {
     }
   }
 
+  // Check if order type requires table selection
+  const isDineInOrderType = (code: string) => {
+    const dineInCodes = ['dine_in', 'dine-in', 'comer_aqui', 'comer-aqui', 'mesa', 'local']
+    return dineInCodes.includes(code.toLowerCase())
+  }
+
+  // Load available tables
+  const loadTables = async () => {
+    setTablesLoading(true)
+    try {
+      const tablesData = await ordersApiService.getTables()
+      setTables(tablesData)
+    } catch (err) {
+      console.error('Error loading tables:', err)
+      setTables([])
+    } finally {
+      setTablesLoading(false)
+    }
+  }
+
   const handleOrderTypeSelect = (orderType: OrderType) => {
     setSelectedOrderType(orderType)
+    setSelectedTable(null) // Reset table selection
+
     // Clear delivery info if not delivery
     if (orderType.code !== 'delivery') {
       setDeliveryInfo({ name: '', address: '', phone: '' })
+    }
+
+    // Load tables if dine-in order
+    if (isDineInOrderType(orderType.code)) {
+      loadTables()
     }
   }
 
@@ -218,6 +251,12 @@ export function Orders() {
       }
     }
 
+    // Validate table selection for dine-in orders
+    if (isDineInOrderType(selectedOrderType.code) && !selectedTable) {
+      setError('Selecciona una mesa para el pedido')
+      return
+    }
+
     setSubmitting(true)
     setError('')
     setSuccess('')
@@ -228,6 +267,7 @@ export function Orders() {
       const result = await ordersApiService.createOrder({
         order_type_id: selectedOrderType.id,
         employee_id: user?.id || 0,
+        table_id: selectedTable?.id, // Include table_id for dine-in orders
         items: cart.map(item => ({
           product_id: item.product.id,
           quantity: item.quantity,
@@ -250,6 +290,7 @@ export function Orders() {
       setOrderNotes('')
       setDeliveryInfo({ name: '', address: '', phone: '' })
       setSelectedOrderType(null)
+      setSelectedTable(null) // Reset table selection
 
       setTimeout(() => setSuccess(''), 5000)
     } catch (err) {
@@ -529,6 +570,48 @@ export function Orders() {
                   onChange={e => setDeliveryInfo(prev => ({ ...prev, phone: e.target.value }))}
                 />
               </div>
+            </div>
+          )}
+
+          {/* Table Selection (for dine-in orders) */}
+          {isDineInOrderType(selectedOrderType.code) && (
+            <div className="table-selection-section">
+              <h3>Selecciona una mesa</h3>
+              {tablesLoading ? (
+                <div className="tables-loading">Cargando mesas...</div>
+              ) : tables.length === 0 ? (
+                <div className="no-tables">No hay mesas disponibles</div>
+              ) : (
+                <div className="tables-grid">
+                  {tables.map(table => {
+                    const isAvailable = table.status === 'available'
+                    const isSelected = selectedTable?.id === table.id
+                    return (
+                      <button
+                        key={table.id}
+                        className={`table-btn ${isSelected ? 'selected' : ''} ${!isAvailable ? 'occupied' : ''}`}
+                        onClick={() => isAvailable && setSelectedTable(table)}
+                        disabled={!isAvailable}
+                      >
+                        <span className="table-number">{table.number}</span>
+                        <span className="table-name">{table.name}</span>
+                        <span className="table-capacity">👥 {table.capacity}</span>
+                        {table.zone && <span className="table-zone">{table.zone}</span>}
+                        <span className={`table-status ${table.status}`}>
+                          {table.status === 'available' ? '✓ Disponible' :
+                           table.status === 'occupied' ? '🔒 Ocupada' :
+                           table.status === 'reserved' ? '📅 Reservada' : table.status}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {selectedTable && (
+                <div className="selected-table-info">
+                  Mesa seleccionada: <strong>{selectedTable.name || selectedTable.number}</strong>
+                </div>
+              )}
             </div>
           )}
 

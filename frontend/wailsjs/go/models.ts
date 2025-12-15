@@ -819,6 +819,7 @@ export namespace models {
 	    type: string;
 	    icon: string;
 	    requires_ref: boolean;
+	    requires_voucher: boolean;
 	    dian_payment_method_id?: number;
 	    affects_cash_register: boolean;
 	    show_in_cash_summary: boolean;
@@ -840,6 +841,7 @@ export namespace models {
 	        this.type = source["type"];
 	        this.icon = source["icon"];
 	        this.requires_ref = source["requires_ref"];
+	        this.requires_voucher = source["requires_voucher"];
 	        this.dian_payment_method_id = source["dian_payment_method_id"];
 	        this.affects_cash_register = source["affects_cash_register"];
 	        this.show_in_cash_summary = source["show_in_cash_summary"];
@@ -876,6 +878,7 @@ export namespace models {
 	    payment_method?: PaymentMethod;
 	    amount: number;
 	    reference: string;
+	    voucher_image?: string;
 	    allocations?: PaymentAllocation[];
 	    created_at: time.Time;
 	
@@ -891,6 +894,7 @@ export namespace models {
 	        this.payment_method = this.convertValues(source["payment_method"], PaymentMethod);
 	        this.amount = source["amount"];
 	        this.reference = source["reference"];
+	        this.voucher_image = source["voucher_image"];
 	        this.allocations = this.convertValues(source["allocations"], PaymentAllocation);
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	    }
@@ -4394,6 +4398,7 @@ export namespace services {
 	    payment_method_id: number;
 	    amount: number;
 	    reference: string;
+	    voucher_image?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PaymentData(source);
@@ -4404,6 +4409,7 @@ export namespace services {
 	        this.payment_method_id = source["payment_method_id"];
 	        this.amount = source["amount"];
 	        this.reference = source["reference"];
+	        this.voucher_image = source["voucher_image"];
 	    }
 	}
 	export class PaymentMethodDetail {

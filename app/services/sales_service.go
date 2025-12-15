@@ -207,6 +207,7 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 				PaymentMethodID: payment.PaymentMethodID,
 				Amount:          payment.Amount,
 				Reference:       payment.Reference,
+				VoucherImage:    payment.VoucherImage,
 			}
 			if err := tx.Create(&p).Error; err != nil {
 				return fmt.Errorf("failed to create payment: %w", err)
@@ -315,6 +316,7 @@ type PaymentData struct {
 	PaymentMethodID uint    `json:"payment_method_id"`
 	Amount          float64 `json:"amount"`
 	Reference       string  `json:"reference"`
+	VoucherImage    string  `json:"voucher_image,omitempty"` // Base64 encoded voucher image
 }
 
 // QuickSaleItem represents an item in a quick sale

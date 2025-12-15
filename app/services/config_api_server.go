@@ -155,6 +155,16 @@ type PendingOrderItemResponse struct {
 	Modifiers   []string `json:"modifiers"`
 }
 
+// TableResponse - table info for PWA
+type TableResponse struct {
+	ID       uint   `json:"id"`
+	Number   string `json:"number"`
+	Name     string `json:"name"`
+	Capacity int    `json:"capacity"`
+	Status   string `json:"status"`
+	Zone     string `json:"zone"`
+}
+
 // NewConfigAPIServer creates a new config API server
 func NewConfigAPIServer(
 	port string,
@@ -200,6 +210,9 @@ func (s *ConfigAPIServer) Start() error {
 	mux.HandleFunc("/api/v1/orders/pending", s.handleGetPendingOrders)
 	mux.HandleFunc("/api/v1/orders", s.handleOrders)
 
+	// Table endpoint for PWA
+	mux.HandleFunc("/api/v1/tables", s.handleGetTables)
+
 	s.server = &http.Server{
 		Addr:         s.port,
 		Handler:      s.corsMiddleware(s.loggingMiddleware(mux)),
@@ -219,6 +232,7 @@ func (s *ConfigAPIServer) Start() error {
 	log.Printf("[CONFIG API]   GET    /api/v1/orders/products")
 	log.Printf("[CONFIG API]   GET    /api/v1/orders/pending")
 	log.Printf("[CONFIG API]   POST   /api/v1/orders")
+	log.Printf("[CONFIG API]   GET    /api/v1/tables")
 
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("config API server error: %w", err)
@@ -888,6 +902,53 @@ func (s *ConfigAPIServer) handleGetPendingOrders(w http.ResponseWriter, r *http.
 			DeliveryAddress:      order.DeliveryAddress,
 			DeliveryPhone:        order.DeliveryPhone,
 			CreatedAt:            order.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    response,
+	})
+}
+
+// handleGetTables returns available tables for the PWA
+func (s *ConfigAPIServer) handleGetTables(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use GET.",
+		})
+		return
+	}
+
+	if s.orderService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Order service not available",
+		})
+		return
+	}
+
+	// Get all active tables
+	tables, err := s.orderService.GetTables()
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to get tables: %v", err),
+		})
+		return
+	}
+
+	// Convert to response format
+	response := make([]TableResponse, len(tables))
+	for i, t := range tables {
+		response[i] = TableResponse{
+			ID:       t.ID,
+			Number:   t.Number,
+			Name:     t.Name,
+			Capacity: t.Capacity,
+			Status:   t.Status,
+			Zone:     t.Zone,
 		}
 	}
 

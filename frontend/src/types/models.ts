@@ -245,6 +245,7 @@ export interface PaymentMethod extends BaseModel {
   type: 'cash' | 'card' | 'digital' | 'other' | 'check';
   requires_reference?: boolean; // Made optional
   requires_ref?: boolean; // Alias for requires_reference
+  requires_voucher?: boolean; // Allows/requires payment voucher image
   dian_payment_method_id?: number; // DIAN parametric payment method ID for electronic invoicing
   affects_cash_register?: boolean; // Whether this payment type counts in cash register reconciliation
   show_in_cash_summary?: boolean; // Whether this payment method appears in cash register sales summary

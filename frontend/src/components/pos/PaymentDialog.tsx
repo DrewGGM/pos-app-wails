@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -23,6 +23,7 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   IconButton,
+  Collapse,
 } from '@mui/material';
 import {
   Payment as PaymentIcon,
@@ -32,6 +33,10 @@ import {
   Delete as DeleteIcon,
   Receipt as ReceiptIcon,
   Email as EmailIcon,
+  CameraAlt as CameraIcon,
+  FileUpload as UploadIcon,
+  Close as CloseIcon,
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import { PaymentMethod, Customer } from '../../types/models';
 
@@ -53,6 +58,7 @@ interface PaymentLine {
   payment_method_name: string;
   amount: number;
   reference?: string;
+  voucher_image?: string; // Base64 encoded voucher image
   allocated_items?: number[]; // IDs of order items allocated to this payment
 }
 
@@ -77,6 +83,12 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [customerEmail, setCustomerEmail] = useState(customer?.email || defaultConsumerEmail || '');
   const [error, setError] = useState('');
   const [change, setChange] = useState(0);
+  // Voucher image states
+  const [voucherImage, setVoucherImage] = useState<string>('');
+  const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset all state when dialog opens or total changes (for split payments)
   useEffect(() => {
@@ -91,8 +103,106 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       setCustomerEmail(customer?.email || defaultConsumerEmail || '');
       setError('');
       setChange(0);
+      setVoucherImage('');
+      setCameraDialogOpen(false);
+      stopCamera();
     }
   }, [open, total, customer?.email, defaultPrintReceipt, defaultConsumerEmail]);
+
+  // Cleanup camera stream when dialog closes
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // Camera functions
+  const openCameraDialog = () => {
+    setCameraDialogOpen(true);
+  };
+
+  const closeCameraDialog = () => {
+    stopCamera();
+    setCameraDialogOpen(false);
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment', // Prefer back camera
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      });
+      setCameraStream(stream);
+      // Set video source after a small delay to ensure ref is ready
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+      setError('No se pudo acceder a la cámara');
+      closeCameraDialog();
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0);
+      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+      setVoucherImage(imageData);
+      closeCameraDialog();
+    }
+  };
+
+  // Start camera when dialog opens
+  useEffect(() => {
+    if (cameraDialogOpen) {
+      startCamera();
+    }
+  }, [cameraDialogOpen]);
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Solo se permiten archivos de imagen');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setVoucherImage(result);
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const clearVoucherImage = () => {
+    setVoucherImage('');
+  };
 
   useEffect(() => {
     // Set initial amount to remaining balance
@@ -153,11 +263,13 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       payment_method_name: method.name,
       amount: paymentAmount, // Always the exact amount, never more
       reference: reference.trim() || undefined,
+      voucher_image: voucherImage || undefined,
     };
 
     setPaymentLines([...paymentLines, newLine]);
     setAmount('');
     setReference('');
+    setVoucherImage(''); // Clear voucher image after adding payment
 
     // Clear error after 3 seconds if it's a change message
     if (cashChange > 0) {
@@ -184,6 +296,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
         payment_method_id: line.payment_method_id,
         amount: line.amount,
         reference: line.reference,
+        voucher_image: line.voucher_image,
       })),
       needsInvoice: needsElectronicInvoice,
       printReceipt,
@@ -348,6 +461,70 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 />
               )}
 
+              {/* Voucher Image Section */}
+              {selectedMethod &&
+               paymentMethods.find(m => m.id === selectedMethod)?.requires_voucher && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Comprobante de Pago (opcional)
+                  </Typography>
+
+                  {/* Camera/Upload buttons */}
+                  {!voucherImage && (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CameraIcon />}
+                        onClick={openCameraDialog}
+                      >
+                        Cámara
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<UploadIcon />}
+                        component="label"
+                      >
+                        Subir
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          ref={fileInputRef}
+                          onChange={handleFileUpload}
+                        />
+                      </Button>
+                    </Box>
+                  )}
+
+                  {/* Image preview */}
+                  {voucherImage && (
+                    <Box sx={{ position: 'relative' }}>
+                      <img
+                        src={voucherImage}
+                        alt="Comprobante"
+                        style={{ width: '100%', maxHeight: 150, objectFit: 'contain', borderRadius: 4 }}
+                      />
+                      <IconButton
+                        size="small"
+                        sx={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          bgcolor: 'error.main',
+                          color: 'white',
+                          '&:hover': { bgcolor: 'error.dark' }
+                        }}
+                        onClick={clearVoucherImage}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
               <Button
                 fullWidth
                 variant="contained"
@@ -369,7 +546,14 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
               {paymentLines.map((line, index) => (
                 <ListItem key={index}>
                   <ListItemText
-                    primary={line.payment_method_name}
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {line.payment_method_name}
+                        {line.voucher_image && (
+                          <ImageIcon fontSize="small" color="secondary" titleAccess="Tiene comprobante" />
+                        )}
+                      </Box>
+                    }
                     secondary={line.reference}
                   />
                   <ListItemSecondaryAction>
@@ -489,6 +673,78 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
           Confirmar Pago
         </Button>
       </DialogActions>
+
+      {/* Camera Capture Dialog - Larger for better visibility */}
+      <Dialog
+        open={cameraDialogOpen}
+        onClose={closeCameraDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: { bgcolor: 'black' }
+        }}
+      >
+        <DialogTitle sx={{ bgcolor: 'black', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CameraIcon />
+            <Typography>Capturar Comprobante</Typography>
+          </Box>
+          <IconButton onClick={closeCameraDialog} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: 'black', p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Box sx={{ width: '100%', maxWidth: 640, position: 'relative' }}>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              style={{
+                width: '100%',
+                height: 'auto',
+                maxHeight: '60vh',
+                borderRadius: 8,
+                backgroundColor: '#333'
+              }}
+            />
+            {!cameraStream && (
+              <Box sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: 'white',
+                textAlign: 'center'
+              }}>
+                <CameraIcon sx={{ fontSize: 48, mb: 1 }} />
+                <Typography>Iniciando cámara...</Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: 'black', justifyContent: 'center', pb: 3 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            startIcon={<CameraIcon />}
+            onClick={capturePhoto}
+            disabled={!cameraStream}
+            sx={{ minWidth: 200 }}
+          >
+            Capturar Foto
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            size="large"
+            onClick={closeCameraDialog}
+            sx={{ minWidth: 120, borderColor: 'white', color: 'white' }}
+          >
+            Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 };

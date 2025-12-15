@@ -755,6 +755,123 @@ body {
   border-color: var(--primary-color);
 }
 
+/* Table Selection */
+.table-selection-section {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.table-selection-section h3 {
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+}
+
+.tables-loading,
+.no-tables {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.tables-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 1rem;
+}
+
+.table-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-bg);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.table-btn:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.table-btn.selected {
+  border-color: var(--success-color);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.table-btn.occupied {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(244, 67, 54, 0.05);
+}
+
+.table-btn .table-number {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.table-btn .table-name {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.table-btn .table-capacity {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.table-btn .table-zone {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: var(--bg-color);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+}
+
+.table-btn .table-status {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  margin-top: 0.3rem;
+}
+
+.table-btn .table-status.available {
+  color: var(--success-color);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.table-btn .table-status.occupied {
+  color: var(--error-color);
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.table-btn .table-status.reserved {
+  color: var(--warning-color);
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.selected-table-info {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--success-color);
+}
+
+.selected-table-info strong {
+  color: var(--text-primary);
+}
+
 .orders-main {
   display: grid;
   grid-template-columns: 1fr 350px;

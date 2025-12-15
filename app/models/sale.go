@@ -44,6 +44,7 @@ type Payment struct {
 	PaymentMethod   *PaymentMethod      `gorm:"foreignKey:PaymentMethodID" json:"payment_method,omitempty"`
 	Amount          float64             `json:"amount"`
 	Reference       string              `json:"reference"`             // Transaction ID, check number, etc.
+	VoucherImage    string              `gorm:"type:text" json:"voucher_image,omitempty"` // Base64 encoded voucher image or file path
 	Allocations     []PaymentAllocation `gorm:"foreignKey:PaymentID" json:"allocations,omitempty"` // Product allocations for split payments
 	CreatedAt       time.Time           `json:"created_at"`
 }
@@ -66,6 +67,7 @@ type PaymentMethod struct {
 	Type                 string    `json:"type"` // "cash", "digital", "card", "check", "other"
 	Icon                 string    `json:"icon"`
 	RequiresRef          bool      `json:"requires_ref"`            // Requires reference number
+	RequiresVoucher      bool      `json:"requires_voucher"`        // Allows/requires payment voucher image
 	DIANPaymentMethodID  *int      `json:"dian_payment_method_id"`  // DIAN parametric payment method ID for electronic invoicing
 	AffectsCashRegister  bool      `gorm:"default:true" json:"affects_cash_register"` // Whether this payment type counts in cash register reconciliation
 	ShowInCashSummary    bool      `gorm:"default:true" json:"show_in_cash_summary"`  // Whether this payment method appears in cash register sales summary

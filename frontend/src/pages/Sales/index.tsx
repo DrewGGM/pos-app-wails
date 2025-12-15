@@ -46,6 +46,8 @@ import {
   Pending as PendingIcon,
   Delete as DeleteIcon,
   Email as EmailIcon,
+  Image as ImageIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -92,6 +94,8 @@ const Sales: React.FC = () => {
   const [selectedDianResponse, setSelectedDianResponse] = useState<string>('');
   const [selectedElectronicInvoice, setSelectedElectronicInvoice] = useState<any>(null);
   const [dianTab, setDianTab] = useState(0);
+  const [voucherImageDialog, setVoucherImageDialog] = useState(false);
+  const [selectedVoucherImage, setSelectedVoucherImage] = useState<string>('');
 
   useEffect(() => {
     dispatch(fetchTodaySales());
@@ -288,6 +292,22 @@ const Sales: React.FC = () => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleViewVoucher = (voucherImage: string) => {
+    setSelectedVoucherImage(voucherImage);
+    setVoucherImageDialog(true);
+  };
+
+  const handleDownloadVoucher = (voucherImage: string, saleNumber: string, paymentIndex: number) => {
+    // Create a link element and trigger download
+    const link = document.createElement('a');
+    link.href = voucherImage;
+    link.download = `comprobante_${saleNumber}_pago${paymentIndex + 1}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Comprobante descargado');
   };
 
   const filteredSales = sales.filter(sale => {
@@ -893,20 +913,45 @@ const Sales: React.FC = () => {
                 {selectedSale.payment_details && selectedSale.payment_details.length > 0 ? (
                   <Box sx={{ mt: 1 }}>
                     {selectedSale.payment_details.map((payment, index) => (
-                      <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, py: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                           <Chip
                             size="small"
                             label={payment.payment_method?.name || 'Efectivo'}
                             color={
-                              payment.payment_method?.name === 'cash' ? 'success' :
-                              payment.payment_method?.name === 'card' ? 'primary' : 'info'
+                              payment.payment_method?.type === 'cash' ? 'success' :
+                              payment.payment_method?.type === 'card' ? 'primary' : 'info'
                             }
                           />
                           {payment.reference && (
                             <Typography variant="caption" color="text.secondary">
                               Ref: {payment.reference}
                             </Typography>
+                          )}
+                          {/* Voucher Image Button */}
+                          {(payment as any).voucher_image && (
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                color="secondary"
+                                onClick={() => handleViewVoucher((payment as any).voucher_image)}
+                                title="Ver comprobante"
+                              >
+                                <ImageIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleDownloadVoucher(
+                                  (payment as any).voucher_image,
+                                  selectedSale.sale_number || 'venta',
+                                  index
+                                )}
+                                title="Descargar comprobante"
+                              >
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           )}
                         </Box>
                         <Typography variant="body2" fontWeight="bold">
@@ -1122,6 +1167,61 @@ const Sales: React.FC = () => {
             }}
           >
             Copiar {dianTab === 0 ? 'Solicitud' : 'Respuesta'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Voucher Image Dialog */}
+      <Dialog
+        open={voucherImageDialog}
+        onClose={() => setVoucherImageDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ImageIcon color="secondary" />
+            <Typography variant="h6">Comprobante de Pago</Typography>
+          </Box>
+          <IconButton onClick={() => setVoucherImageDialog(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+          {selectedVoucherImage && (
+            <img
+              src={selectedVoucherImage}
+              alt="Comprobante de pago"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '70vh',
+                objectFit: 'contain',
+                borderRadius: 8,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={() => {
+              if (selectedVoucherImage) {
+                const link = document.createElement('a');
+                link.href = selectedVoucherImage;
+                link.download = `comprobante_${new Date().getTime()}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                toast.success('Comprobante descargado');
+              }
+            }}
+          >
+            Descargar Imagen
+          </Button>
+          <Button onClick={() => setVoucherImageDialog(false)}>
+            Cerrar
           </Button>
         </DialogActions>
       </Dialog>

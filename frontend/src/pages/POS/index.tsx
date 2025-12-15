@@ -370,6 +370,15 @@ const POS: React.FC = () => {
             setSelectedTable(order.table || null);
             setSelectedCustomer(order.customer || null);
 
+            // Load delivery info if present
+            if (order.delivery_customer_name || order.delivery_address || order.delivery_phone) {
+              setDeliveryInfo({
+                customerName: order.delivery_customer_name || '',
+                address: order.delivery_address || '',
+                phone: order.delivery_phone || ''
+              });
+            }
+
             toast.info(`Orden ${order.order_number} cargada`);
           }
         } else if (tableId) {
@@ -394,6 +403,15 @@ const POS: React.FC = () => {
               setSelectedTable(table);
               setOrderItems(existingOrder.items || []);
               setSelectedCustomer(existingOrder.customer || null);
+
+              // Load delivery info if present
+              if (existingOrder.delivery_customer_name || existingOrder.delivery_address || existingOrder.delivery_phone) {
+                setDeliveryInfo({
+                  customerName: existingOrder.delivery_customer_name || '',
+                  address: existingOrder.delivery_address || '',
+                  phone: existingOrder.delivery_phone || ''
+                });
+              }
 
               toast.info(`Orden de mesa ${table.number} cargada`);
             } else {

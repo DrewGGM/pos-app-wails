@@ -189,6 +189,7 @@ function mapSale(w: models.Sale): Sale {
         icon: payment.payment_method.icon || '',
         requires_ref: payment.payment_method.requires_ref || false,
         requires_reference: payment.payment_method.requires_ref || false,
+        requires_voucher: payment.payment_method.requires_voucher || false,
         dian_payment_method_id: (payment.payment_method as any).dian_payment_method_id,
         affects_cash_register: (payment.payment_method as any).affects_cash_register !== false, // Default to true if undefined
         show_in_cash_summary: (payment.payment_method as any).show_in_cash_summary !== false, // Default to true if undefined
@@ -197,6 +198,7 @@ function mapSale(w: models.Sale): Sale {
       } : undefined,
       amount: payment.amount || 0,
       reference: payment.reference || '',
+      voucher_image: (payment as any).voucher_image || '',
     })),
     subtotal: w.subtotal || 0,
     tax: w.tax || 0,
@@ -263,6 +265,7 @@ function mapPaymentMethod(w: models.PaymentMethod): PaymentMethod {
     icon: w.icon || '',
     requires_ref: w.requires_ref || false,
     requires_reference: w.requires_ref || false,
+    requires_voucher: w.requires_voucher || false,
     dian_payment_method_id: (w as any).dian_payment_method_id,
     affects_cash_register: (w as any).affects_cash_register !== false, // Default to true
     show_in_cash_summary: (w as any).show_in_cash_summary !== false, // Default to true

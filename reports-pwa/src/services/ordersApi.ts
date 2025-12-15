@@ -53,9 +53,19 @@ export interface CartItem {
   modifiers: CartItemModifier[]
 }
 
+export interface Table {
+  id: number
+  number: string
+  name: string
+  capacity: number
+  status: string
+  zone: string
+}
+
 export interface CreateOrderRequest {
   order_type_id: number
   employee_id: number
+  table_id?: number
   items: {
     product_id: number
     quantity: number
@@ -182,6 +192,17 @@ class OrdersApiService {
 
     if (!response.success || !response.data) {
       throw new Error(response.error || 'Failed to get pending orders')
+    }
+
+    return response.data
+  }
+
+  // Get available tables
+  async getTables(): Promise<Table[]> {
+    const response = await this.request<ApiResponse<Table[]>>('/api/v1/tables')
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get tables')
     }
 
     return response.data

@@ -271,18 +271,21 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 
 		// Update order (without items first)
 		if err := tx.Model(&models.Order{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
-			"type":          order.Type,
-			"status":        order.Status,
-			"order_type_id": order.OrderTypeID,
-			"table_id":      order.TableID,
-			"customer_id":   order.CustomerID,
-			"employee_id":   order.EmployeeID,
-			"subtotal":      order.Subtotal,
-			"tax":           order.Tax,
-			"discount":      order.Discount,
-			"total":         order.Total,
-			"notes":         order.Notes,
-			"source":        order.Source,
+			"type":                   order.Type,
+			"status":                 order.Status,
+			"order_type_id":          order.OrderTypeID,
+			"table_id":               order.TableID,
+			"customer_id":            order.CustomerID,
+			"employee_id":            order.EmployeeID,
+			"subtotal":               order.Subtotal,
+			"tax":                    order.Tax,
+			"discount":               order.Discount,
+			"total":                  order.Total,
+			"notes":                  order.Notes,
+			"source":                 order.Source,
+			"delivery_customer_name": order.DeliveryCustomerName,
+			"delivery_address":       order.DeliveryAddress,
+			"delivery_phone":         order.DeliveryPhone,
 		}).Error; err != nil {
 			return fmt.Errorf("failed to update order: %w", err)
 		}
