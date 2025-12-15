@@ -202,7 +202,7 @@ export function InvoiceLimitsSettings() {
         <h2>Sin Conexión</h2>
         <p>No se puede conectar con el servidor de configuración.</p>
         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '1rem' }}>
-          URL configurada: <code>{configApiService.getBaseUrl()}</code>
+          Verifica tu conexión a internet y que el servidor esté en línea.
         </p>
         <button onClick={checkConfiguration} className="btn-primary" style={{ marginTop: '1.5rem' }}>
           Reintentar

@@ -242,7 +242,15 @@ func (a *App) InitializeServicesAfterSetup() error {
 	if configAPIPort == "" {
 		configAPIPort = "8082" // Default port
 	}
-	a.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, a.InvoiceLimitService, a.EmployeeService, a.LoggerService)
+	a.ConfigAPIServer = services.NewConfigAPIServer(
+		":"+configAPIPort,
+		a.InvoiceLimitService,
+		a.EmployeeService,
+		a.OrderService,
+		a.OrderTypeService,
+		a.ProductService,
+		a.LoggerService,
+	)
 	a.LoggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 	go func() {
 		defer a.LoggerService.RecoverPanic()
@@ -442,7 +450,15 @@ func main() {
 			if configAPIPort == "" {
 				configAPIPort = "8082" // Default port
 			}
-			app.ConfigAPIServer = services.NewConfigAPIServer(":"+configAPIPort, app.InvoiceLimitService, app.EmployeeService, loggerService)
+			app.ConfigAPIServer = services.NewConfigAPIServer(
+				":"+configAPIPort,
+				app.InvoiceLimitService,
+				app.EmployeeService,
+				app.OrderService,
+				app.OrderTypeService,
+				app.ProductService,
+				loggerService,
+			)
 			loggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 			go func() {
 				defer loggerService.RecoverPanic()

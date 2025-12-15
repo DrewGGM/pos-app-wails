@@ -42,10 +42,6 @@ class ConfigApiService {
     return this.baseUrl !== ''
   }
 
-  getBaseUrl(): string {
-    return this.baseUrl
-  }
-
   getMissingConfig(): string[] {
     const missing: string[] = []
     if (!import.meta.env.VITE_CONFIG_API_URL) {

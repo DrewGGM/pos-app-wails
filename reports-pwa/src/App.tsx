@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { googleSheetsService, type ReportData, type ProductDetail, type OrderTypeDetail, type PaymentMethodDetail, type CashMovementDetail } from './services/googleSheets'
 import { InvoiceLimitsSettings } from './components/InvoiceLimitsSettings'
 import { Login } from './components/Login'
+import { Orders } from './components/Orders'
 import { authApiService, type AuthUser } from './services/authApi'
 import './App.css'
 
 type ViewPeriod = 'day' | 'week' | 'month' | 'year'
-type AppView = 'reports' | 'settings'
+type AppView = 'reports' | 'settings' | 'orders'
 
 function App() {
   // Auth state
@@ -537,6 +538,23 @@ function App() {
           >
             ⚙️ Configuración
           </button>
+          <button
+            onClick={() => setCurrentView('orders')}
+            className={`nav-tab ${currentView === 'orders' ? 'active' : ''}`}
+            style={{
+              padding: '0.5rem 1.5rem',
+              border: 'none',
+              background: currentView === 'orders' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+              color: currentView === 'orders' ? 'var(--primary-color)' : 'white',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            🛒 Pedidos
+          </button>
         </div>
       </header>
 
@@ -544,6 +562,11 @@ function App() {
         {/* Settings View */}
         {currentView === 'settings' && (
           <InvoiceLimitsSettings />
+        )}
+
+        {/* Orders View */}
+        {currentView === 'orders' && (
+          <Orders />
         )}
 
         {/* Reports View */}
