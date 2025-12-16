@@ -31,9 +31,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <CssBaseline />
           <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
             <AuthProvider>
-              <WebSocketProvider>
-                <DIANModeProvider>
-                  <NotificationProvider>
+              <NotificationProvider>
+                <WebSocketProvider>
+                  <DIANModeProvider>
                     <App />
                     <ToastContainer
                     position="top-right"
@@ -47,9 +47,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                     pauseOnHover
                       theme="light"
                     />
-                  </NotificationProvider>
-                </DIANModeProvider>
-              </WebSocketProvider>
+                  </DIANModeProvider>
+                </WebSocketProvider>
+              </NotificationProvider>
             </AuthProvider>
           </LocalizationProvider>
         </ThemeProvider>

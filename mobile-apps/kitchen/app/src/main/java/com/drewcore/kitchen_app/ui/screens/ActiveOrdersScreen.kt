@@ -32,7 +32,8 @@ data class OrderCardData(
     val items: List<OrderItem>,
     val cardIndex: Int, // 0 for first card, 1+ for continuations
     val totalCards: Int,
-    val uniqueKey: String
+    val uniqueKey: String,
+    val isCancelled: Boolean = false
 )
 
 // Helper function to get order title based on order type
@@ -119,7 +120,7 @@ fun OrderTimer(createdAt: String) {
 }
 
 // Split an order into multiple cards if needed
-fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int): List<OrderCardData> {
+fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int, isCancelled: Boolean = false): List<OrderCardData> {
     if (order.items.size <= maxItemsPerCard) {
         // Order fits in one card
         return listOf(
@@ -128,7 +129,8 @@ fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int): List<OrderCardData>
                 items = order.items,
                 cardIndex = 0,
                 totalCards = 1,
-                uniqueKey = order.id
+                uniqueKey = order.id,
+                isCancelled = isCancelled
             )
         )
     }
@@ -144,7 +146,8 @@ fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int): List<OrderCardData>
                 items = chunk,
                 cardIndex = index,
                 totalCards = itemChunks.size,
-                uniqueKey = "${order.id}_$index"
+                uniqueKey = "${order.id}_$index",
+                isCancelled = isCancelled
             )
         )
     }
@@ -160,9 +163,9 @@ fun ActiveOrdersScreen(
     onMarkAsReady: (Order) -> Unit,
     onRemoveCancelled: (String) -> Unit = {}
 ) {
-    // Split orders into cards based on max items preference
+    // Split orders into cards based on max items preference, passing cancelled state
     val orderCards = orderStates.flatMap { orderState ->
-        splitOrderIntoCards(orderState.order, preferences.maxItemsPerCard)
+        splitOrderIntoCards(orderState.order, preferences.maxItemsPerCard, orderState.isCancelled)
     }
 
     if (orderCards.isEmpty()) {
@@ -197,7 +200,8 @@ fun ActiveOrdersScreen(
                     cardData = cardData,
                     isUpdated = updatedOrderIds.contains(cardData.order.id),
                     preferences = preferences,
-                    onMarkAsReady = onMarkAsReady
+                    onMarkAsReady = onMarkAsReady,
+                    onRemoveCancelled = onRemoveCancelled
                 )
             }
         }
@@ -209,19 +213,34 @@ fun OrderCardDisplay(
     cardData: OrderCardData,
     isUpdated: Boolean = false,
     preferences: KitchenPreferences,
-    onMarkAsReady: (Order) -> Unit
+    onMarkAsReady: (Order) -> Unit,
+    onRemoveCancelled: (String) -> Unit = {}
 ) {
     val order = cardData.order
     val isContinuation = cardData.cardIndex > 0
+    val isCancelled = cardData.isCancelled
+
+    // Determine card background color based on state
+    val cardBackgroundColor = when {
+        isCancelled -> Color(0xFFFFEBEE) // Light red for cancelled
+        isUpdated -> Color(0xFFFFF3E0)   // Light orange for updated
+        else -> MaterialTheme.colorScheme.surface
+    }
+
+    // Border for cancelled orders
+    val cardBorder = if (isCancelled) {
+        androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFE53935))
+    } else {
+        null
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(preferences.cardHeight.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isUpdated) Color(0xFFFFF3E0) else MaterialTheme.colorScheme.surface
-        )
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCancelled) 2.dp else 6.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBackgroundColor),
+        border = cardBorder
     ) {
         Column(
             modifier = Modifier
@@ -254,8 +273,22 @@ fun OrderCardDisplay(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Modified badge (compact)
-                        if (isUpdated) {
+                        // Cancelled badge (high priority)
+                        if (isCancelled) {
+                            Surface(
+                                color = Color(0xFFE53935),
+                                shape = MaterialTheme.shapes.extraSmall
+                            ) {
+                                Text(
+                                    text = "CANCELADO",
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                            }
+                        } else if (isUpdated) {
+                            // Modified badge (compact) - only show if not cancelled
                             Surface(
                                 color = Color(0xFFFF6F00),
                                 shape = MaterialTheme.shapes.extraSmall
@@ -270,8 +303,10 @@ fun OrderCardDisplay(
                             }
                         }
 
-                        // Elapsed time timer
-                        OrderTimer(createdAt = order.createdAt)
+                        // Elapsed time timer (hide for cancelled)
+                        if (!isCancelled) {
+                            OrderTimer(createdAt = order.createdAt)
+                        }
                     }
                 }
 
@@ -300,7 +335,7 @@ fun OrderCardDisplay(
 
                     // Continuation badge
                     Surface(
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        color = if (isCancelled) Color(0xFFE53935).copy(alpha = 0.2f) else MaterialTheme.colorScheme.tertiaryContainer,
                         shape = MaterialTheme.shapes.extraSmall
                     ) {
                         Text(
@@ -308,12 +343,25 @@ fun OrderCardDisplay(
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = if (isCancelled) Color(0xFFE53935) else MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
 
-                    // Modified badge (compact)
-                    if (isUpdated) {
+                    // Cancelled or Modified badge
+                    if (isCancelled) {
+                        Surface(
+                            color = Color(0xFFE53935),
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                text = "CANCELADO",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+                    } else if (isUpdated) {
                         Surface(
                             color = Color(0xFFFF6F00),
                             shape = MaterialTheme.shapes.extraSmall
@@ -343,12 +391,13 @@ fun OrderCardDisplay(
             ) {
                 cardData.items.forEach { item ->
                     // Determine colors and styles based on item change status
-                    val isRemoved = item.changeStatus == ItemChangeStatus.REMOVED
-                    val isAdded = item.changeStatus == ItemChangeStatus.ADDED
-                    val isModified = item.changeStatus == ItemChangeStatus.MODIFIED
+                    // If order is cancelled, treat ALL items as removed
+                    val isRemoved = isCancelled || item.changeStatus == ItemChangeStatus.REMOVED
+                    val isAdded = !isCancelled && item.changeStatus == ItemChangeStatus.ADDED
+                    val isModified = !isCancelled && item.changeStatus == ItemChangeStatus.MODIFIED
 
                     val badgeColor = when {
-                        isRemoved -> Color(0xFFE53935) // Red for removed
+                        isRemoved -> Color(0xFFE53935) // Red for removed/cancelled
                         isAdded -> Color(0xFF4CAF50)   // Green for added
                         isModified -> Color(0xFFFF9800) // Orange for modified
                         else -> MaterialTheme.colorScheme.primary
@@ -480,26 +529,45 @@ fun OrderCardDisplay(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Ready Button - Only on last card
+            // Ready Button or Remove Button - Only on last card
             if (cardData.cardIndex == cardData.totalCards - 1) {
-                Button(
-                    onClick = { onMarkAsReady(order) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    contentPadding = PaddingValues(vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "✓ LISTO",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                if (isCancelled) {
+                    // Remove button for cancelled orders
+                    Button(
+                        onClick = { onRemoveCancelled(order.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFE53935)
+                        ),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = "✕ QUITAR",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    // Ready button for active orders
+                    Button(
+                        onClick = { onMarkAsReady(order) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = "✓ LISTO",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             } else {
                 // Arrow indicator for continuation
                 Surface(
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    color = if (isCancelled) Color(0xFFE53935).copy(alpha = 0.2f) else MaterialTheme.colorScheme.tertiaryContainer,
                     shape = MaterialTheme.shapes.extraSmall,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -508,7 +576,7 @@ fun OrderCardDisplay(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        color = if (isCancelled) Color(0xFFE53935) else MaterialTheme.colorScheme.onTertiaryContainer,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }

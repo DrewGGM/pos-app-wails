@@ -60,6 +60,7 @@ type OrderTypeResponse struct {
 	ID           uint   `json:"id"`
 	Code         string `json:"code"`
 	Name         string `json:"name"`
+	Description  string `json:"description"`
 	DisplayColor string `json:"display_color"`
 	Icon         string `json:"icon"`
 }
@@ -104,6 +105,7 @@ type ProductResponse struct {
 type CreateOrderRequest struct {
 	OrderTypeID          uint                     `json:"order_type_id"`
 	EmployeeID           uint                     `json:"employee_id"`
+	TableID              *uint                    `json:"table_id,omitempty"`
 	Items                []CreateOrderItemRequest `json:"items"`
 	Notes                string                   `json:"notes"`
 	DeliveryCustomerName string                   `json:"delivery_customer_name"`
@@ -131,12 +133,16 @@ type PendingOrderResponse struct {
 	OrderNumber          string                      `json:"order_number"`
 	Status               string                      `json:"status"`
 	OrderType            string                      `json:"order_type"`
+	OrderTypeCode        string                      `json:"order_type_code"`
 	OrderTypeColor       string                      `json:"order_type_color"`
 	OrderTypeIcon        string                      `json:"order_type_icon"`
 	Source               string                      `json:"source"`
 	Total                float64                     `json:"total"`
 	Notes                string                      `json:"notes"`
 	Items                []PendingOrderItemResponse  `json:"items"`
+	TableID              *uint                       `json:"table_id,omitempty"`
+	TableNumber          string                      `json:"table_number,omitempty"`
+	TableName            string                      `json:"table_name,omitempty"`
 	DeliveryCustomerName string                      `json:"delivery_customer_name,omitempty"`
 	DeliveryAddress      string                      `json:"delivery_address,omitempty"`
 	DeliveryPhone        string                      `json:"delivery_phone,omitempty"`
@@ -583,6 +589,7 @@ func (s *ConfigAPIServer) handleGetOrderTypes(w http.ResponseWriter, r *http.Req
 			ID:           ot.ID,
 			Code:         ot.Code,
 			Name:         ot.Name,
+			Description:  ot.Description,
 			DisplayColor: ot.DisplayColor,
 			Icon:         ot.Icon,
 		}
@@ -785,6 +792,7 @@ func (s *ConfigAPIServer) handleOrders(w http.ResponseWriter, r *http.Request) {
 	// Create the order
 	order := &models.Order{
 		OrderTypeID:          &req.OrderTypeID,
+		TableID:              req.TableID,
 		Status:               models.OrderStatusPending,
 		Items:                orderItems,
 		Notes:                req.Notes,
@@ -851,12 +859,24 @@ func (s *ConfigAPIServer) handleGetPendingOrders(w http.ResponseWriter, r *http.
 	for i, order := range orders {
 		// Get order type info
 		orderTypeName := ""
+		orderTypeCode := ""
 		orderTypeColor := "#1976d2"
 		orderTypeIcon := "📦"
 		if order.OrderType != nil {
 			orderTypeName = order.OrderType.Name
+			orderTypeCode = order.OrderType.Code
 			orderTypeColor = order.OrderType.DisplayColor
 			orderTypeIcon = order.OrderType.Icon
+		}
+
+		// Get table info
+		var tableID *uint
+		tableNumber := ""
+		tableName := ""
+		if order.Table != nil {
+			tableID = &order.Table.ID
+			tableNumber = order.Table.Number
+			tableName = order.Table.Name
 		}
 
 		// Convert items
@@ -892,12 +912,16 @@ func (s *ConfigAPIServer) handleGetPendingOrders(w http.ResponseWriter, r *http.
 			OrderNumber:          order.OrderNumber,
 			Status:               string(order.Status),
 			OrderType:            orderTypeName,
+			OrderTypeCode:        orderTypeCode,
 			OrderTypeColor:       orderTypeColor,
 			OrderTypeIcon:        orderTypeIcon,
 			Source:               order.Source,
 			Total:                order.Total,
 			Notes:                order.Notes,
 			Items:                items,
+			TableID:              tableID,
+			TableNumber:          tableNumber,
+			TableName:            tableName,
 			DeliveryCustomerName: order.DeliveryCustomerName,
 			DeliveryAddress:      order.DeliveryAddress,
 			DeliveryPhone:        order.DeliveryPhone,

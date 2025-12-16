@@ -37,6 +37,7 @@ type OrderType struct {
 	ID                      uint           `gorm:"primaryKey" json:"id"`
 	Code                    string         `gorm:"unique;not null" json:"code"` // "dine-in", "takeout", "delivery", etc.
 	Name                    string         `gorm:"not null" json:"name"`
+	Description             string         `json:"description"`                 // Friendly description like "Para Comer Aquí"
 	RequiresSequentialNumber bool          `gorm:"default:false" json:"requires_sequential_number"`
 	SequencePrefix          string         `json:"sequence_prefix"` // Optional prefix for sequential numbers (e.g., "D-" for delivery)
 	DisplayColor            string         `json:"display_color"`   // Hex color for UI

@@ -56,20 +56,18 @@ export function Orders() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showProductModal, setShowProductModal] = useState(false)
+  const [showCartDrawer, setShowCartDrawer] = useState(false)
 
   // Modal state for product customization
   const [modalQuantity, setModalQuantity] = useState(1)
   const [modalNotes, setModalNotes] = useState('')
   const [modalModifiers, setModalModifiers] = useState<CartItemModifier[]>([])
 
-  // Load data on mount
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  // Load pending orders when switching to pending view
-  const loadPendingOrders = useCallback(async () => {
-    setPendingLoading(true)
+  // Load pending orders
+  const loadPendingOrders = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setPendingLoading(true)
+    }
     setPendingError('')
 
     try {
@@ -82,15 +80,22 @@ export function Orders() {
     }
   }, [])
 
+  // Load data on mount (including pending orders count)
+  useEffect(() => {
+    loadData()
+    loadPendingOrders(false) // Load without showing loading spinner for counter
+  }, [])
+
+  // Reload pending orders when switching to pending view
   useEffect(() => {
     if (currentOrdersView === 'pending') {
       loadPendingOrders()
     }
   }, [currentOrdersView, loadPendingOrders])
 
-  // Prevent body scroll when modal is open
+  // Prevent body scroll when modal or cart drawer is open
   useEffect(() => {
-    if (showProductModal) {
+    if (showProductModal || showCartDrawer) {
       document.body.classList.add('modal-open')
     } else {
       document.body.classList.remove('modal-open')
@@ -98,7 +103,7 @@ export function Orders() {
     return () => {
       document.body.classList.remove('modal-open')
     }
-  }, [showProductModal])
+  }, [showProductModal, showCartDrawer])
 
   const loadData = async () => {
     setLoading(true)
@@ -129,6 +134,37 @@ export function Orders() {
   const isDineInOrderType = (code: string) => {
     const dineInCodes = ['dine_in', 'dine-in', 'comer_aqui', 'comer-aqui', 'mesa', 'local']
     return dineInCodes.includes(code.toLowerCase())
+  }
+
+  // Map icon names to emojis
+  const getIconEmoji = (icon: string): string => {
+    // If it's already an emoji, return it
+    if (/\p{Emoji}/u.test(icon)) return icon
+
+    // Map common icon names to emojis
+    const iconMap: Record<string, string> = {
+      'restaurant': '🍽️',
+      'dine-in': '🍽️',
+      'local_dining': '🍽️',
+      'takeout': '🥡',
+      'takeaway': '🥡',
+      'shopping_bag': '🛍️',
+      'delivery': '🚚',
+      'local_shipping': '🚚',
+      'motorcycle': '🏍️',
+      'directions_bike': '🚴',
+      'fastfood': '🍔',
+      'pizza': '🍕',
+      'coffee': '☕',
+      'local_cafe': '☕',
+      'store': '🏪',
+      'home': '🏠',
+      'phone': '📞',
+      'app': '📱',
+      'web': '🌐',
+    }
+
+    return iconMap[icon.toLowerCase()] || '📦'
   }
 
   // Load available tables
@@ -375,7 +411,7 @@ export function Orders() {
             <h2>Pedidos Pendientes</h2>
             <button
               className="refresh-btn"
-              onClick={loadPendingOrders}
+              onClick={() => loadPendingOrders()}
               disabled={pendingLoading}
             >
               {pendingLoading ? 'Cargando...' : '🔄 Actualizar'}
@@ -412,7 +448,7 @@ export function Orders() {
                         className="order-type-badge"
                         style={{ backgroundColor: order.order_type_color || '#1976d2' }}
                       >
-                        {order.order_type_icon} {order.order_type}
+                        {getIconEmoji(order.order_type_icon || '')} {order.order_type}
                       </span>
                       <span className="order-number">#{order.order_number}</span>
                       {order.source === 'pwa' && (
@@ -429,6 +465,18 @@ export function Orders() {
                       <span className="order-time">{formatOrderTime(order.created_at)}</span>
                     </div>
                   </div>
+
+                  {/* Table Number - only for dine-in orders */}
+                  {order.table_number && (
+                    <div className="pending-order-table">
+                      <span className="table-icon">🪑</span>
+                      <span className="table-label">Mesa</span>
+                      <span className="table-number-large">{order.table_number}</span>
+                      {order.table_name && order.table_name !== order.table_number && (
+                        <span className="table-name-small">{order.table_name}</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="pending-order-summary">
                     <span>{order.items.length} items</span>
@@ -522,8 +570,11 @@ export function Orders() {
                 }}
                 onClick={() => handleOrderTypeSelect(type)}
               >
-                <span className="order-type-icon">{type.icon || '📦'}</span>
-                <span className="order-type-name">{type.name}</span>
+                <span className="order-type-icon">{getIconEmoji(type.icon || '')}</span>
+                <span className="order-type-name">{type.description || type.name}</span>
+                {type.description && type.name && (
+                  <span className="order-type-subtitle">{type.name}</span>
+                )}
               </button>
             ))}
           </div>
@@ -653,8 +704,8 @@ export function Orders() {
               </div>
             </div>
 
-            {/* Cart Section */}
-            <div className="cart-section">
+            {/* Cart Section - Desktop */}
+            <div className="cart-section cart-desktop">
               <h3>Carrito ({cart.length})</h3>
 
               {cart.length === 0 ? (
@@ -719,6 +770,104 @@ export function Orders() {
               )}
             </div>
           </div>
+
+          {/* Floating Cart Button - Mobile */}
+          <button
+            className="cart-fab"
+            onClick={() => setShowCartDrawer(true)}
+          >
+            <span className="cart-fab-icon">🛒</span>
+            {cart.length > 0 && (
+              <span className="cart-fab-badge">{cart.length}</span>
+            )}
+            {cart.length > 0 && (
+              <span className="cart-fab-total">{formatCurrency(cartTotal)}</span>
+            )}
+          </button>
+
+          {/* Cart Drawer - Mobile */}
+          {showCartDrawer && (
+            <div className="cart-drawer-overlay" onClick={() => setShowCartDrawer(false)}>
+              <div className="cart-drawer" onClick={e => e.stopPropagation()}>
+                <div className="cart-drawer-header">
+                  <h3>Carrito ({cart.length})</h3>
+                  <button className="cart-drawer-close" onClick={() => setShowCartDrawer(false)}>
+                    ×
+                  </button>
+                </div>
+
+                <div className="cart-drawer-content">
+                  {cart.length === 0 ? (
+                    <p className="cart-empty">No hay productos en el carrito</p>
+                  ) : (
+                    <>
+                      <div className="cart-items">
+                        {cart.map((item, index) => (
+                          <div key={index} className="cart-item">
+                            <div className="cart-item-header">
+                              <span className="cart-item-name">{item.product.name}</span>
+                              <button
+                                className="cart-item-remove"
+                                onClick={() => handleRemoveFromCart(index)}
+                              >
+                                ×
+                              </button>
+                            </div>
+                            {item.modifiers.length > 0 && (
+                              <div className="cart-item-modifiers">
+                                {item.modifiers.map(m => m.name).join(', ')}
+                              </div>
+                            )}
+                            {item.notes && (
+                              <div className="cart-item-notes">{item.notes}</div>
+                            )}
+                            <div className="cart-item-footer">
+                              <div className="cart-item-quantity">
+                                <button onClick={() => handleUpdateQuantity(index, -1)}>-</button>
+                                <span>{item.quantity}</span>
+                                <button onClick={() => handleUpdateQuantity(index, 1)}>+</button>
+                              </div>
+                              <span className="cart-item-total">
+                                {formatCurrency(ordersApiService.calculateItemTotal(item))}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="cart-notes">
+                        <textarea
+                          placeholder="Notas del pedido..."
+                          value={orderNotes}
+                          onChange={e => setOrderNotes(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {cart.length > 0 && (
+                  <div className="cart-drawer-footer">
+                    <div className="cart-total">
+                      <span>Total:</span>
+                      <span>{formatCurrency(cartTotal)}</span>
+                    </div>
+
+                    <button
+                      className="submit-order-btn"
+                      onClick={() => {
+                        handleSubmitOrder()
+                        if (!submitting) setShowCartDrawer(false)
+                      }}
+                      disabled={submitting}
+                    >
+                      {submitting ? 'Creando...' : 'Crear Orden'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
         </>

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useAuthContext } from './AuthContext';
+import { useNotifications } from './NotificationContext';
 
 interface WebSocketMessage {
   type: string;
@@ -25,6 +26,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const reconnectTimeout = useRef<number>();
   const listeners = useRef<Map<string, Set<(data: any) => void>>>(new Map());
   const { isAuthenticated } = useAuthContext();
+  const { addNotification } = useNotifications();
 
   const connect = useCallback(() => {
     if (ws.current?.readyState === WebSocket.OPEN || !isAuthenticated) {
@@ -203,6 +205,16 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               background: '#1976d2',
               color: 'white',
               fontWeight: 'bold',
+            },
+          });
+          // Add to notification center (bell icon)
+          addNotification({
+            type: 'info',
+            title: 'Pedido Remoto',
+            message: message.data.message,
+            action: {
+              label: 'Ver Pedidos',
+              path: '/orders',
             },
           });
         } else {
