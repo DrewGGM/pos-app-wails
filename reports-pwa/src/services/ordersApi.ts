@@ -4,6 +4,7 @@ export interface OrderType {
   id: number
   code: string
   name: string
+  description: string
   display_color: string
   icon: string
 }
@@ -103,12 +104,16 @@ export interface PendingOrder {
   order_number: string
   status: string
   order_type: string
+  order_type_code: string
   order_type_color: string
   order_type_icon: string
   source: string
   total: number
   notes: string
   items: PendingOrderItem[]
+  table_id?: number
+  table_number?: string
+  table_name?: string
   delivery_customer_name?: string
   delivery_address?: string
   delivery_phone?: string
