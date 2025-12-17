@@ -465,22 +465,37 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun removeOrderById(orderId: String) {
-        // Remove order from active list (called when order_cancelled message received)
+        // Mark order as cancelled first (to show visual feedback) before removing
         val active = _activeOrders.value.toMutableList()
-        val removed = active.removeAll { it.order.id == orderId }
-        if (removed) {
+        val index = active.indexOfFirst { it.order.id == orderId }
+
+        if (index != -1) {
+            // Mark as cancelled visually (red card, strikethrough items)
+            val currentTime = System.currentTimeMillis()
+            active[index] = active[index].copy(
+                isCancelled = true,
+                cancelledAtMs = currentTime
+            )
             _activeOrders.value = active
-            android.util.Log.d("KitchenViewModel", "Order removed via WebSocket cancellation: $orderId")
+            android.util.Log.d("KitchenViewModel", "Order marked as cancelled via WebSocket: $orderId")
+
+            // Schedule automatic removal after 10 seconds
+            viewModelScope.launch {
+                delay(10000)
+                removeCancelledOrder(orderId, currentTime)
+
+                // Clean up tracking maps after removal
+                readyOrderItems.remove(orderId)
+                fullOrderQuantities.remove(orderId)
+            }
         }
 
-        // Also remove from completed list if present
+        // Also remove from completed list if present (immediately)
         val completed = _completedOrders.value.toMutableList()
-        completed.removeAll { it.id == orderId }
-        _completedOrders.value = completed
-
-        // Clean up tracking maps
-        readyOrderItems.remove(orderId)
-        fullOrderQuantities.remove(orderId)
+        val removedFromCompleted = completed.removeAll { it.id == orderId }
+        if (removedFromCompleted) {
+            _completedOrders.value = completed
+        }
     }
 
     private fun playNotificationSound() {

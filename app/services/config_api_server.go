@@ -877,6 +877,10 @@ func (s *ConfigAPIServer) handleGetPendingOrders(w http.ResponseWriter, r *http.
 			tableID = &order.Table.ID
 			tableNumber = order.Table.Number
 			tableName = order.Table.Name
+			log.Printf("[CONFIG API] Order %s has table: ID=%d, Number=%s, Name=%s", order.OrderNumber, order.Table.ID, tableNumber, tableName)
+		} else if order.TableID != nil {
+			// TableID exists but Table wasn't preloaded - this shouldn't happen
+			log.Printf("[CONFIG API] WARNING: Order %s has TableID=%d but Table is nil (preload issue?)", order.OrderNumber, *order.TableID)
 		}
 
 		// Convert items

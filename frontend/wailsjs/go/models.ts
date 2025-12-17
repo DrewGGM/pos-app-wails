@@ -1393,6 +1393,7 @@ export namespace models {
 	    id: number;
 	    code: string;
 	    name: string;
+	    description: string;
 	    requires_sequential_number: boolean;
 	    sequence_prefix: string;
 	    display_color: string;
@@ -1416,6 +1417,7 @@ export namespace models {
 	        this.id = source["id"];
 	        this.code = source["code"];
 	        this.name = source["name"];
+	        this.description = source["description"];
 	        this.requires_sequential_number = source["requires_sequential_number"];
 	        this.sequence_prefix = source["sequence_prefix"];
 	        this.display_color = source["display_color"];
