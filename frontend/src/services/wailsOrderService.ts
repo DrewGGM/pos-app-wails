@@ -117,10 +117,18 @@ function mapTable(w: models.Table): Table {
     name: w.name || '',
     capacity: w.capacity || 0,
     zone: w.zone || 'interior',
+    area_id: (w as any).area_id as number | undefined,
+    area: (w as any).area ? {
+      id: (w as any).area.id as number,
+      name: (w as any).area.name || '',
+      description: (w as any).area.description || '',
+      color: (w as any).area.color || '#1976d2',
+      is_active: (w as any).area.is_active ?? true,
+    } : undefined,
     status: w.status as 'available' | 'occupied' | 'reserved' | 'cleaning' | 'blocked',
     position_x: w.position_x || 0,
     position_y: w.position_y || 0,
-    shape: w.shape || 'square',
+    shape: (w.shape || 'square') as 'square' | 'round' | 'rectangle',
     is_active: (w as any).is_active ?? true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -241,8 +249,8 @@ class WailsOrderService {
   async deleteTable(id: number): Promise<void> {
     try {
       await DeleteTable(id);
-    } catch (error) {
-      throw new Error('Error al eliminar mesa');
+    } catch (error: any) {
+      throw new Error(error?.message || 'Error al eliminar mesa');
     }
   }
 

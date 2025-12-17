@@ -412,18 +412,15 @@ func SeedInitialData() error {
 		}
 	}
 
-	// Create default table areas
-	tableAreas := []models.TableArea{
-		{Name: "Salón Principal", Description: "Área principal del restaurante", Color: "#3B82F6", IsActive: true},
-		{Name: "Terraza", Description: "Área exterior", Color: "#10B981", IsActive: true},
-		{Name: "Bar", Description: "Área de bar", Color: "#F59E0B", IsActive: true},
-		{Name: "VIP", Description: "Área reservada", Color: "#8B5CF6", IsActive: true},
-	}
-
-	for _, area := range tableAreas {
-		var count int64
-		db.Model(&models.TableArea{}).Where("name = ?", area.Name).Count(&count)
-		if count == 0 {
+	// Create default table areas only if no areas exist at all (including soft-deleted)
+	// This allows users to fully manage their own areas without automatic recreation
+	var totalAreaCount int64
+	db.Unscoped().Model(&models.TableArea{}).Count(&totalAreaCount)
+	if totalAreaCount == 0 {
+		tableAreas := []models.TableArea{
+			{Name: "Salón Principal", Description: "Área principal del restaurante", Color: "#3B82F6", IsActive: true},
+		}
+		for _, area := range tableAreas {
 			db.Create(&area)
 		}
 	}

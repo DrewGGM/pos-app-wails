@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
-  Grid,
   Paper,
   Typography,
   Button,
@@ -11,20 +10,24 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Card,
-  CardContent,
-  CardActions,
   Chip,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Fab,
+  Tooltip,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Alert,
   ToggleButton,
   ToggleButtonGroup,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
-  TableChart as TableIcon,
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -33,32 +36,95 @@ import {
   CheckCircle as CheckIcon,
   HourglassEmpty as WaitingIcon,
   Block as BlockedIcon,
-  ViewModule as GridIcon,
-  ViewList as ListIcon,
+  Settings as SettingsIcon,
+  GridOn as GridIcon,
+  CropSquare as SquareIcon,
+  Circle as CircleIcon,
+  Rectangle as RectangleIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { wailsOrderService } from '../../services/wailsOrderService';
 import { Table, TableArea } from '../../types/models';
 import { toast } from 'react-toastify';
 
+const GRID_SIZE = 20;
+const TABLE_BASE_SIZE = 80;
+const SIDEBAR_WIDTH = 300;
+
 const Tables: React.FC = () => {
   const navigate = useNavigate();
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // State
   const [tables, setTables] = useState<Table[]>([]);
   const [areas, setAreas] = useState<TableArea[]>([]);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [tableDialog, setTableDialog] = useState(false);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+
+  // Drag state
+  const [draggingTable, setDraggingTable] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Dialogs
+  const [tableDialog, setTableDialog] = useState(false);
+  const [areaDialog, setAreaDialog] = useState(false);
+  const [areaManageDialog, setAreaManageDialog] = useState(false);
+  const [editingArea, setEditingArea] = useState<TableArea | null>(null);
+
+  // Forms
   const [tableForm, setTableForm] = useState<Partial<Table>>({
     number: '',
-    area_id: 0,
+    area_id: undefined,
     capacity: 4,
     status: 'available',
+    position_x: 100,
+    position_y: 100,
+    shape: 'square',
+  });
+
+  const [areaForm, setAreaForm] = useState<Partial<TableArea>>({
+    name: '',
+    description: '',
+    color: '#1976d2',
+    is_active: true,
   });
 
   useEffect(() => {
     loadTables();
     loadAreas();
+  }, []);
+
+  // Track container size for responsive canvas
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setCanvasSize({
+          width: Math.floor(rect.width) - 4, // -4 for border
+          height: Math.floor(rect.height) - 4,
+        });
+      }
+    };
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+
+    // Also observe container size changes
+    const resizeObserver = new ResizeObserver(updateCanvasSize);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   const loadTables = async () => {
@@ -74,24 +140,32 @@ const Tables: React.FC = () => {
     try {
       const data = await wailsOrderService.getTableAreas();
       setAreas(data);
-      // No establecer área por defecto - dejar en null (Todas)
+      if (data.length > 0 && selectedArea === null) {
+        setSelectedArea(data[0].id || null);
+      }
     } catch (error) {
+      console.error('Error loading areas:', error);
     }
   };
 
+  // Table dialog handlers
   const handleOpenTableDialog = (table?: Table) => {
     if (table) {
       setSelectedTable(table);
-      setTableForm(table);
+      setTableForm({
+        ...table,
+        area_id: table.area_id,
+      });
     } else {
       setSelectedTable(null);
-      // Ensure area_id is always set to a valid value
-      const defaultAreaId = areas.length > 0 ? areas[0].id! : undefined;
       setTableForm({
         number: '',
-        area_id: defaultAreaId,
+        area_id: selectedArea || (areas.length > 0 ? areas[0].id : undefined),
         capacity: 4,
         status: 'available',
+        position_x: 100,
+        position_y: 100,
+        shape: 'square',
       });
     }
     setTableDialog(true);
@@ -100,16 +174,9 @@ const Tables: React.FC = () => {
   const handleCloseTableDialog = () => {
     setTableDialog(false);
     setSelectedTable(null);
-    setTableForm({
-      number: '',
-      area_id: areas.length > 0 ? areas[0].id : undefined,
-      capacity: 4,
-      status: 'available',
-    });
   };
 
   const handleSaveTable = async () => {
-    // Validate required fields
     if (!tableForm.number) {
       toast.error('El número de mesa es requerido');
       return;
@@ -121,7 +188,6 @@ const Tables: React.FC = () => {
 
     try {
       if (selectedTable && selectedTable.id) {
-        // Update existing table - ensure ID is included
         const tableData = {
           ...tableForm,
           id: selectedTable.id,
@@ -129,7 +195,6 @@ const Tables: React.FC = () => {
         await wailsOrderService.updateTable(selectedTable.id, tableData);
         toast.success('Mesa actualizada');
       } else {
-        // Create new table - remove any ID that might exist
         const { id, ...tableData } = tableForm as any;
         await wailsOrderService.createTable(tableData);
         toast.success('Mesa creada');
@@ -147,36 +212,170 @@ const Tables: React.FC = () => {
   };
 
   const handleDeleteTable = async (id: number) => {
+    console.log('handleDeleteTable called with id:', id);
     if (window.confirm('¿Está seguro de eliminar esta mesa?')) {
+      console.log('User confirmed deletion');
       try {
+        console.log('Calling wailsOrderService.deleteTable...');
         await wailsOrderService.deleteTable(id);
+        console.log('Delete successful');
         toast.success('Mesa eliminada');
-        loadTables();
+        // Force reload tables from backend
+        console.log('Reloading tables...');
+        const data = await wailsOrderService.getTables();
+        console.log('Tables reloaded:', data.length, 'tables');
+        setTables(data);
+      } catch (error: any) {
+        console.error('Delete error:', error);
+        toast.error(error?.message || 'Error al eliminar mesa');
+      }
+    } else {
+      console.log('User cancelled deletion');
+    }
+  };
+
+  // Area dialog handlers
+  const handleOpenAreaDialog = (area?: TableArea) => {
+    if (area) {
+      setEditingArea(area);
+      setAreaForm(area);
+    } else {
+      setEditingArea(null);
+      setAreaForm({
+        name: '',
+        description: '',
+        color: '#1976d2',
+        is_active: true,
+      });
+    }
+    setAreaDialog(true);
+  };
+
+  const handleCloseAreaDialog = () => {
+    setAreaDialog(false);
+    setEditingArea(null);
+  };
+
+  const handleSaveArea = async () => {
+    if (!areaForm.name) {
+      toast.error('El nombre del área es requerido');
+      return;
+    }
+
+    try {
+      if (editingArea && editingArea.id) {
+        await wailsOrderService.updateTableArea({ ...areaForm, id: editingArea.id });
+        toast.success('Área actualizada');
+      } else {
+        await wailsOrderService.createTableArea(areaForm);
+        toast.success('Área creada');
+      }
+      handleCloseAreaDialog();
+      loadAreas();
+    } catch (error) {
+      toast.error('Error al guardar área');
+    }
+  };
+
+  const handleDeleteArea = async (id: number) => {
+    const tablesInArea = tables.filter(t => t.area_id === id);
+    if (tablesInArea.length > 0) {
+      toast.error(`No se puede eliminar el área porque tiene ${tablesInArea.length} mesa(s) asignadas`);
+      return;
+    }
+    if (window.confirm('¿Está seguro de eliminar esta área?')) {
+      try {
+        await wailsOrderService.deleteTableArea(id);
+        toast.success('Área eliminada');
+        if (selectedArea === id) {
+          setSelectedArea(areas.find(a => a.id !== id)?.id || null);
+        }
+        loadAreas();
       } catch (error) {
-        toast.error('Error al eliminar mesa');
+        toast.error('Error al eliminar área');
       }
     }
   };
 
+  // Drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent, table: Table) => {
+    if (!editMode || !table.id) return;
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setDraggingTable(table.id);
+    setDragOffset({
+      x: x - (table.position_x || 0),
+      y: y - (table.position_y || 0),
+    });
+  }, [editMode]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!draggingTable || !canvasRef.current) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    let x = e.clientX - rect.left - dragOffset.x;
+    let y = e.clientY - rect.top - dragOffset.y;
+
+    // Snap to grid
+    if (showGrid) {
+      x = Math.round(x / GRID_SIZE) * GRID_SIZE;
+      y = Math.round(y / GRID_SIZE) * GRID_SIZE;
+    }
+
+    // Keep within bounds
+    x = Math.max(0, Math.min(canvasSize.width - TABLE_BASE_SIZE, x));
+    y = Math.max(0, Math.min(canvasSize.height - TABLE_BASE_SIZE, y));
+
+    setTables(prev => prev.map(t =>
+      t.id === draggingTable ? { ...t, position_x: x, position_y: y } : t
+    ));
+  }, [draggingTable, dragOffset, showGrid, canvasSize]);
+
+  const handleMouseUp = useCallback(async () => {
+    if (!draggingTable) return;
+
+    const table = tables.find(t => t.id === draggingTable);
+    if (table) {
+      try {
+        await wailsOrderService.updateTable(table.id!, {
+          ...table,
+          position_x: table.position_x,
+          position_y: table.position_y,
+        });
+      } catch (error) {
+        console.error('Error saving position:', error);
+      }
+    }
+
+    setDraggingTable(null);
+  }, [draggingTable, tables]);
+
+  // Table click handler
   const handleTableClick = async (table: Table) => {
+    if (editMode) return;
+
     if (table.status === 'occupied') {
-      // Go to the order
       const order = await wailsOrderService.getOrderByTable(table.id!);
       if (order) {
         navigate(`/pos?orderId=${order.id}`);
       }
     } else if (table.status === 'available') {
-      // Create new order for this table
       navigate(`/pos?tableId=${table.id}`);
     } else {
       toast.info('Mesa no disponible');
     }
   };
 
-  const handleToggleTableStatus = async (table: Table) => {
-    const newStatus = table.status === 'available' ? 'reserved' : 
+  const handleToggleTableStatus = async (table: Table, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newStatus = table.status === 'available' ? 'reserved' :
                      table.status === 'reserved' ? 'blocked' : 'available';
-    
+
     try {
       await wailsOrderService.updateTableStatus(table.id!, newStatus);
       toast.success('Estado actualizado');
@@ -186,232 +385,386 @@ const Tables: React.FC = () => {
     }
   };
 
+  // Status helpers
   const getTableStatusColor = (status: string) => {
     switch (status) {
-      case 'available':
-        return '#4caf50';
-      case 'occupied':
-        return '#ff9800';
-      case 'reserved':
-        return '#2196f3';
-      case 'blocked':
-        return '#f44336';
-      default:
-        return '#9e9e9e';
+      case 'available': return '#4caf50';
+      case 'occupied': return '#ff9800';
+      case 'reserved': return '#2196f3';
+      case 'blocked': return '#f44336';
+      default: return '#9e9e9e';
     }
   };
 
   const getTableStatusIcon = (status: string) => {
     switch (status) {
-      case 'available':
-        return <CheckIcon />;
-      case 'occupied':
-        return <RestaurantIcon />;
-      case 'reserved':
-        return <WaitingIcon />;
-      case 'blocked':
-        return <BlockedIcon />;
-      default:
-        return <TableIcon />;
+      case 'available': return <CheckIcon />;
+      case 'occupied': return <RestaurantIcon />;
+      case 'reserved': return <WaitingIcon />;
+      case 'blocked': return <BlockedIcon />;
+      default: return null;
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'available': return 'Disponible';
+      case 'occupied': return 'Ocupada';
+      case 'reserved': return 'Reservada';
+      case 'blocked': return 'Bloqueada';
+      default: return status;
+    }
+  };
+
+  // Filter tables by selected area
   const filteredTables = tables.filter(table =>
     selectedArea === null || table.area_id === selectedArea
   );
 
+  // Stats
   const tableStats = {
-    total: tables.length,
-    available: tables.filter(t => t.status === 'available').length,
-    occupied: tables.filter(t => t.status === 'occupied').length,
-    reserved: tables.filter(t => t.status === 'reserved').length,
-    blocked: tables.filter(t => t.status === 'blocked').length,
+    total: filteredTables.length,
+    available: filteredTables.filter(t => t.status === 'available').length,
+    occupied: filteredTables.filter(t => t.status === 'occupied').length,
+    reserved: filteredTables.filter(t => t.status === 'reserved').length,
+    blocked: filteredTables.filter(t => t.status === 'blocked').length,
+  };
+
+  // Render table shape
+  const renderTableShape = (table: Table) => {
+    const size = TABLE_BASE_SIZE;
+    const color = getTableStatusColor(table.status);
+    const isSelected = selectedTable?.id === table.id;
+    const isDragging = draggingTable === table.id;
+
+    const baseStyle: React.CSSProperties = {
+      position: 'absolute',
+      left: table.position_x || 0,
+      top: table.position_y || 0,
+      width: table.shape === 'rectangle' ? size * 1.5 : size,
+      height: size,
+      backgroundColor: color + '20',
+      border: `3px solid ${color}`,
+      borderRadius: table.shape === 'round' ? '50%' : table.shape === 'rectangle' ? '8px' : '8px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: editMode ? 'move' : (table.status === 'blocked' ? 'not-allowed' : 'pointer'),
+      transition: isDragging ? 'none' : 'box-shadow 0.2s',
+      boxShadow: isSelected ? `0 0 0 3px ${color}` : isDragging ? '0 8px 16px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+      zIndex: isDragging ? 100 : 1,
+      userSelect: 'none',
+    };
+
+    return (
+      <Box
+        key={table.id}
+        sx={baseStyle}
+        onMouseDown={(e) => handleMouseDown(e, table)}
+        onClick={() => !editMode && handleTableClick(table)}
+      >
+        <Typography variant="subtitle2" fontWeight="bold" sx={{ color }}>
+          {table.number}
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <PeopleIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          <Typography variant="caption" color="text.secondary">
+            {table.capacity}
+          </Typography>
+        </Box>
+        {table.current_order && (
+          <Chip
+            size="small"
+            label={`#${table.current_order.order_number?.slice(-4)}`}
+            sx={{ mt: 0.5, height: 16, fontSize: 10 }}
+            color="primary"
+          />
+        )}
+
+        {/* Edit mode actions */}
+        {editMode && (
+          <Box sx={{ position: 'absolute', top: -12, right: -12, display: 'flex', gap: 0.5 }}>
+            <IconButton
+              size="small"
+              sx={{
+                backgroundColor: 'white',
+                boxShadow: 1,
+                width: 24,
+                height: 24,
+                '&:hover': { backgroundColor: '#f5f5f5' }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenTableDialog(table);
+              }}
+            >
+              <EditIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+            <IconButton
+              size="small"
+              sx={{
+                backgroundColor: 'white',
+                boxShadow: 1,
+                width: 24,
+                height: 24,
+                '&:hover': { backgroundColor: '#ffebee' }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (table.id) {
+                  handleDeleteTable(table.id);
+                }
+              }}
+            >
+              <DeleteIcon sx={{ fontSize: 14, color: 'error.main' }} />
+            </IconButton>
+          </Box>
+        )}
+
+        {/* Status icon */}
+        {!editMode && (
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: -8,
+              right: -8,
+              backgroundColor: color,
+              borderRadius: '50%',
+              width: 20,
+              height: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+            onClick={(e) => handleToggleTableStatus(table, e)}
+          >
+            {React.cloneElement(getTableStatusIcon(table.status) as React.ReactElement, {
+              sx: { fontSize: 12, color: 'white' }
+            })}
+          </Box>
+        )}
+      </Box>
+    );
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">Gestión de Mesas</Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(_, value) => value && setViewMode(value)}
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+      {/* Main Canvas Area */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2, overflow: 'hidden' }}>
+        {/* Canvas */}
+        <Paper
+          ref={containerRef}
+          sx={{
+            flex: 1,
+            overflow: 'hidden',
+            backgroundColor: '#f5f5f5',
+            position: 'relative',
+          }}
+        >
+          <Box
+            ref={canvasRef}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            sx={{
+              width: canvasSize.width,
+              height: canvasSize.height,
+              position: 'relative',
+              backgroundColor: 'white',
+              backgroundImage: showGrid
+                ? `linear-gradient(#e0e0e0 1px, transparent 1px), linear-gradient(90deg, #e0e0e0 1px, transparent 1px)`
+                : 'none',
+              backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+              border: '1px solid #e0e0e0',
+            }}
           >
-            <ToggleButton value="grid">
-              <GridIcon />
-            </ToggleButton>
-            <ToggleButton value="list">
-              <ListIcon />
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenTableDialog()}
-          >
-            Nueva Mesa
-          </Button>
-        </Box>
+            {filteredTables.map(table => renderTableShape(table))}
+
+            {/* Empty state */}
+            {filteredTables.length === 0 && (
+              <Box sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                textAlign: 'center',
+              }}>
+                <Typography color="text.secondary" gutterBottom>
+                  No hay mesas en esta área
+                </Typography>
+                {editMode && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => handleOpenTableDialog()}
+                  >
+                    Agregar Mesa
+                  </Button>
+                )}
+              </Box>
+            )}
+          </Box>
+        </Paper>
       </Box>
 
-      {/* Stats */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={6} sm={3} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="h4">{tableStats.total}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Total Mesas
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#e8f5e9' }}>
-            <Typography variant="h4" color="#4caf50">
-              {tableStats.available}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Disponibles
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#fff3e0' }}>
-            <Typography variant="h4" color="#ff9800">
-              {tableStats.occupied}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Ocupadas
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#e3f2fd' }}>
-            <Typography variant="h4" color="#2196f3">
-              {tableStats.reserved}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Reservadas
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3} md={2}>
-          <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: '#ffebee' }}>
-            <Typography variant="h4" color="#f44336">
-              {tableStats.blocked}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Bloqueadas
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+      {/* Right Sidebar */}
+      <Paper
+        sx={{
+          width: SIDEBAR_WIDTH,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: '1px solid #e0e0e0',
+          overflow: 'auto',
+        }}
+        elevation={0}
+      >
+        {/* Header */}
+        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
+          <Typography variant="h6" gutterBottom>Gestión de Mesas</Typography>
 
-      {/* Area Selector */}
-      {areas.length > 0 && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <ToggleButtonGroup
-            value={selectedArea ?? 'all'}
-            exclusive
-            onChange={(_, value) => setSelectedArea(value === 'all' ? null : value)}
-            sx={{ flexWrap: 'wrap' }}
-          >
-            <ToggleButton value="all">
-              Todas las Áreas
-            </ToggleButton>
-            {areas.map(area => (
-              <ToggleButton key={area.id} value={area.id || 0}>
-                {area.name}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        </Paper>
-      )}
+          {/* Edit Mode Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={editMode}
+                onChange={() => setEditMode(!editMode)}
+                color="primary"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {editMode ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}
+                <span>{editMode ? 'Modo Edición' : 'Modo Vista'}</span>
+              </Box>
+            }
+          />
+        </Box>
 
-      {/* Tables Grid */}
-      {viewMode === 'grid' ? (
-        <Grid container spacing={2}>
-          {filteredTables.map(table => (
-            <Grid item xs={6} sm={4} md={3} lg={2} key={table.id}>
-              <Card
-                sx={{
-                  cursor: table.status === 'blocked' ? 'not-allowed' : 'pointer',
-                  borderTop: '4px solid',
-                  borderColor: getTableStatusColor(table.status),
-                  '&:hover': {
-                    boxShadow: 3,
-                  },
-                }}
+        {/* Area Selector */}
+        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2">Área</Typography>
+            <IconButton size="small" onClick={() => setAreaManageDialog(true)}>
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Box>
+
+          {areas.length === 0 ? (
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              <Button size="small" onClick={() => handleOpenAreaDialog()}>Crear área</Button>
+            </Alert>
+          ) : (
+            <FormControl fullWidth size="small">
+              <Select
+                value={selectedArea || ''}
+                onChange={(e) => setSelectedArea(e.target.value ? Number(e.target.value) : null)}
+                displayEmpty
               >
-                <CardContent
-                  onClick={() => handleTableClick(table)}
-                  sx={{ pb: 0 }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="h5">
-                      Mesa {table.number}
-                    </Typography>
-                    {getTableStatusIcon(table.status)}
-                  </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    {areas.find(a => a.id === table.area_id)?.name || 'Sin área'}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                    <PeopleIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                    <Typography variant="body2">
-                      Capacidad: {table.capacity}
-                    </Typography>
-                  </Box>
-                  {table.current_order && (
-                    <Box sx={{ mt: 1 }}>
-                      <Chip
-                        size="small"
-                        label={`Orden #${table.current_order.order_number}`}
-                        color="primary"
-                      />
+                {areas.map(area => (
+                  <MenuItem key={area.id} value={area.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: area.color }} />
+                      {area.name}
                     </Box>
-                  )}
-                </CardContent>
-                <CardActions>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenTableDialog(table);
-                    }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleTableStatus(table);
-                    }}
-                  >
-                    {table.status === 'blocked' ? <CheckIcon /> : <BlockedIcon />}
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      table.id && handleDeleteTable(table.id);
-                    }}
-                    color="error"
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Paper>
-          {/* List view implementation */}
-          <Typography sx={{ p: 2 }}>Vista de lista (por implementar)</Typography>
-        </Paper>
-      )}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </Box>
+
+        {/* Stats */}
+        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
+          <Typography variant="subtitle2" gutterBottom>Resumen</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2">Total:</Typography>
+              <Chip label={tableStats.total} size="small" />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ color: '#4caf50' }}>Disponibles:</Typography>
+              <Chip label={tableStats.available} size="small" color="success" variant="outlined" />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ color: '#ff9800' }}>Ocupadas:</Typography>
+              <Chip label={tableStats.occupied} size="small" color="warning" variant="outlined" />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ color: '#2196f3' }}>Reservadas:</Typography>
+              <Chip label={tableStats.reserved} size="small" color="info" variant="outlined" />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ color: '#f44336' }}>Bloqueadas:</Typography>
+              <Chip label={tableStats.blocked} size="small" color="error" variant="outlined" />
+            </Box>
+          </Box>
+        </Box>
+
+        {/* View Options */}
+        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
+          <Typography variant="subtitle2" gutterBottom>Opciones de Vista</Typography>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showGrid}
+                onChange={() => setShowGrid(!showGrid)}
+                size="small"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <GridIcon fontSize="small" />
+                <span>Mostrar cuadrícula</span>
+              </Box>
+            }
+          />
+        </Box>
+
+        {/* Actions */}
+        {editMode && (
+          <Box sx={{ p: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>Acciones</Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenTableDialog()}
+              sx={{ mb: 1 }}
+            >
+              Nueva Mesa
+            </Button>
+            <Typography variant="caption" color="text.secondary">
+              Arrastra las mesas para posicionarlas en el plano
+            </Typography>
+          </Box>
+        )}
+
+        {/* Legend */}
+        <Box sx={{ p: 2, mt: 'auto', borderTop: '1px solid #e0e0e0' }}>
+          <Typography variant="subtitle2" gutterBottom>Leyenda</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {['available', 'occupied', 'reserved', 'blocked'].map(status => (
+              <Box key={status} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box
+                  sx={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '4px',
+                    backgroundColor: getTableStatusColor(status) + '40',
+                    border: `2px solid ${getTableStatusColor(status)}`,
+                  }}
+                />
+                <Typography variant="caption">{getStatusLabel(status)}</Typography>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Paper>
 
       {/* Table Dialog */}
       <Dialog open={tableDialog} onClose={handleCloseTableDialog} maxWidth="sm" fullWidth>
@@ -419,41 +772,14 @@ const Tables: React.FC = () => {
           {selectedTable ? 'Editar Mesa' : 'Nueva Mesa'}
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 fullWidth
                 label="Número de Mesa"
                 value={tableForm.number}
                 onChange={(e) => setTableForm({ ...tableForm, number: e.target.value })}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Área</InputLabel>
-                <Select
-                  value={tableForm.area_id ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setTableForm({ ...tableForm, area_id: value ? Number(value) : undefined });
-                  }}
-                  label="Área"
-                >
-                  {areas.length === 0 ? (
-                    <MenuItem disabled value="">
-                      No hay áreas disponibles
-                    </MenuItem>
-                  ) : (
-                    areas.map(area => (
-                      <MenuItem key={area.id} value={area.id}>
-                        {area.name}
-                      </MenuItem>
-                    ))
-                  )}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Capacidad"
@@ -461,13 +787,29 @@ const Tables: React.FC = () => {
                 value={tableForm.capacity}
                 onChange={(e) => setTableForm({ ...tableForm, capacity: Number(e.target.value) })}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth required>
+                <InputLabel>Área</InputLabel>
+                <Select
+                  value={tableForm.area_id || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, area_id: e.target.value ? Number(e.target.value) : undefined })}
+                  label="Área"
+                >
+                  {areas.map(area => (
+                    <MenuItem key={area.id} value={area.id}>
+                      {area.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
               <FormControl fullWidth>
                 <InputLabel>Estado</InputLabel>
                 <Select
                   value={tableForm.status}
-                  onChange={(e) => setTableForm({ ...tableForm, status: e.target.value as 'available' | 'occupied' | 'reserved' | 'cleaning' | 'blocked' })}
+                  onChange={(e) => setTableForm({ ...tableForm, status: e.target.value as any })}
                   label="Estado"
                 >
                   <MenuItem value="available">Disponible</MenuItem>
@@ -475,26 +817,160 @@ const Tables: React.FC = () => {
                   <MenuItem value="blocked">Bloqueada</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-          </Grid>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Forma de la Mesa</Typography>
+              <ToggleButtonGroup
+                value={tableForm.shape}
+                exclusive
+                onChange={(_, value) => value && setTableForm({ ...tableForm, shape: value })}
+              >
+                <ToggleButton value="square">
+                  <Tooltip title="Cuadrada">
+                    <SquareIcon />
+                  </Tooltip>
+                </ToggleButton>
+                <ToggleButton value="round">
+                  <Tooltip title="Redonda">
+                    <CircleIcon />
+                  </Tooltip>
+                </ToggleButton>
+                <ToggleButton value="rectangle">
+                  <Tooltip title="Rectangular">
+                    <RectangleIcon />
+                  </Tooltip>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {/* Position inputs */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Posición X"
+                type="number"
+                value={tableForm.position_x}
+                onChange={(e) => setTableForm({ ...tableForm, position_x: Number(e.target.value) })}
+                InputProps={{ inputProps: { min: 0, max: canvasSize.width - TABLE_BASE_SIZE } }}
+              />
+              <TextField
+                fullWidth
+                label="Posición Y"
+                type="number"
+                value={tableForm.position_y}
+                onChange={(e) => setTableForm({ ...tableForm, position_y: Number(e.target.value) })}
+                InputProps={{ inputProps: { min: 0, max: canvasSize.height - TABLE_BASE_SIZE } }}
+              />
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseTableDialog}>Cancelar</Button>
-          <Button onClick={handleSaveTable} variant="contained">
-            Guardar
-          </Button>
+          <Button onClick={handleSaveTable} variant="contained">Guardar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Floating Action Button */}
-      <Fab
-        color="primary"
-        aria-label="add"
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={() => handleOpenTableDialog()}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Area Dialog */}
+      <Dialog open={areaDialog} onClose={handleCloseAreaDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {editingArea ? 'Editar Área' : 'Nueva Área'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Nombre del Área"
+              value={areaForm.name}
+              onChange={(e) => setAreaForm({ ...areaForm, name: e.target.value })}
+            />
+            <TextField
+              fullWidth
+              label="Descripción"
+              value={areaForm.description}
+              onChange={(e) => setAreaForm({ ...areaForm, description: e.target.value })}
+              multiline
+              rows={2}
+            />
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Color</Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {['#1976d2', '#2e7d32', '#ed6c02', '#9c27b0', '#d32f2f', '#0288d1', '#7b1fa2'].map(color => (
+                  <Box
+                    key={color}
+                    onClick={() => setAreaForm({ ...areaForm, color })}
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      backgroundColor: color,
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      border: areaForm.color === color ? '3px solid #000' : '1px solid #ccc',
+                    }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAreaDialog}>Cancelar</Button>
+          <Button onClick={handleSaveArea} variant="contained">Guardar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Area Management Dialog */}
+      <Dialog open={areaManageDialog} onClose={() => setAreaManageDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Gestionar Áreas</DialogTitle>
+        <DialogContent>
+          {areas.length === 0 ? (
+            <Alert severity="info">No hay áreas configuradas</Alert>
+          ) : (
+            <List>
+              {areas.map(area => (
+                <ListItem
+                  key={area.id}
+                  sx={{
+                    borderLeft: `4px solid ${area.color}`,
+                    mb: 1,
+                    backgroundColor: '#f9f9f9',
+                    borderRadius: 1,
+                  }}
+                >
+                  <ListItemText
+                    primary={area.name}
+                    secondary={`${tables.filter(t => t.area_id === area.id).length} mesa(s) • ${area.description || 'Sin descripción'}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <IconButton onClick={() => handleOpenAreaDialog(area)}>
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => area.id && handleDeleteArea(area.id)}
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAreaManageDialog(false)}>Cerrar</Button>
+          <Button
+            onClick={() => {
+              setAreaManageDialog(false);
+              handleOpenAreaDialog();
+            }}
+            variant="contained"
+            startIcon={<AddIcon />}
+          >
+            Nueva Área
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

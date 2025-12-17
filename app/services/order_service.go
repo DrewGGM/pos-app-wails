@@ -674,7 +674,8 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 func (s *OrderService) GetTables() ([]models.Table, error) {
 	var tables []models.Table
 
-	err := s.db.Where("is_active = ?", true).
+	err := s.db.Preload("Area").
+		Where("is_active = ?", true).
 		Order("zone, number").
 		Find(&tables).Error
 
@@ -737,7 +738,30 @@ func (s *OrderService) AssignOrderToTable(orderID uint, tableID uint) error {
 
 // DeleteTable soft deletes a table
 func (s *OrderService) DeleteTable(id uint) error {
-	return s.db.Delete(&models.Table{}, id).Error
+	// First check if table exists
+	var table models.Table
+	if err := s.db.First(&table, id).Error; err != nil {
+		return fmt.Errorf("mesa no encontrada: %w", err)
+	}
+
+	// Check if table has active orders
+	var orderCount int64
+	s.db.Model(&models.Order{}).Where("table_id = ? AND status NOT IN ?", id,
+		[]models.OrderStatus{models.OrderStatusPaid, models.OrderStatusCancelled}).Count(&orderCount)
+	if orderCount > 0 {
+		return fmt.Errorf("no se puede eliminar la mesa porque tiene órdenes activas")
+	}
+
+	// Perform soft delete
+	result := s.db.Delete(&models.Table{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("error al eliminar mesa: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("no se pudo eliminar la mesa")
+	}
+
+	return nil
 }
 
 // Helper methods
