@@ -120,6 +120,37 @@ export interface PendingOrder {
   created_at: string
 }
 
+export interface SaleItem {
+  product_name: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+}
+
+export interface SalePayment {
+  method: string
+  amount: number
+}
+
+export interface Sale {
+  id: number
+  sale_number: string
+  order_number: string
+  order_type: string
+  order_type_code: string
+  total: number
+  subtotal: number
+  tax: number
+  discount: number
+  payment_method: string
+  status: string
+  customer_name?: string
+  employee_name?: string
+  items: SaleItem[]
+  payments: SalePayment[]
+  created_at: string
+}
+
 export interface ApiResponse<T> {
   success: boolean
   message?: string
@@ -227,6 +258,17 @@ class OrdersApiService {
     const itemBase = item.product.price * item.quantity
     const modifiersTotal = item.modifiers.reduce((sum, mod) => sum + mod.price_change, 0) * item.quantity
     return itemBase + modifiersTotal
+  }
+
+  // Get sales history
+  async getSales(): Promise<Sale[]> {
+    const response = await this.request<ApiResponse<Sale[]>>('/api/v1/sales')
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get sales')
+    }
+
+    return response.data
   }
 }
 

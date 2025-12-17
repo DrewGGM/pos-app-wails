@@ -9,10 +9,11 @@ import {
   type Modifier,
   type PendingOrder,
   type Table,
+  type Sale,
 } from '../services/ordersApi'
 import { authApiService } from '../services/authApi'
 
-type OrdersView = 'create' | 'pending'
+type OrdersView = 'create' | 'pending' | 'sales'
 
 export function Orders() {
   // View state
@@ -23,6 +24,12 @@ export function Orders() {
   const [pendingLoading, setPendingLoading] = useState(false)
   const [pendingError, setPendingError] = useState('')
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null)
+
+  // Sales history state
+  const [sales, setSales] = useState<Sale[]>([])
+  const [salesLoading, setSalesLoading] = useState(false)
+  const [salesError, setSalesError] = useState('')
+  const [expandedSale, setExpandedSale] = useState<number | null>(null)
 
   // Data state
   const [orderTypes, setOrderTypes] = useState<OrderType[]>([])
@@ -80,6 +87,23 @@ export function Orders() {
     }
   }, [])
 
+  // Load sales history
+  const loadSales = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setSalesLoading(true)
+    }
+    setSalesError('')
+
+    try {
+      const salesData = await ordersApiService.getSales()
+      setSales(salesData)
+    } catch (err) {
+      setSalesError(err instanceof Error ? err.message : 'Error al cargar ventas')
+    } finally {
+      setSalesLoading(false)
+    }
+  }, [])
+
   // Load data on mount (including pending orders count)
   useEffect(() => {
     loadData()
@@ -92,6 +116,13 @@ export function Orders() {
       loadPendingOrders()
     }
   }, [currentOrdersView, loadPendingOrders])
+
+  // Reload sales when switching to sales view
+  useEffect(() => {
+    if (currentOrdersView === 'sales') {
+      loadSales()
+    }
+  }, [currentOrdersView, loadSales])
 
   // Prevent body scroll when modal or cart drawer is open
   useEffect(() => {
@@ -116,13 +147,13 @@ export function Orders() {
       ])
 
       setOrderTypes(orderTypesData)
-      setCategories(productsData.categories)
+      // Add "Todos" category at the beginning
+      const allCategory: Category = { id: 0, name: 'Todos', icon: '📋' }
+      setCategories([allCategory, ...productsData.categories])
       setProducts(productsData.products)
 
-      // Select first category by default
-      if (productsData.categories.length > 0) {
-        setSelectedCategory(productsData.categories[0].id)
-      }
+      // Select "Todos" category by default (id: 0)
+      setSelectedCategory(0)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos')
     } finally {
@@ -372,9 +403,10 @@ export function Orders() {
     }
   }
 
-  const filteredProducts = selectedCategory
-    ? products.filter(p => p.category_id === selectedCategory)
-    : products
+  // Filter products: show all if category is 0 (Todos), otherwise filter by category
+  const filteredProducts = selectedCategory === 0
+    ? products
+    : products.filter(p => p.category_id === selectedCategory)
 
   const cartTotal = ordersApiService.calculateCartTotal(cart)
 
@@ -401,6 +433,12 @@ export function Orders() {
           onClick={() => setCurrentOrdersView('pending')}
         >
           📋 Ver Pedidos ({pendingOrders.length})
+        </button>
+        <button
+          className={`orders-view-tab ${currentOrdersView === 'sales' ? 'active' : ''}`}
+          onClick={() => setCurrentOrdersView('sales')}
+        >
+          💰 Ventas
         </button>
       </div>
 
@@ -528,6 +566,162 @@ export function Orders() {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sales History View */}
+      {currentOrdersView === 'sales' && (
+        <div className="sales-history-section">
+          <div className="sales-history-header">
+            <h2>Historial de Ventas</h2>
+            <button
+              className="refresh-btn"
+              onClick={() => loadSales()}
+              disabled={salesLoading}
+            >
+              {salesLoading ? 'Cargando...' : '🔄 Actualizar'}
+            </button>
+          </div>
+
+          {salesError && (
+            <div className="orders-error">
+              {salesError}
+              <button onClick={() => setSalesError('')}>×</button>
+            </div>
+          )}
+
+          {salesLoading && <div className="orders-loading"><p>Cargando ventas...</p></div>}
+
+          {!salesLoading && sales.length === 0 && (
+            <div className="no-sales">
+              <span className="no-sales-icon">📊</span>
+              <p>No hay ventas registradas hoy</p>
+            </div>
+          )}
+
+          {!salesLoading && sales.length > 0 && (
+            <div className="sales-list">
+              {/* Sales Summary */}
+              <div className="sales-summary">
+                <div className="summary-item">
+                  <span className="summary-label">Total Ventas</span>
+                  <span className="summary-value">{sales.length}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-label">Ingresos</span>
+                  <span className="summary-value summary-money">
+                    {formatCurrency(sales.reduce((sum, s) => sum + s.total, 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sales Cards */}
+              {sales.map(sale => (
+                <div
+                  key={sale.id}
+                  className={`sale-card ${expandedSale === sale.id ? 'expanded' : ''}`}
+                  onClick={() => setExpandedSale(expandedSale === sale.id ? null : sale.id)}
+                >
+                  <div className="sale-card-header">
+                    <div className="sale-info">
+                      <span className="sale-number">#{sale.sale_number}</span>
+                      <span className="sale-order-number">Orden: {sale.order_number}</span>
+                    </div>
+                    <div className="sale-meta">
+                      <span className={`sale-status ${sale.status}`}>
+                        {sale.status === 'completed' ? '✓ Completada' : sale.status}
+                      </span>
+                      <span className="sale-time">{formatOrderTime(sale.created_at)}</span>
+                    </div>
+                  </div>
+
+                  <div className="sale-card-summary">
+                    <div className="sale-type">
+                      <span className="type-badge" style={{ backgroundColor: '#1976d2' }}>
+                        {sale.order_type}
+                      </span>
+                      {sale.payment_method && (
+                        <span className="payment-badge">
+                          💳 {sale.payment_method}
+                        </span>
+                      )}
+                    </div>
+                    <span className="sale-total">{formatCurrency(sale.total)}</span>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedSale === sale.id && (
+                    <div className="sale-details" onClick={e => e.stopPropagation()}>
+                      {/* Customer Info */}
+                      {sale.customer_name && (
+                        <div className="sale-customer">
+                          <strong>👤 Cliente:</strong> {sale.customer_name}
+                        </div>
+                      )}
+
+                      {/* Employee Info */}
+                      {sale.employee_name && (
+                        <div className="sale-employee">
+                          <strong>👔 Empleado:</strong> {sale.employee_name}
+                        </div>
+                      )}
+
+                      {/* Items List */}
+                      <div className="sale-items">
+                        <h4>Productos</h4>
+                        {sale.items.map((item, idx) => (
+                          <div key={idx} className="sale-item">
+                            <div className="sale-item-main">
+                              <span className="item-quantity">{item.quantity}x</span>
+                              <span className="item-name">{item.product_name}</span>
+                              <span className="item-price">{formatCurrency(item.subtotal)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Payments */}
+                      {sale.payments && sale.payments.length > 0 && (
+                        <div className="sale-payments">
+                          <h4>Pagos</h4>
+                          {sale.payments.map((payment, idx) => (
+                            <div key={idx} className="payment-row">
+                              <span className="payment-method">{payment.method}</span>
+                              <span className="payment-amount">{formatCurrency(payment.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Totals Breakdown */}
+                      <div className="sale-totals">
+                        <div className="total-row">
+                          <span>Subtotal</span>
+                          <span>{formatCurrency(sale.subtotal)}</span>
+                        </div>
+                        {sale.tax > 0 && (
+                          <div className="total-row">
+                            <span>Impuestos</span>
+                            <span>{formatCurrency(sale.tax)}</span>
+                          </div>
+                        )}
+                        {sale.discount > 0 && (
+                          <div className="total-row discount">
+                            <span>Descuento</span>
+                            <span>-{formatCurrency(sale.discount)}</span>
+                          </div>
+                        )}
+                        <div className="total-row total-final">
+                          <span>Total</span>
+                          <span>{formatCurrency(sale.total)}</span>
+                        </div>
                       </div>
                     </div>
                   )}

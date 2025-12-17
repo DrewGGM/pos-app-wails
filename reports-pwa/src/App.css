@@ -769,6 +769,8 @@ body {
   padding: 1.5rem;
   margin-bottom: 1rem;
   box-shadow: var(--shadow);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-selection-section h3 {
@@ -787,6 +789,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 1rem;
+  min-width: 100%;
 }
 
 .table-btn {
@@ -891,6 +894,7 @@ body {
   border-radius: 12px;
   padding: 1rem;
   box-shadow: var(--shadow);
+  overflow: visible;
 }
 
 .categories-tabs {
@@ -898,8 +902,15 @@ body {
   gap: 0.5rem;
   padding-bottom: 1rem;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 1rem;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.categories-tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .category-tab {
@@ -925,8 +936,9 @@ body {
 
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .product-card {
@@ -1620,7 +1632,7 @@ body {
 
 @media (max-width: 400px) {
   .orders-container {
-    padding: 0;
+    padding: 0.25rem;
   }
 
   .orders-header {
@@ -1646,11 +1658,13 @@ body {
   }
 
   .products-grid {
-    gap: 0.375rem;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
   }
 
   .product-card {
     padding: 0.5rem;
+    min-width: 0; /* Allow shrinking */
   }
 
   .product-image {
@@ -1660,6 +1674,7 @@ body {
 
   .product-info h4 {
     font-size: 0.6875rem;
+    word-break: break-word;
   }
 
   .product-price {
@@ -1674,17 +1689,55 @@ body {
   .category-tab {
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
+    flex-shrink: 0;
   }
 
   .products-section {
     padding: 0.5rem;
     padding-bottom: 90px;
-    margin: 0 0.25rem;
+    margin: 0;
+    border-radius: 8px;
   }
 
   .delivery-form {
-    margin: 0 0.25rem 0.5rem;
+    margin: 0 0 0.5rem 0;
     padding: 0.75rem;
+  }
+
+  .table-selection-section {
+    margin: 0 0 0.5rem 0;
+    padding: 0.75rem;
+  }
+
+  .tables-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .table-btn {
+    padding: 0.5rem;
+  }
+
+  .table-btn .table-number {
+    font-size: 1rem;
+  }
+
+  .table-btn .table-name {
+    font-size: 0.65rem;
+  }
+
+  .table-btn .table-capacity {
+    font-size: 0.6rem;
+  }
+
+  .table-btn .table-zone {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  .table-btn .table-status {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.3rem;
   }
 
   /* FAB adjustments for very small screens */
@@ -2171,5 +2224,337 @@ body.modal-open {
 
   .order-total {
     font-size: 0.9375rem;
+  }
+}
+
+/* ===== SALES HISTORY SECTION ===== */
+.sales-history-section {
+  padding: 1rem 0;
+}
+
+.sales-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0 0.5rem;
+}
+
+.sales-history-header h2 {
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.no-sales {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.no-sales-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.sales-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Sales Summary */
+.sales-summary {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.summary-item {
+  flex: 1;
+  text-align: center;
+  padding: 0.75rem;
+  background: var(--bg-color);
+  border-radius: 8px;
+}
+
+.summary-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.summary-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.summary-money {
+  color: var(--success-color);
+}
+
+/* Sale Card */
+.sale-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sale-card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.sale-card.expanded {
+  box-shadow: var(--shadow-lg);
+}
+
+.sale-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.sale-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sale-number {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.sale-order-number {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.sale-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.sale-status {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--success-color);
+  color: white;
+}
+
+.sale-status.completed {
+  background: var(--success-color);
+}
+
+.sale-status.cancelled {
+  background: var(--error-color);
+}
+
+.sale-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.sale-card-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.sale-type {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.type-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: white;
+}
+
+.payment-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-secondary);
+}
+
+.sale-total {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--success-color);
+}
+
+/* Sale Details (Expanded) */
+.sale-details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.sale-customer,
+.sale-employee {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: var(--bg-color);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.sale-items {
+  margin-bottom: 1rem;
+}
+
+.sale-items h4,
+.sale-payments h4 {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.sale-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sale-item:last-child {
+  border-bottom: none;
+}
+
+.sale-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sale-item-main .item-quantity {
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 30px;
+}
+
+.sale-item-main .item-name {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.sale-item-main .item-price {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Sale Payments */
+.sale-payments {
+  margin-bottom: 1rem;
+}
+
+.payment-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: var(--bg-color);
+  border-radius: 6px;
+  margin-bottom: 0.25rem;
+}
+
+.payment-method {
+  color: var(--text-secondary);
+}
+
+.payment-amount {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Sale Totals */
+.sale-totals {
+  background: var(--bg-color);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.total-row.discount {
+  color: var(--error-color);
+}
+
+.total-row.total-final {
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.total-row.total-final span:last-child {
+  color: var(--success-color);
+}
+
+/* Mobile Responsive for Sales */
+@media (max-width: 480px) {
+  .sales-summary {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+  }
+
+  .summary-label {
+    margin-bottom: 0;
+  }
+
+  .summary-value {
+    font-size: 1.25rem;
+  }
+
+  .sale-card-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .sale-meta {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .sale-total {
+    font-size: 1.1rem;
   }
 }
