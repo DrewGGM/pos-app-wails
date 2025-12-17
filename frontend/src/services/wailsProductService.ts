@@ -274,6 +274,41 @@ class WailsProductService {
       throw new Error('Error al ajustar stock');
     }
   }
+
+  // Get aggregated inventory statistics (optimized - uses SQL aggregation)
+  async getInventorySummary(): Promise<{
+    total_products: number;
+    tracked_products: number;
+    low_stock: number;
+    out_of_stock: number;
+    total_value: number;
+  }> {
+    try {
+      // Try to use the optimized backend endpoint
+      const GetInventorySummary = (window as any).go?.services?.ProductService?.GetInventorySummary;
+      if (GetInventorySummary) {
+        const summary = await GetInventorySummary();
+        return {
+          total_products: (summary as any).total_products || 0,
+          tracked_products: (summary as any).tracked_products || 0,
+          low_stock: (summary as any).low_stock || 0,
+          out_of_stock: (summary as any).out_of_stock || 0,
+          total_value: (summary as any).total_value || 0,
+        };
+      }
+      // Fallback: calculate locally if backend endpoint not available
+      const products = await this.getProducts();
+      return {
+        total_products: products.length,
+        tracked_products: products.filter(p => p.track_inventory !== false).length,
+        low_stock: products.filter(p => p.track_inventory !== false && p.stock > 0 && p.stock <= (p.min_stock || 0)).length,
+        out_of_stock: products.filter(p => p.track_inventory !== false && p.stock <= 0).length,
+        total_value: products.reduce((sum, p) => sum + (p.stock * (p.cost || p.price)), 0),
+      };
+    } catch (error) {
+      return { total_products: 0, tracked_products: 0, low_stock: 0, out_of_stock: 0, total_value: 0 };
+    }
+  }
 }
 
 export const wailsProductService = new WailsProductService();

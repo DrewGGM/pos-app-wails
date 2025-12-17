@@ -4,6 +4,7 @@ import {
   GetTodaySales as GetSales,
   GetPaymentMethods,
   GetCustomers,
+  GetCustomerStats,
   ResendElectronicInvoice,
   ConvertToElectronicInvoice,
   GetSalesHistory,
@@ -460,6 +461,30 @@ class WailsSalesService {
       await DeleteCustomer(id);
     } catch (error) {
       throw new Error('Error al eliminar cliente');
+    }
+  }
+
+  // Get aggregated customer statistics (optimized - uses SQL aggregation)
+  async getCustomerStats(): Promise<{
+    total_customers: number;
+    total_purchases: number;
+    total_spent: number;
+    top_customers: Array<{ id: number; name: string; total_spent: number }>;
+  }> {
+    try {
+      const stats = await GetCustomerStats();
+      return {
+        total_customers: (stats as any).total_customers || 0,
+        total_purchases: (stats as any).total_purchases || 0,
+        total_spent: (stats as any).total_spent || 0,
+        top_customers: ((stats as any).top_customers || []).map((c: any) => ({
+          id: c.id || 0,
+          name: c.name || '',
+          total_spent: c.total_spent || 0,
+        })),
+      };
+    } catch (error) {
+      return { total_customers: 0, total_purchases: 0, total_spent: 0, top_customers: [] };
     }
   }
 

@@ -30,7 +30,6 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { wailsAuthService } from '../../services/wailsAuthService';
-import { wailsSalesService } from '../../services/wailsSalesService';
 
 interface CashMovement {
   id: number;
@@ -78,49 +77,30 @@ const CashRegisterHistory: React.FC = () => {
   const loadHistory = async () => {
     try {
       setLoading(true);
-      // OPTIMIZATION: Fetch registers with reasonable limit
       const registers = await wailsAuthService.getCashRegisterHistory(20, 0);
 
-      // OPTIMIZATION: Fetch ALL sales ONCE instead of once per register (N+1 problem fix)
-      // Reduced from 1000 to 500 for better performance
-      let allSales: any[] = [];
-      try {
-        const { sales } = await wailsSalesService.getSalesHistory(500, 0);
-        allSales = sales;
-      } catch (e) {
-        console.error('Error loading sales:', e);
-      }
-
-      // For each register, calculate sales summary from the already-loaded sales
-      const registersWithSummary = registers.map((register: any) => {
-        let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
-
-        // Filter sales for this specific register from the already-loaded sales
-        const registerSales = allSales.filter((s: any) => s.cash_register_id === register.id);
-
-        registerSales.forEach((sale: any) => {
-          salesSummary.total += sale.total;
-          salesSummary.count++;
-
-          if (sale.payment_details && Array.isArray(sale.payment_details)) {
-            sale.payment_details.forEach((payment: any) => {
-              const paymentMethod = payment.payment_method;
-              const affectsCashRegister = paymentMethod?.affects_cash_register === true;
-
-              if (paymentMethod && paymentMethod.name && affectsCashRegister) {
-                const methodName = paymentMethod.name;
-                salesSummary.by_payment_method[methodName] =
-                  (salesSummary.by_payment_method[methodName] || 0) + payment.amount;
-              }
-            });
+      // Use optimized backend endpoint for each register's sales summary
+      // This uses SQL aggregation instead of loading 500+ sales
+      const registersWithSummary = await Promise.all(
+        registers.map(async (register: any) => {
+          try {
+            const summary = await wailsAuthService.getCashRegisterSalesSummary(register.id || 0, false);
+            return {
+              ...register,
+              sales_summary: {
+                by_payment_method: summary.by_payment_method || {},
+                total: summary.total || 0,
+                count: summary.count || 0,
+              },
+            };
+          } catch {
+            return {
+              ...register,
+              sales_summary: { by_payment_method: {}, total: 0, count: 0 },
+            };
           }
-        });
-
-        return {
-          ...register,
-          sales_summary: salesSummary,
-        };
-      });
+        })
+      );
 
       setHistory(registersWithSummary.filter((r: any) => r.status === 'closed'));
     } catch (error) {

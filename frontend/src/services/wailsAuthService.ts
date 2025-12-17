@@ -9,6 +9,7 @@ import {
   PrintLastCashRegisterReport,
   GetCashRegisterReport,
   GetCashRegisterHistory,
+  GetCashRegisterSalesSummary,
   GetEmployees,
   GetEmployee,
   CreateEmployee,
@@ -27,6 +28,16 @@ interface LoginResponse {
 interface AuthResponse {
   success: boolean;
   message?: string;
+}
+
+// Optimized sales summary for cash register (uses SQL aggregation)
+export interface CashRegisterSalesSummary {
+  by_payment_method: { [key: string]: number };
+  by_payment_method_display: { [key: string]: number };
+  total: number;
+  total_display: number;
+  count: number;
+  count_display: number;
 }
 
 // Adapters: Map Wails models -> Frontend models (avoid Time type mismatches)
@@ -301,6 +312,31 @@ class WailsAuthService {
     } catch (error) {
       console.error('Error getting cash register history:', error);
       throw new Error('Error al obtener historial de cajas');
+    }
+  }
+
+  // Optimized sales summary for cash register (uses SQL aggregation instead of loading all sales)
+  async getCashRegisterSalesSummary(registerId: number, onlyElectronic: boolean = false): Promise<CashRegisterSalesSummary> {
+    try {
+      const summary = await GetCashRegisterSalesSummary(registerId, onlyElectronic);
+      return {
+        by_payment_method: (summary as any).by_payment_method || {},
+        by_payment_method_display: (summary as any).by_payment_method_display || {},
+        total: (summary as any).total || 0,
+        total_display: (summary as any).total_display || 0,
+        count: (summary as any).count || 0,
+        count_display: (summary as any).count_display || 0,
+      };
+    } catch (error) {
+      // Return empty summary on error
+      return {
+        by_payment_method: {},
+        by_payment_method_display: {},
+        total: 0,
+        total_display: 0,
+        count: 0,
+        count_display: 0,
+      };
     }
   }
 }

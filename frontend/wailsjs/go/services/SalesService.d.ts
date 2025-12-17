@@ -37,6 +37,8 @@ export function GetConsumidorFinal():Promise<models.Customer>;
 
 export function GetCustomer(arg1:number):Promise<models.Customer>;
 
+export function GetCustomerStats():Promise<services.CustomerStats>;
+
 export function GetCustomers():Promise<Array<models.Customer>>;
 
 export function GetDB():Promise<gorm.DB>;

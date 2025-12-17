@@ -552,6 +552,128 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 	return registers, err
 }
 
+// CashRegisterSalesSummary represents an optimized sales summary for a cash register
+type CashRegisterSalesSummary struct {
+	ByPaymentMethod        map[string]float64 `json:"by_payment_method"`
+	ByPaymentMethodDisplay map[string]float64 `json:"by_payment_method_display"`
+	Total                  float64            `json:"total"`
+	TotalDisplay           float64            `json:"total_display"`
+	Count                  int                `json:"count"`
+	CountDisplay           int                `json:"count_display"`
+}
+
+// GetCashRegisterSalesSummary returns an optimized sales summary for a cash register
+// This uses SQL aggregation instead of loading all sales, making it much faster
+func (s *EmployeeService) GetCashRegisterSalesSummary(registerID uint, onlyElectronic bool) (*CashRegisterSalesSummary, error) {
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
+	}
+
+	// Get the cash register to know when it was opened
+	var register models.CashRegister
+	if err := s.db.First(&register, registerID).Error; err != nil {
+		return nil, fmt.Errorf("cash register not found: %w", err)
+	}
+
+	summary := &CashRegisterSalesSummary{
+		ByPaymentMethod:        make(map[string]float64),
+		ByPaymentMethodDisplay: make(map[string]float64),
+	}
+
+	// Query for aggregated payment totals by payment method
+	// This is MUCH more efficient than loading all sales
+	type PaymentSummary struct {
+		PaymentMethodName   string
+		AffectsCashRegister bool
+		ShowInCashSummary   bool
+		TotalAmount         float64
+		SaleCount           int
+	}
+
+	var results []PaymentSummary
+
+	query := s.db.Table("payments").
+		Select(`
+			payment_methods.name as payment_method_name,
+			payment_methods.affects_cash_register,
+			payment_methods.show_in_cash_summary,
+			SUM(payments.amount) as total_amount,
+			COUNT(DISTINCT payments.sale_id) as sale_count
+		`).
+		Joins("JOIN sales ON payments.sale_id = sales.id AND sales.deleted_at IS NULL").
+		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
+		Where("sales.cash_register_id = ?", registerID).
+		Where("sales.created_at >= ?", register.OpenedAt).
+		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
+		Group("payment_methods.name, payment_methods.affects_cash_register, payment_methods.show_in_cash_summary")
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query = query.Where("sales.needs_electronic_invoice = ?", true)
+	}
+
+	if err := query.Scan(&results).Error; err != nil {
+		return nil, fmt.Errorf("error calculating sales summary: %w", err)
+	}
+
+	// Process results
+	seenSalesBalance := make(map[uint]bool)
+	seenSalesDisplay := make(map[uint]bool)
+
+	for _, r := range results {
+		// For balance calculation (affects_cash_register = true)
+		if r.AffectsCashRegister {
+			summary.ByPaymentMethod[r.PaymentMethodName] = r.TotalAmount
+			summary.Total += r.TotalAmount
+		}
+
+		// For display (show_in_cash_summary = true)
+		if r.ShowInCashSummary {
+			summary.ByPaymentMethodDisplay[r.PaymentMethodName] = r.TotalAmount
+			summary.TotalDisplay += r.TotalAmount
+		}
+	}
+
+	// Get accurate sale counts
+	var countBalance int64
+	countQuery := s.db.Table("sales").
+		Joins("JOIN payments ON payments.sale_id = sales.id").
+		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
+		Where("sales.cash_register_id = ?", registerID).
+		Where("sales.created_at >= ?", register.OpenedAt).
+		Where("sales.deleted_at IS NULL").
+		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
+		Where("payment_methods.affects_cash_register = ?", true)
+
+	if onlyElectronic {
+		countQuery = countQuery.Where("sales.needs_electronic_invoice = ?", true)
+	}
+	countQuery.Distinct("sales.id").Count(&countBalance)
+	summary.Count = int(countBalance)
+
+	var countDisplay int64
+	countQueryDisplay := s.db.Table("sales").
+		Joins("JOIN payments ON payments.sale_id = sales.id").
+		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
+		Where("sales.cash_register_id = ?", registerID).
+		Where("sales.created_at >= ?", register.OpenedAt).
+		Where("sales.deleted_at IS NULL").
+		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
+		Where("payment_methods.show_in_cash_summary = ?", true)
+
+	if onlyElectronic {
+		countQueryDisplay = countQueryDisplay.Where("sales.needs_electronic_invoice = ?", true)
+	}
+	countQueryDisplay.Distinct("sales.id").Count(&countDisplay)
+	summary.CountDisplay = int(countDisplay)
+
+	// Suppress unused variable warnings
+	_ = seenSalesBalance
+	_ = seenSalesDisplay
+
+	return summary, nil
+}
+
 // Helper methods
 
 func (s *EmployeeService) calculateExpectedCash(register *models.CashRegister) float64 {

@@ -121,65 +121,27 @@ const CashRegister: React.FC = () => {
       if (cashRegisterId && user) {
         const register = await wailsAuthService.getOpenCashRegister(user.id!);
         if (register) {
-          // Get sales for this cash register to calculate summary
+          // Get optimized sales summary using SQL aggregation (much faster than loading all sales)
           let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
           let salesSummaryForDisplay = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
 
           try {
-            // CRITICAL FIX: Use getSalesHistory instead of getSales (which only returns today's sales)
-            // We need ALL sales for this cash register, not just today's sales
-            // This is important for multi-day cash register sessions
-            // OPTIMIZATION: Reduced from 1000 to 500 for better performance
-            const { sales } = await wailsSalesService.getSalesHistory(500, 0);
-            let registerSales = sales.filter((s: any) => s.cash_register_id === register.id);
+            // Use optimized backend endpoint that uses SQL aggregation
+            // instead of loading 500+ sales with 12 nested preloads each
+            const summary = await wailsAuthService.getCashRegisterSalesSummary(register.id || 0, isDIANMode);
 
-            // In DIAN mode, only include electronic invoice sales
-            if (isDIANMode) {
-              registerSales = registerSales.filter((s: any) => s.needs_electronic_invoice === true);
-            }
-
-            registerSales.forEach((sale: any) => {
-              // For balance summary: Add full sale total
-              salesSummary.total += sale.total;
-              salesSummary.count++;
-
-              // Calculate by payment method name using payment_details
-              if (sale.payment_details && Array.isArray(sale.payment_details)) {
-                sale.payment_details.forEach((payment: any) => {
-                  const paymentMethod = payment.payment_method;
-
-                  // For cash register balance: Only include payment methods that affect cash register
-                  // This must match the backend calculation in employee_service.go:578-584
-                  const affectsCashRegister = paymentMethod?.affects_cash_register === true;
-                  if (paymentMethod && paymentMethod.name && affectsCashRegister) {
-                    const methodName = paymentMethod.name;
-                    salesSummary.by_payment_method[methodName] =
-                      (salesSummary.by_payment_method[methodName] || 0) + payment.amount;
-                  }
-
-                  // For display summary: Include payment methods that should show in cash summary
-                  // CRITICAL FIX: Only add to total if show_in_cash_summary is true
-                  const showInCashSummary = paymentMethod?.show_in_cash_summary === true;
-                  if (paymentMethod && paymentMethod.name && showInCashSummary) {
-                    const methodName = paymentMethod.name;
-                    salesSummaryForDisplay.by_payment_method[methodName] =
-                      (salesSummaryForDisplay.by_payment_method[methodName] || 0) + payment.amount;
-                    // Add to display total only if this payment method should be shown
-                    salesSummaryForDisplay.total += payment.amount;
-                  }
-                });
-
-                // Only count sales that have at least one payment method with show_in_cash_summary=true
-                const hasVisiblePayment = sale.payment_details.some((payment: any) =>
-                  payment.payment_method?.show_in_cash_summary === true
-                );
-                if (hasVisiblePayment) {
-                  salesSummaryForDisplay.count++;
-                }
-              }
-            });
+            salesSummary = {
+              by_payment_method: summary.by_payment_method || {},
+              total: summary.total || 0,
+              count: summary.count || 0,
+            };
+            salesSummaryForDisplay = {
+              by_payment_method: summary.by_payment_method_display || {},
+              total: summary.total_display || 0,
+              count: summary.count_display || 0,
+            };
           } catch (e) {
-            // Error loading sales summary
+            // Error loading sales summary - use empty defaults
           }
 
           // Calculate expected amount based on DIAN mode

@@ -74,6 +74,10 @@ export function GetCashRegisterReport(arg1) {
   return window['go']['services']['EmployeeService']['GetCashRegisterReport'](arg1);
 }
 
+export function GetCashRegisterSalesSummary(arg1, arg2) {
+  return window['go']['services']['EmployeeService']['GetCashRegisterSalesSummary'](arg1, arg2);
+}
+
 export function GetCurrentCashRegister() {
   return window['go']['services']['EmployeeService']['GetCurrentCashRegister']();
 }

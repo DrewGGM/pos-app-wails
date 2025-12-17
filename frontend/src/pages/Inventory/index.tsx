@@ -62,9 +62,25 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+// Inventory summary (loaded from optimized backend endpoint)
+interface InventorySummary {
+  total_products: number;
+  tracked_products: number;
+  low_stock: number;
+  out_of_stock: number;
+  total_value: number;
+}
+
 const InventoryManagement: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [stats, setStats] = useState<InventorySummary>({
+    total_products: 0,
+    tracked_products: 0,
+    low_stock: 0,
+    out_of_stock: 0,
+    total_value: 0,
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'tracked'>('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -89,8 +105,13 @@ const InventoryManagement: React.FC = () => {
 
   const loadProducts = async () => {
     try {
-      const data = await wailsProductService.getProducts();
-      setProducts(data);
+      // Load products and stats in parallel
+      const [productsData, statsData] = await Promise.all([
+        wailsProductService.getProducts(),
+        wailsProductService.getInventorySummary(),
+      ]);
+      setProducts(productsData);
+      setStats(statsData);
     } catch (error) {
       toast.error('Error al cargar productos');
     }
@@ -238,14 +259,7 @@ const InventoryManagement: React.FC = () => {
     return colors[type] || 'primary';
   };
 
-  // Calculate summary stats
-  const stats = {
-    totalProducts: products.length,
-    trackedProducts: products.filter(p => p.track_inventory !== false).length,
-    lowStock: products.filter(p => p.track_inventory !== false && p.stock > 0 && p.stock <= (p.min_stock || 0)).length,
-    outOfStock: products.filter(p => p.track_inventory !== false && p.stock <= 0).length,
-    totalValue: products.reduce((sum, p) => sum + (p.stock * (p.cost || p.price)), 0),
-  };
+  // Stats are now loaded from optimized backend endpoint (SQL aggregation)
 
   return (
     <Box>
@@ -263,9 +277,9 @@ const InventoryManagement: React.FC = () => {
               <Typography color="text.secondary" gutterBottom>
                 Total Productos
               </Typography>
-              <Typography variant="h4">{stats.totalProducts}</Typography>
+              <Typography variant="h4">{stats.total_products}</Typography>
               <Typography variant="caption" color="text.secondary">
-                {stats.trackedProducts} con seguimiento
+                {stats.tracked_products} con seguimiento
               </Typography>
             </CardContent>
           </Card>
@@ -279,7 +293,7 @@ const InventoryManagement: React.FC = () => {
                   Stock Bajo
                 </Typography>
               </Box>
-              <Typography variant="h4">{stats.lowStock}</Typography>
+              <Typography variant="h4">{stats.low_stock}</Typography>
               <Typography variant="caption">
                 Productos con inventario bajo
               </Typography>
@@ -295,7 +309,7 @@ const InventoryManagement: React.FC = () => {
                   Agotados
                 </Typography>
               </Box>
-              <Typography variant="h4">{stats.outOfStock}</Typography>
+              <Typography variant="h4">{stats.out_of_stock}</Typography>
               <Typography variant="caption">
                 Productos sin stock
               </Typography>
@@ -309,7 +323,7 @@ const InventoryManagement: React.FC = () => {
                 Valor Total
               </Typography>
               <Typography variant="h4">
-                ${stats.totalValue.toLocaleString()}
+                ${stats.total_value.toLocaleString()}
               </Typography>
               <Typography variant="caption">
                 Inventario valorizado

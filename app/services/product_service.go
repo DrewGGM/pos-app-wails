@@ -370,3 +370,49 @@ func (s *ProductService) ExportProducts(format string) ([]byte, error) {
 	// CSV export implementation
 	return nil, fmt.Errorf("CSV export not implemented")
 }
+
+// InventorySummary holds aggregated inventory statistics
+type InventorySummary struct {
+	TotalProducts   int     `json:"total_products"`
+	TrackedProducts int     `json:"tracked_products"`
+	LowStock        int     `json:"low_stock"`
+	OutOfStock      int     `json:"out_of_stock"`
+	TotalValue      float64 `json:"total_value"`
+}
+
+// GetInventorySummary returns aggregated inventory statistics using SQL
+func (s *ProductService) GetInventorySummary() (*InventorySummary, error) {
+	summary := &InventorySummary{}
+
+	// Get all counts in a single query
+	var result struct {
+		TotalProducts   int
+		TrackedProducts int
+		LowStock        int
+		OutOfStock      int
+		TotalValue      float64
+	}
+
+	err := s.db.Model(&models.Product{}).
+		Select(`
+			COUNT(*) as total_products,
+			COUNT(CASE WHEN track_inventory = true OR track_inventory IS NULL THEN 1 END) as tracked_products,
+			COUNT(CASE WHEN (track_inventory = true OR track_inventory IS NULL) AND stock > 0 AND stock <= COALESCE(min_stock, 0) THEN 1 END) as low_stock,
+			COUNT(CASE WHEN (track_inventory = true OR track_inventory IS NULL) AND stock <= 0 THEN 1 END) as out_of_stock,
+			COALESCE(SUM(stock * COALESCE(cost, price)), 0) as total_value
+		`).
+		Where("is_active = ?", true).
+		Scan(&result).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	summary.TotalProducts = result.TotalProducts
+	summary.TrackedProducts = result.TrackedProducts
+	summary.LowStock = result.LowStock
+	summary.OutOfStock = result.OutOfStock
+	summary.TotalValue = result.TotalValue
+
+	return summary, nil
+}

@@ -913,6 +913,83 @@ func (s *SalesService) GetCustomer(id uint) (*models.Customer, error) {
 	return &customer, err
 }
 
+// CustomerStats holds aggregated customer statistics
+type CustomerStats struct {
+	TotalCustomers int           `json:"total_customers"`
+	TotalPurchases int           `json:"total_purchases"`
+	TotalSpent     float64       `json:"total_spent"`
+	TopCustomers   []TopCustomer `json:"top_customers"`
+}
+
+// TopCustomer holds basic info for top customers
+type TopCustomer struct {
+	ID         uint    `json:"id"`
+	Name       string  `json:"name"`
+	TotalSpent float64 `json:"total_spent"`
+}
+
+// GetCustomerStats returns aggregated customer statistics using SQL
+func (s *SalesService) GetCustomerStats() (*CustomerStats, error) {
+	stats := &CustomerStats{}
+
+	// Count active customers
+	var customerCount int64
+	if err := s.db.Model(&models.Customer{}).Where("is_active = ?", true).Count(&customerCount).Error; err != nil {
+		return nil, err
+	}
+	stats.TotalCustomers = int(customerCount)
+
+	// Get sales statistics from the sales table (actual data)
+	var salesStats struct {
+		TotalPurchases int
+		TotalSpent     float64
+	}
+	err := s.db.Model(&models.Sale{}).
+		Select(`
+			COUNT(*) as total_purchases,
+			COALESCE(SUM(total), 0) as total_spent
+		`).
+		Where("customer_id IS NOT NULL").
+		Scan(&salesStats).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats.TotalPurchases = salesStats.TotalPurchases
+	stats.TotalSpent = salesStats.TotalSpent
+
+	// Get top 5 customers by total spent (from actual sales)
+	var topResults []struct {
+		CustomerID uint
+		Name       string
+		TotalSpent float64
+	}
+	err = s.db.Table("sales").
+		Select("sales.customer_id, customers.name, SUM(sales.total) as total_spent").
+		Joins("JOIN customers ON sales.customer_id = customers.id").
+		Where("sales.customer_id IS NOT NULL AND customers.is_active = ?", true).
+		Group("sales.customer_id, customers.name").
+		Order("total_spent DESC").
+		Limit(5).
+		Scan(&topResults).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats.TopCustomers = make([]TopCustomer, len(topResults))
+	for i, r := range topResults {
+		stats.TopCustomers[i] = TopCustomer{
+			ID:         r.CustomerID,
+			Name:       r.Name,
+			TotalSpent: r.TotalSpent,
+		}
+	}
+
+	return stats, nil
+}
+
 // Helper methods
 
 func (s *SalesService) generateSaleNumber() string {

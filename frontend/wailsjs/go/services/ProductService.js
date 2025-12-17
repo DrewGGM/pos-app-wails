@@ -86,6 +86,10 @@ export function GetInventoryMovements(arg1) {
   return window['go']['services']['ProductService']['GetInventoryMovements'](arg1);
 }
 
+export function GetInventorySummary() {
+  return window['go']['services']['ProductService']['GetInventorySummary']();
+}
+
 export function GetLowStockProducts(arg1) {
   return window['go']['services']['ProductService']['GetLowStockProducts'](arg1);
 }

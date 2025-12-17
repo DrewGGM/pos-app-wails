@@ -66,6 +66,10 @@ export function GetCustomer(arg1) {
   return window['go']['services']['SalesService']['GetCustomer'](arg1);
 }
 
+export function GetCustomerStats() {
+  return window['go']['services']['SalesService']['GetCustomerStats']();
+}
+
 export function GetCustomers() {
   return window['go']['services']['SalesService']['GetCustomers']();
 }

@@ -41,8 +41,22 @@ import { Customer } from '../../types/models';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 
+// Customer statistics (loaded from optimized backend endpoint)
+interface CustomerStatsData {
+  total_customers: number;
+  total_purchases: number;
+  total_spent: number;
+  top_customers: Array<{ id: number; name: string; total_spent: number }>;
+}
+
 const Customers: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [stats, setStats] = useState<CustomerStatsData>({
+    total_customers: 0,
+    total_purchases: 0,
+    total_spent: 0,
+    top_customers: [],
+  });
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
@@ -69,8 +83,13 @@ const Customers: React.FC = () => {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const data = await wailsSalesService.getCustomers();
-      setCustomers(data);
+      // Load customers and stats in parallel
+      const [customersData, statsData] = await Promise.all([
+        wailsSalesService.getCustomers(),
+        wailsSalesService.getCustomerStats(),
+      ]);
+      setCustomers(customersData);
+      setStats(statsData);
     } catch (error) {
       toast.error('Error al cargar clientes');
     } finally {
@@ -275,9 +294,8 @@ const Customers: React.FC = () => {
     },
   ];
 
-  const topCustomers = [...customers]
-    .sort((a, b) => (b.total_spent || 0) - (a.total_spent || 0))
-    .slice(0, 5);
+  // Top customers now come from optimized backend endpoint
+  const topCustomers = stats.top_customers;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -292,12 +310,12 @@ const Customers: React.FC = () => {
         </Button>
       </Box>
 
-      {/* Stats */}
+      {/* Stats - Using optimized backend aggregation */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <PersonIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-            <Typography variant="h4">{customers.length}</Typography>
+            <Typography variant="h4">{stats.total_customers}</Typography>
             <Typography variant="body2" color="text.secondary">
               Total Clientes
             </Typography>
@@ -306,9 +324,7 @@ const Customers: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <ReceiptIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
-            <Typography variant="h4">
-              {customers.reduce((sum, c) => sum + (c.total_purchases || 0), 0)}
-            </Typography>
+            <Typography variant="h4">{stats.total_purchases}</Typography>
             <Typography variant="body2" color="text.secondary">
               Total Compras
             </Typography>
@@ -318,9 +334,7 @@ const Customers: React.FC = () => {
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <TrendingUpIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
             <Typography variant="h4">
-              ${customers
-                .reduce((sum, c) => sum + (c.total_spent || 0), 0)
-                .toLocaleString('es-CO')}
+              ${stats.total_spent.toLocaleString('es-CO')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Ventas Totales
@@ -330,11 +344,9 @@ const Customers: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <StarIcon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }} />
-            <Typography variant="h4">
-              {customers.reduce((sum, c) => sum + (c.loyalty_points || 0), 0)}
-            </Typography>
+            <Typography variant="h4">{stats.top_customers.length}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Puntos Totales
+              Top Clientes
             </Typography>
           </Paper>
         </Grid>
@@ -409,9 +421,6 @@ const Customers: React.FC = () => {
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" fontWeight="bold">
                     {customer.name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {customer.total_purchases || 0} compras
                   </Typography>
                 </Box>
                 <Typography variant="body2" fontWeight="bold" color="primary">

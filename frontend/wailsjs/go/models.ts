@@ -3382,6 +3382,28 @@ export namespace services {
 	        this.time = source["time"];
 	    }
 	}
+	export class CashRegisterSalesSummary {
+	    by_payment_method: Record<string, number>;
+	    by_payment_method_display: Record<string, number>;
+	    total: number;
+	    total_display: number;
+	    count: number;
+	    count_display: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CashRegisterSalesSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.by_payment_method = source["by_payment_method"];
+	        this.by_payment_method_display = source["by_payment_method_display"];
+	        this.total = source["total"];
+	        this.total_display = source["total_display"];
+	        this.count = source["count"];
+	        this.count_display = source["count_display"];
+	    }
+	}
 	export class CategoryInventoryData {
 	    category_id: number;
 	    category_name: string;
@@ -3472,6 +3494,58 @@ export namespace services {
 	        this.total_orders_accepted = source["total_orders_accepted"];
 	        this.last_menu_sync = this.convertValues(source["last_menu_sync"], time.Time);
 	        this.last_menu_sync_status = source["last_menu_sync_status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TopCustomer {
+	    id: number;
+	    name: string;
+	    total_spent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TopCustomer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.total_spent = source["total_spent"];
+	    }
+	}
+	export class CustomerStats {
+	    total_customers: number;
+	    total_purchases: number;
+	    total_spent: number;
+	    top_customers: TopCustomer[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomerStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total_customers = source["total_customers"];
+	        this.total_purchases = source["total_purchases"];
+	        this.total_spent = source["total_spent"];
+	        this.top_customers = this.convertValues(source["top_customers"], TopCustomer);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -4245,6 +4319,26 @@ export namespace services {
 		    return a;
 		}
 	}
+	export class InventorySummary {
+	    total_products: number;
+	    tracked_products: number;
+	    low_stock: number;
+	    out_of_stock: number;
+	    total_value: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new InventorySummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total_products = source["total_products"];
+	        this.tracked_products = source["tracked_products"];
+	        this.low_stock = source["low_stock"];
+	        this.out_of_stock = source["out_of_stock"];
+	        this.total_value = source["total_value"];
+	    }
+	}
 	export class InvoiceLimitConfig {
 	    enabled: boolean;
 	    sync_interval: number;
@@ -4698,6 +4792,7 @@ export namespace services {
 		    return a;
 		}
 	}
+	
 	
 	export class UpdateInfo {
 	    current_version: string;
