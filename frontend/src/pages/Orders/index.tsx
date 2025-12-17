@@ -42,7 +42,8 @@ import { useNavigate } from 'react-router-dom';
 import { wailsOrderService } from '../../services/wailsOrderService';
 import { wailsPrinterService } from '../../services/wailsPrinterService';
 import { Order } from '../../types/models';
-import { toast } from 'react-toastify';
+import { showSuccess, showError, showInfo } from '../../utils/toastUtils';
+import { getStatusChipColor } from '../../utils/statusUtils';
 import { format } from 'date-fns';
 
 const Orders: React.FC = () => {
@@ -82,7 +83,7 @@ const Orders: React.FC = () => {
       }
       setOrders(data);
     } catch (error) {
-      toast.error('Error al cargar órdenes');
+      showError('order.loadError');
     } finally {
       setLoading(false);
     }
@@ -122,12 +123,11 @@ const Orders: React.FC = () => {
   const handlePrintOrder = async (order: Order) => {
     try {
       if (order.id) {
-        // Print order with all details (modifiers, notes, etc.)
         await wailsPrinterService.printOrder(order);
-        toast.success(`Orden #${order.order_number} enviada a impresora`);
+        showSuccess(`Orden #${order.order_number} enviada a impresora`);
       }
     } catch (error: any) {
-      toast.error(`Error al imprimir orden: ${error.message || 'Error desconocido'}`);
+      showError('order.printError', error);
     }
     handleMenuClose();
   };
@@ -135,11 +135,10 @@ const Orders: React.FC = () => {
   const handleDuplicateOrder = async (order: Order) => {
     try {
       if (order.id) {
-        // Duplicate order - to be implemented
-        toast.info('Duplicar orden - pendiente');
+        showInfo('Duplicar orden - pendiente');
       }
     } catch (error) {
-      toast.error('Error al duplicar orden');
+      showError('order.updateError');
     }
     handleMenuClose();
   };
@@ -148,10 +147,10 @@ const Orders: React.FC = () => {
     try {
       if (order.id) {
         await wailsOrderService.sendToKitchen(order.id);
-        toast.success(`Orden #${order.order_number} enviada a cocina`);
+        showSuccess(`Orden #${order.order_number} enviada a cocina`);
       }
     } catch (error) {
-      toast.error('Error al enviar orden a cocina');
+      showError('order.kitchenError');
     }
     handleMenuClose();
   };
@@ -165,33 +164,16 @@ const Orders: React.FC = () => {
     try {
       if (order.id) {
         await wailsOrderService.deleteOrder(order.id);
-        toast.success(`Orden #${order.order_number} eliminada`);
-        loadOrders(); // Reload orders after deletion
+        showSuccess(`Orden #${order.order_number} eliminada`);
+        loadOrders();
       }
     } catch (error) {
-      toast.error('Error al eliminar orden');
+      showError('order.deleteError');
     }
     handleMenuClose();
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'warning';
-      case 'preparing':
-        return 'info';
-      case 'ready':
-        return 'success';
-      case 'delivered':
-        return 'primary';
-      case 'paid':
-        return 'default';
-      case 'cancelled':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
+  // Using centralized getStatusChipColor from utils/statusUtils.ts
 
   const columns: GridColDef[] = [
     {
@@ -276,7 +258,7 @@ const Orders: React.FC = () => {
         <Chip
           size="small"
           label={params.value}
-          color={getStatusColor(params.value) as any}
+          color={getStatusChipColor(params.value)}
         />
       ),
     },
@@ -452,7 +434,7 @@ const Orders: React.FC = () => {
             </Typography>
             <Chip
               label={selectedOrder?.status}
-              color={getStatusColor(selectedOrder?.status || '') as any}
+              color={getStatusChipColor(selectedOrder?.status || '')}
               size="small"
             />
           </Box>

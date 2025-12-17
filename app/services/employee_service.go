@@ -10,20 +10,19 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 // EmployeeService handles employee and cash register operations
 type EmployeeService struct {
-	db         *gorm.DB
+	*BaseService
 	printerSvc *PrinterService
 }
 
 // NewEmployeeService creates a new employee service
 func NewEmployeeService() *EmployeeService {
 	return &EmployeeService{
-		db:         database.GetDB(),
-		printerSvc: NewPrinterService(),
+		BaseService: &BaseService{db: database.GetDB()},
+		printerSvc:  NewPrinterService(),
 	}
 }
 
@@ -31,8 +30,8 @@ func NewEmployeeService() *EmployeeService {
 
 // GetEmployees gets all employees (active and inactive)
 func (s *EmployeeService) GetEmployees() ([]models.Employee, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var employees []models.Employee
 	err := s.db.Find(&employees).Error
@@ -41,8 +40,8 @@ func (s *EmployeeService) GetEmployees() ([]models.Employee, error) {
 
 // GetEmployee gets an employee by ID
 func (s *EmployeeService) GetEmployee(id uint) (*models.Employee, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var employee models.Employee
 	err := s.db.First(&employee, id).Error
@@ -51,8 +50,8 @@ func (s *EmployeeService) GetEmployee(id uint) (*models.Employee, error) {
 
 // CreateEmployee creates a new employee
 func (s *EmployeeService) CreateEmployee(employee *models.Employee, password string, pin string) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// Validate password
 	if password == "" {
@@ -89,16 +88,16 @@ func (s *EmployeeService) CreateEmployee(employee *models.Employee, password str
 
 // UpdateEmployee updates an employee
 func (s *EmployeeService) UpdateEmployee(employee *models.Employee) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Save(employee).Error
 }
 
 // UpdateEmployeePassword updates an employee's password
 func (s *EmployeeService) UpdateEmployeePassword(employeeID uint, newPassword string) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -111,8 +110,8 @@ func (s *EmployeeService) UpdateEmployeePassword(employeeID uint, newPassword st
 
 // UpdateEmployeePIN updates an employee's PIN
 func (s *EmployeeService) UpdateEmployeePIN(employeeID uint, newPIN string) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	hashedPIN, err := bcrypt.GenerateFromPassword([]byte(newPIN), bcrypt.DefaultCost)
 	if err != nil {
@@ -125,16 +124,16 @@ func (s *EmployeeService) UpdateEmployeePIN(employeeID uint, newPIN string) erro
 
 // DeleteEmployee soft deletes an employee
 func (s *EmployeeService) DeleteEmployee(id uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Delete(&models.Employee{}, id).Error
 }
 
 // AuthenticateEmployee authenticates an employee by username and password
 func (s *EmployeeService) AuthenticateEmployee(username, password string) (*models.Employee, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var employee models.Employee
 
@@ -158,8 +157,8 @@ func (s *EmployeeService) AuthenticateEmployee(username, password string) (*mode
 
 // AuthenticateEmployeeByPIN authenticates an employee by PIN
 func (s *EmployeeService) AuthenticateEmployeeByPIN(pin string) (*models.Employee, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var employees []models.Employee
 
@@ -184,8 +183,8 @@ func (s *EmployeeService) AuthenticateEmployeeByPIN(pin string) (*models.Employe
 
 // DeactivateEmployee deactivates an employee
 func (s *EmployeeService) DeactivateEmployee(id uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Model(&models.Employee{}).Where("id = ?", id).Update("is_active", false).Error
 }
@@ -194,8 +193,8 @@ func (s *EmployeeService) DeactivateEmployee(id uint) error {
 
 // OpenCashRegister opens a new cash register session
 func (s *EmployeeService) OpenCashRegister(employeeID uint, openingAmount float64, notes string) (*models.CashRegister, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	// Check if employee already has an open register
 	var existingRegister models.CashRegister
@@ -233,8 +232,8 @@ func (s *EmployeeService) OpenCashRegister(employeeID uint, openingAmount float6
 
 // GetOpenCashRegister gets the open cash register for an employee
 func (s *EmployeeService) GetOpenCashRegister(employeeID uint) (*models.CashRegister, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var register models.CashRegister
 
@@ -258,8 +257,8 @@ func (s *EmployeeService) GetOpenCashRegister(employeeID uint) (*models.CashRegi
 
 // GetCurrentCashRegister gets the current open cash register (any employee)
 func (s *EmployeeService) GetCurrentCashRegister() (*models.CashRegister, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var register models.CashRegister
 
@@ -284,8 +283,8 @@ func (s *EmployeeService) GetCurrentCashRegister() (*models.CashRegister, error)
 
 // CloseCashRegister closes a cash register session
 func (s *EmployeeService) CloseCashRegister(registerID uint, closingAmount float64, notes string) (*models.CashRegisterReport, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var register models.CashRegister
 
@@ -343,8 +342,8 @@ func (s *EmployeeService) CloseCashRegister(registerID uint, closingAmount float
 
 // PrintCurrentCashRegisterReport generates and prints a current cash register report without closing
 func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	var register models.CashRegister
 
@@ -453,8 +452,8 @@ func (s *EmployeeService) PrintCurrentCashRegisterReport(registerID uint) error 
 
 // PrintLastCashRegisterReport prints the last cash register closing report
 func (s *EmployeeService) PrintLastCashRegisterReport(employeeID uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// Find the last closed cash register for this employee (only manual movements)
 	var register models.CashRegister
@@ -481,8 +480,8 @@ func (s *EmployeeService) PrintLastCashRegisterReport(employeeID uint) error {
 
 // GetCashRegisterReport gets a cash register report by ID
 func (s *EmployeeService) GetCashRegisterReport(reportID uint) (*models.CashRegisterReport, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var report models.CashRegisterReport
 	err := s.db.Preload("Employee").First(&report, reportID).Error
@@ -494,8 +493,8 @@ func (s *EmployeeService) GetCashRegisterReport(reportID uint) (*models.CashRegi
 
 // AddCashMovement adds a cash movement to the current register
 func (s *EmployeeService) AddCashMovement(registerID uint, amount float64, movementType, description, reference string, employeeID uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// Verify register exists and is open
 	var register models.CashRegister
@@ -523,8 +522,8 @@ func (s *EmployeeService) AddCashMovement(registerID uint, amount float64, movem
 
 // GetCashMovements gets cash movements for a register
 func (s *EmployeeService) GetCashMovements(registerID uint) ([]models.CashMovement, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var movements []models.CashMovement
 
@@ -538,8 +537,8 @@ func (s *EmployeeService) GetCashMovements(registerID uint) ([]models.CashMoveme
 
 // GetCashRegisterHistory gets cash register history
 func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.CashRegister, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var registers []models.CashRegister
 
@@ -730,8 +729,8 @@ func (s *EmployeeService) generateCashRegisterReport(register *models.CashRegist
 
 // CreateSession creates a new session for an employee
 func (s *EmployeeService) CreateSession(employeeID uint, deviceInfo, ipAddress string) (*models.Session, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	// Generate session token
 	tokenBytes := make([]byte, 32)
@@ -758,8 +757,8 @@ func (s *EmployeeService) CreateSession(employeeID uint, deviceInfo, ipAddress s
 
 // ValidateSession validates a session token
 func (s *EmployeeService) ValidateSession(token string) (*models.Employee, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var session models.Session
 
@@ -781,16 +780,16 @@ func (s *EmployeeService) ValidateSession(token string) (*models.Employee, error
 
 // RevokeSession revokes a session
 func (s *EmployeeService) RevokeSession(token string) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Where("token = ?", token).Delete(&models.Session{}).Error
 }
 
 // CleanExpiredSessions cleans up expired sessions
 func (s *EmployeeService) CleanExpiredSessions() error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Where("expires_at < ?", time.Now()).Delete(&models.Session{}).Error
 }
@@ -799,7 +798,7 @@ func (s *EmployeeService) CleanExpiredSessions() error {
 
 // LogAudit logs an audit entry
 func (s *EmployeeService) LogAudit(employeeID uint, action, entity string, entityID uint, oldValue, newValue, ipAddress, userAgent string) {
-	if s.db == nil {
+	if s.EnsureDB() != nil {
 		return
 	}
 	audit := models.AuditLog{
@@ -818,8 +817,8 @@ func (s *EmployeeService) LogAudit(employeeID uint, action, entity string, entit
 
 // GetAuditLogs gets audit logs with filters
 func (s *EmployeeService) GetAuditLogs(employeeID uint, entity string, limit, offset int) ([]models.AuditLog, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var logs []models.AuditLog
 
@@ -843,8 +842,8 @@ func (s *EmployeeService) GetAuditLogs(employeeID uint, entity string, limit, of
 
 // GetDailyCashRegisterReport gets or generates daily cash register report
 func (s *EmployeeService) GetDailyCashRegisterReport(date time.Time) (*models.CashRegisterReport, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var report models.CashRegisterReport
 

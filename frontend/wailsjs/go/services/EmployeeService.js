@@ -22,6 +22,10 @@ export function CloseCashRegister(arg1, arg2, arg3) {
   return window['go']['services']['EmployeeService']['CloseCashRegister'](arg1, arg2, arg3);
 }
 
+export function Create(arg1) {
+  return window['go']['services']['EmployeeService']['Create'](arg1);
+}
+
 export function CreateEmployee(arg1, arg2, arg3) {
   return window['go']['services']['EmployeeService']['CreateEmployee'](arg1, arg2, arg3);
 }
@@ -34,8 +38,24 @@ export function DeactivateEmployee(arg1) {
   return window['go']['services']['EmployeeService']['DeactivateEmployee'](arg1);
 }
 
+export function Delete(arg1, arg2) {
+  return window['go']['services']['EmployeeService']['Delete'](arg1, arg2);
+}
+
 export function DeleteEmployee(arg1) {
   return window['go']['services']['EmployeeService']['DeleteEmployee'](arg1);
+}
+
+export function EnsureDB() {
+  return window['go']['services']['EmployeeService']['EnsureDB']();
+}
+
+export function Find(arg1, arg2) {
+  return window['go']['services']['EmployeeService']['Find'](arg1, arg2);
+}
+
+export function First(arg1, arg2) {
+  return window['go']['services']['EmployeeService']['First'](arg1, arg2);
 }
 
 export function GetAuditLogs(arg1, arg2, arg3, arg4) {
@@ -58,6 +78,10 @@ export function GetCurrentCashRegister() {
   return window['go']['services']['EmployeeService']['GetCurrentCashRegister']();
 }
 
+export function GetDB() {
+  return window['go']['services']['EmployeeService']['GetDB']();
+}
+
 export function GetDailyCashRegisterReport(arg1) {
   return window['go']['services']['EmployeeService']['GetDailyCashRegisterReport'](arg1);
 }
@@ -78,8 +102,16 @@ export function LogAudit(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['services']['EmployeeService']['LogAudit'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
+export function Model(arg1) {
+  return window['go']['services']['EmployeeService']['Model'](arg1);
+}
+
 export function OpenCashRegister(arg1, arg2, arg3) {
   return window['go']['services']['EmployeeService']['OpenCashRegister'](arg1, arg2, arg3);
+}
+
+export function Preload(arg1) {
+  return window['go']['services']['EmployeeService']['Preload'](arg1);
 }
 
 export function PrintCurrentCashRegisterReport(arg1) {
@@ -92,6 +124,14 @@ export function PrintLastCashRegisterReport(arg1) {
 
 export function RevokeSession(arg1) {
   return window['go']['services']['EmployeeService']['RevokeSession'](arg1);
+}
+
+export function Save(arg1) {
+  return window['go']['services']['EmployeeService']['Save'](arg1);
+}
+
+export function SetDB(arg1) {
+  return window['go']['services']['EmployeeService']['SetDB'](arg1);
 }
 
 export function UpdateEmployee(arg1) {
@@ -108,4 +148,12 @@ export function UpdateEmployeePassword(arg1, arg2) {
 
 export function ValidateSession(arg1) {
   return window['go']['services']['EmployeeService']['ValidateSession'](arg1);
+}
+
+export function Where(arg1, arg2) {
+  return window['go']['services']['EmployeeService']['Where'](arg1, arg2);
+}
+
+export function WithTransaction(arg1) {
+  return window['go']['services']['EmployeeService']['WithTransaction'](arg1);
 }

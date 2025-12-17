@@ -14,7 +14,7 @@ import (
 
 // OrderService handles order operations
 type OrderService struct {
-	db            *gorm.DB
+	*BaseService
 	productSvc    *ProductService
 	printerSvc    *PrinterService
 	ingredientSvc *IngredientService
@@ -25,7 +25,7 @@ type OrderService struct {
 // NewOrderService creates a new order service
 func NewOrderService() *OrderService {
 	return &OrderService{
-		db:            database.GetDB(),
+		BaseService:   &BaseService{db: database.GetDB()},
 		productSvc:    NewProductService(),
 		printerSvc:    NewPrinterService(),
 		ingredientSvc: NewIngredientService(),
@@ -41,11 +41,6 @@ func (s *OrderService) SetWebSocketServer(server *websocket.Server) {
 
 // CreateOrder creates a new order
 func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
-	// LOG: Input data
-	if order.OrderTypeID != nil {
-	} else {
-	}
-
 	// Generate order number
 	order.OrderNumber = s.generateOrderNumber()
 	order.Status = models.OrderStatusPending

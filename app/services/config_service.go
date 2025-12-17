@@ -12,20 +12,20 @@ import (
 
 // ConfigService handles system configuration
 type ConfigService struct {
-	db *gorm.DB
+	*BaseService
 }
 
 // NewConfigService creates a new config service
 func NewConfigService() *ConfigService {
 	return &ConfigService{
-		db: database.GetDB(),
+		BaseService: &BaseService{db: database.GetDB()},
 	}
 }
 
 // GetSystemConfig gets a system configuration value
 func (s *ConfigService) GetSystemConfig(key string) (string, error) {
-	if s.db == nil {
-		return "", fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return "", err
 	}
 	var config models.SystemConfig
 	if err := s.db.Where("key = ?", key).First(&config).Error; err != nil {
@@ -36,8 +36,8 @@ func (s *ConfigService) GetSystemConfig(key string) (string, error) {
 
 // SetSystemConfig sets a system configuration value
 func (s *ConfigService) SetSystemConfig(key, value, configType, category string) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	var config models.SystemConfig
 
@@ -66,8 +66,8 @@ func (s *ConfigService) SetSystemConfig(key, value, configType, category string)
 
 // GetAllSystemConfigs gets all system configurations
 func (s *ConfigService) GetAllSystemConfigs() ([]models.SystemConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var configs []models.SystemConfig
 	err := s.db.Order("category, key").Find(&configs).Error
@@ -103,7 +103,7 @@ func (s *ConfigService) GetSystemConfigBool(key string, defaultValue bool) bool 
 // InitializeDefaultSystemConfigs initializes default system configurations
 func (s *ConfigService) InitializeDefaultSystemConfigs() error {
 	// Check if database is initialized
-	if s.db == nil {
+	if s.EnsureDB() != nil {
 		return nil // Skip if database not ready (e.g., during first run or build)
 	}
 
@@ -140,8 +140,8 @@ func (s *ConfigService) InitializeDefaultSystemConfigs() error {
 
 // GetRestaurantConfig gets restaurant configuration
 func (s *ConfigService) GetRestaurantConfig() (*models.RestaurantConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var config models.RestaurantConfig
 	err := s.db.First(&config).Error
@@ -170,8 +170,8 @@ func (s *ConfigService) GetRestaurantConfig() (*models.RestaurantConfig, error) 
 
 // UpdateRestaurantConfig updates restaurant configuration
 func (s *ConfigService) UpdateRestaurantConfig(config *models.RestaurantConfig) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// If no ID, create new
 	if config.ID == 0 {
@@ -182,8 +182,8 @@ func (s *ConfigService) UpdateRestaurantConfig(config *models.RestaurantConfig) 
 
 // GetDIANConfig gets DIAN configuration
 func (s *ConfigService) GetDIANConfig() (*models.DIANConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var config models.DIANConfig
 	err := s.db.First(&config).Error
@@ -202,8 +202,8 @@ func (s *ConfigService) GetDIANConfig() (*models.DIANConfig, error) {
 
 // UpdateDIANConfig updates DIAN configuration
 func (s *ConfigService) UpdateDIANConfig(config *models.DIANConfig) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	if config.ID == 0 {
 		return s.db.Create(config).Error
@@ -213,8 +213,8 @@ func (s *ConfigService) UpdateDIANConfig(config *models.DIANConfig) error {
 
 // GetPrinterConfigs gets all printer configurations
 func (s *ConfigService) GetPrinterConfigs() ([]models.PrinterConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var configs []models.PrinterConfig
 	err := s.db.Where("is_active = ?", true).Find(&configs).Error
@@ -223,8 +223,8 @@ func (s *ConfigService) GetPrinterConfigs() ([]models.PrinterConfig, error) {
 
 // GetDefaultPrinter gets the default printer, or any active printer if no default is set
 func (s *ConfigService) GetDefaultPrinter() (*models.PrinterConfig, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var printer models.PrinterConfig
 
@@ -245,8 +245,8 @@ func (s *ConfigService) GetDefaultPrinter() (*models.PrinterConfig, error) {
 
 // SavePrinterConfig saves printer configuration
 func (s *ConfigService) SavePrinterConfig(config *models.PrinterConfig) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// If setting as default, unset other defaults
 	if config.IsDefault {
@@ -261,16 +261,16 @@ func (s *ConfigService) SavePrinterConfig(config *models.PrinterConfig) error {
 
 // DeletePrinterConfig deletes a printer configuration
 func (s *ConfigService) DeletePrinterConfig(id uint) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	return s.db.Delete(&models.PrinterConfig{}, id).Error
 }
 
 // GetUITheme gets UI theme configuration
 func (s *ConfigService) GetUITheme() (*models.UITheme, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var theme models.UITheme
 	err := s.db.First(&theme).Error
@@ -294,8 +294,8 @@ func (s *ConfigService) GetUITheme() (*models.UITheme, error) {
 
 // UpdateUITheme updates UI theme
 func (s *ConfigService) UpdateUITheme(theme *models.UITheme) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	if theme.ID == 0 {
 		return s.db.Create(theme).Error
@@ -305,8 +305,8 @@ func (s *ConfigService) UpdateUITheme(theme *models.UITheme) error {
 
 // GetTableLayout gets table layout configuration
 func (s *ConfigService) GetTableLayout() (*models.TableLayout, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
 	}
 	var layout models.TableLayout
 	err := s.db.Where("is_default = ?", true).First(&layout).Error
@@ -324,8 +324,8 @@ func (s *ConfigService) GetTableLayout() (*models.TableLayout, error) {
 
 // SaveTableLayout saves table layout
 func (s *ConfigService) SaveTableLayout(layout *models.TableLayout) error {
-	if s.db == nil {
-		return fmt.Errorf("database not initialized")
+	if err := s.EnsureDB(); err != nil {
+		return err
 	}
 	// If setting as default, unset other defaults
 	if layout.IsDefault {
@@ -398,7 +398,7 @@ func (s *ConfigService) GetDIANParametricData() *models.DIANParametricData {
 
 // ValidateConfiguration validates system configuration
 func (s *ConfigService) ValidateConfiguration() (bool, []string) {
-	if s.db == nil {
+	if s.EnsureDB() != nil {
 		return false, []string{"database not initialized"}
 	}
 	var errors []string

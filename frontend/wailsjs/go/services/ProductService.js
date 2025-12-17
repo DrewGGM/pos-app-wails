@@ -14,6 +14,10 @@ export function AssignModifierToProduct(arg1, arg2) {
   return window['go']['services']['ProductService']['AssignModifierToProduct'](arg1, arg2);
 }
 
+export function Create(arg1) {
+  return window['go']['services']['ProductService']['Create'](arg1);
+}
+
 export function CreateCategory(arg1) {
   return window['go']['services']['ProductService']['CreateCategory'](arg1);
 }
@@ -28,6 +32,10 @@ export function CreateModifierGroup(arg1) {
 
 export function CreateProduct(arg1) {
   return window['go']['services']['ProductService']['CreateProduct'](arg1);
+}
+
+export function Delete(arg1, arg2) {
+  return window['go']['services']['ProductService']['Delete'](arg1, arg2);
 }
 
 export function DeleteCategory(arg1) {
@@ -46,8 +54,20 @@ export function DeleteProduct(arg1) {
   return window['go']['services']['ProductService']['DeleteProduct'](arg1);
 }
 
+export function EnsureDB() {
+  return window['go']['services']['ProductService']['EnsureDB']();
+}
+
 export function ExportProducts(arg1) {
   return window['go']['services']['ProductService']['ExportProducts'](arg1);
+}
+
+export function Find(arg1, arg2) {
+  return window['go']['services']['ProductService']['Find'](arg1, arg2);
+}
+
+export function First(arg1, arg2) {
+  return window['go']['services']['ProductService']['First'](arg1, arg2);
 }
 
 export function GetAllCategories() {
@@ -56,6 +76,10 @@ export function GetAllCategories() {
 
 export function GetAllProducts() {
   return window['go']['services']['ProductService']['GetAllProducts']();
+}
+
+export function GetDB() {
+  return window['go']['services']['ProductService']['GetDB']();
 }
 
 export function GetInventoryMovements(arg1) {
@@ -86,12 +110,28 @@ export function ImportProducts(arg1, arg2) {
   return window['go']['services']['ProductService']['ImportProducts'](arg1, arg2);
 }
 
+export function Model(arg1) {
+  return window['go']['services']['ProductService']['Model'](arg1);
+}
+
+export function Preload(arg1) {
+  return window['go']['services']['ProductService']['Preload'](arg1);
+}
+
 export function RemoveModifierFromProduct(arg1, arg2) {
   return window['go']['services']['ProductService']['RemoveModifierFromProduct'](arg1, arg2);
 }
 
+export function Save(arg1) {
+  return window['go']['services']['ProductService']['Save'](arg1);
+}
+
 export function SearchProducts(arg1) {
   return window['go']['services']['ProductService']['SearchProducts'](arg1);
+}
+
+export function SetDB(arg1) {
+  return window['go']['services']['ProductService']['SetDB'](arg1);
 }
 
 export function UpdateCategory(arg1) {
@@ -108,4 +148,12 @@ export function UpdateModifierGroup(arg1) {
 
 export function UpdateProduct(arg1) {
   return window['go']['services']['ProductService']['UpdateProduct'](arg1);
+}
+
+export function Where(arg1, arg2) {
+  return window['go']['services']['ProductService']['Where'](arg1, arg2);
+}
+
+export function WithTransaction(arg1) {
+  return window['go']['services']['ProductService']['WithTransaction'](arg1);
 }

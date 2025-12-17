@@ -34,7 +34,6 @@ import {
   Lock as LockIcon,
   Badge as BadgeIcon,
   AccessTime as TimeIcon,
-  AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { wailsAuthService } from '../../services/wailsAuthService';

@@ -1,45 +1,12 @@
-// useAuth.ts
+// Context hooks
 export { useAuth } from './useAuth';
-
-// useWebSocket.ts
 export { useWebSocket } from './useWebSocket';
-
-// useDIANMode.ts
 export { useDIANMode } from './useDIANMode';
-
-// useNotifications.ts
 export { useNotifications } from '../contexts/NotificationContext';
 
-// Utility functions for handling optional IDs
-export const useIdGenerator = () => {
-  const generateTempId = () => {
-    return Date.now() + Math.random();
-  };
+// Reusable hooks
+export { useDialog, useMultipleDialogs, useConfirmDialog } from './useDialog';
+export type { UseDialogOptions, UseDialogReturn, ConfirmDialogOptions } from './useDialog';
 
-  const ensureId = (id: number | undefined): number => {
-    return id ?? generateTempId();
-  };
-
-  return {
-    generateTempId,
-    ensureId,
-  };
-};
-
-// Type guards
-export const hasId = <T extends { id?: number }>(item: T): item is T & { id: number } => {
-  return item.id !== undefined;
-};
-
-export const isValidId = (id: number | undefined): id is number => {
-  return id !== undefined && id !== null && !isNaN(id);
-};
-
-// Safe number operations
-export const safeNumber = (value: number | undefined, defaultValue: number = 0): number => {
-  return value ?? defaultValue;
-};
-
-export const safeToLocaleString = (value: number | undefined, locale: string = 'es-CO'): string => {
-  return (value ?? 0).toLocaleString(locale);
-};
+export { useCRUD, useFilteredItems } from './useCRUD';
+export type { CRUDConfig, UseCRUDReturn, UseFilteredItemsOptions } from './useCRUD';

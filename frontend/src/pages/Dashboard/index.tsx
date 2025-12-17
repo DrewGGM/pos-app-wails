@@ -47,7 +47,8 @@ import { useAuth, useDIANMode } from '../../hooks';
 import { wailsDashboardService } from '../../services/wailsDashboardService';
 import { wailsWebSocketService, WebSocketStatus } from '../../services/wailsWebSocketService';
 import { wailsGoogleSheetsService } from '../../services/wailsGoogleSheetsService';
-import { toast } from 'react-toastify';
+import { showSuccess, showError } from '../../utils/toastUtils';
+import { getStatusColor, getStatusLabel, getStatusChipColor } from '../../utils/statusUtils';
 import { format } from 'date-fns';
 import {
   LineChart,
@@ -120,9 +121,9 @@ const Dashboard: React.FC = () => {
     try {
       setSyncing(true);
       await wailsGoogleSheetsService.syncNow();
-      toast.success('Reporte enviado correctamente a Google Sheets');
+      showSuccess('googleSheets.syncSuccess');
     } catch (error: any) {
-      toast.error(error?.message || 'Error al enviar reporte a Google Sheets');
+      showError('googleSheets.syncError', error);
     } finally {
       setSyncing(false);
     }
@@ -549,52 +550,7 @@ const Dashboard: React.FC = () => {
   );
 };
 
-// Helper functions
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending':
-      return 'warning.main';
-    case 'preparing':
-      return 'info.main';
-    case 'ready':
-      return 'success.main';
-    default:
-      return 'grey.500';
-  }
-};
-
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'pending':
-      return 'Pendiente';
-    case 'preparing':
-      return 'Preparando';
-    case 'ready':
-      return 'Listo';
-    case 'delivered':
-      return 'Entregado';
-    case 'paid':
-      return 'Pagado';
-    case 'cancelled':
-      return 'Cancelado';
-    default:
-      return status;
-  }
-};
-
-const getStatusChipColor = (status: string): 'default' | 'warning' | 'info' | 'success' | 'error' => {
-  switch (status) {
-    case 'pending':
-      return 'warning';
-    case 'preparing':
-      return 'info';
-    case 'ready':
-      return 'success';
-    case 'cancelled':
-      return 'error';
-    default:
-      return 'default';
-  }
-};
+// Helper functions now imported from utils/statusUtils.ts
+// getStatusColor, getStatusLabel, getStatusChipColor are centralized utilities
 
 export default Dashboard;

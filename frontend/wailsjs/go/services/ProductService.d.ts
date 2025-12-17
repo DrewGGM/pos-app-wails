@@ -9,6 +9,8 @@ export function AdjustStockInTransaction(arg1:gorm.DB,arg2:number,arg3:number,ar
 
 export function AssignModifierToProduct(arg1:number,arg2:number):Promise<void>;
 
+export function Create(arg1:any):Promise<void>;
+
 export function CreateCategory(arg1:models.Category):Promise<models.Category>;
 
 export function CreateModifier(arg1:models.Modifier):Promise<void>;
@@ -16,6 +18,8 @@ export function CreateModifier(arg1:models.Modifier):Promise<void>;
 export function CreateModifierGroup(arg1:models.ModifierGroup):Promise<void>;
 
 export function CreateProduct(arg1:models.Product):Promise<void>;
+
+export function Delete(arg1:any,arg2:number):Promise<void>;
 
 export function DeleteCategory(arg1:number):Promise<void>;
 
@@ -25,11 +29,19 @@ export function DeleteModifierGroup(arg1:number):Promise<void>;
 
 export function DeleteProduct(arg1:number):Promise<void>;
 
+export function EnsureDB():Promise<void>;
+
 export function ExportProducts(arg1:string):Promise<Array<number>>;
+
+export function Find(arg1:any,arg2:Array<any>):Promise<void>;
+
+export function First(arg1:any,arg2:Array<any>):Promise<void>;
 
 export function GetAllCategories():Promise<Array<models.Category>>;
 
 export function GetAllProducts():Promise<Array<models.Product>>;
+
+export function GetDB():Promise<gorm.DB>;
 
 export function GetInventoryMovements(arg1:number):Promise<Array<models.InventoryMovement>>;
 
@@ -45,9 +57,17 @@ export function GetProductsByCategory(arg1:number):Promise<Array<models.Product>
 
 export function ImportProducts(arg1:Array<number>,arg2:string):Promise<void>;
 
+export function Model(arg1:any):Promise<gorm.DB>;
+
+export function Preload(arg1:string):Promise<gorm.DB>;
+
 export function RemoveModifierFromProduct(arg1:number,arg2:number):Promise<void>;
 
+export function Save(arg1:any):Promise<void>;
+
 export function SearchProducts(arg1:string):Promise<Array<models.Product>>;
+
+export function SetDB(arg1:gorm.DB):Promise<void>;
 
 export function UpdateCategory(arg1:models.Category):Promise<models.Category>;
 
@@ -56,3 +76,7 @@ export function UpdateModifier(arg1:models.Modifier):Promise<void>;
 export function UpdateModifierGroup(arg1:models.ModifierGroup):Promise<void>;
 
 export function UpdateProduct(arg1:models.Product):Promise<void>;
+
+export function Where(arg1:any,arg2:Array<any>):Promise<gorm.DB>;
+
+export function WithTransaction(arg1:any):Promise<void>;

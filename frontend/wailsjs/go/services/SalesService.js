@@ -6,6 +6,10 @@ export function ConvertToElectronicInvoice(arg1) {
   return window['go']['services']['SalesService']['ConvertToElectronicInvoice'](arg1);
 }
 
+export function Create(arg1) {
+  return window['go']['services']['SalesService']['Create'](arg1);
+}
+
 export function CreateCustomer(arg1) {
   return window['go']['services']['SalesService']['CreateCustomer'](arg1);
 }
@@ -22,6 +26,10 @@ export function DeactivatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['DeactivatePaymentMethod'](arg1);
 }
 
+export function Delete(arg1, arg2) {
+  return window['go']['services']['SalesService']['Delete'](arg1, arg2);
+}
+
 export function DeleteCustomer(arg1) {
   return window['go']['services']['SalesService']['DeleteCustomer'](arg1);
 }
@@ -32,6 +40,18 @@ export function DeletePaymentMethod(arg1) {
 
 export function DeleteSale(arg1, arg2) {
   return window['go']['services']['SalesService']['DeleteSale'](arg1, arg2);
+}
+
+export function EnsureDB() {
+  return window['go']['services']['SalesService']['EnsureDB']();
+}
+
+export function Find(arg1, arg2) {
+  return window['go']['services']['SalesService']['Find'](arg1, arg2);
+}
+
+export function First(arg1, arg2) {
+  return window['go']['services']['SalesService']['First'](arg1, arg2);
 }
 
 export function GetAllPaymentMethods() {
@@ -48,6 +68,10 @@ export function GetCustomer(arg1) {
 
 export function GetCustomers() {
   return window['go']['services']['SalesService']['GetCustomers']();
+}
+
+export function GetDB() {
+  return window['go']['services']['SalesService']['GetDB']();
 }
 
 export function GetDIANClosingReport(arg1) {
@@ -86,6 +110,14 @@ export function GetTodaySales() {
   return window['go']['services']['SalesService']['GetTodaySales']();
 }
 
+export function Model(arg1) {
+  return window['go']['services']['SalesService']['Model'](arg1);
+}
+
+export function Preload(arg1) {
+  return window['go']['services']['SalesService']['Preload'](arg1);
+}
+
 export function PrintDIANClosingReport(arg1) {
   return window['go']['services']['SalesService']['PrintDIANClosingReport'](arg1);
 }
@@ -110,8 +142,16 @@ export function ResendElectronicInvoice(arg1) {
   return window['go']['services']['SalesService']['ResendElectronicInvoice'](arg1);
 }
 
+export function Save(arg1) {
+  return window['go']['services']['SalesService']['Save'](arg1);
+}
+
 export function SearchCustomers(arg1) {
   return window['go']['services']['SalesService']['SearchCustomers'](arg1);
+}
+
+export function SetDB(arg1) {
+  return window['go']['services']['SalesService']['SetDB'](arg1);
 }
 
 export function UpdateCustomer(arg1) {
@@ -120,4 +160,12 @@ export function UpdateCustomer(arg1) {
 
 export function UpdatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['UpdatePaymentMethod'](arg1);
+}
+
+export function Where(arg1, arg2) {
+  return window['go']['services']['SalesService']['Where'](arg1, arg2);
+}
+
+export function WithTransaction(arg1) {
+  return window['go']['services']['SalesService']['WithTransaction'](arg1);
 }

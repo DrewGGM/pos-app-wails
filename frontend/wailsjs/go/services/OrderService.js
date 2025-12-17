@@ -14,6 +14,10 @@ export function CancelOrder(arg1, arg2) {
   return window['go']['services']['OrderService']['CancelOrder'](arg1, arg2);
 }
 
+export function Create(arg1) {
+  return window['go']['services']['OrderService']['Create'](arg1);
+}
+
 export function CreateOrder(arg1) {
   return window['go']['services']['OrderService']['CreateOrder'](arg1);
 }
@@ -26,6 +30,10 @@ export function CreateTableArea(arg1) {
   return window['go']['services']['OrderService']['CreateTableArea'](arg1);
 }
 
+export function Delete(arg1, arg2) {
+  return window['go']['services']['OrderService']['Delete'](arg1, arg2);
+}
+
 export function DeleteOrder(arg1) {
   return window['go']['services']['OrderService']['DeleteOrder'](arg1);
 }
@@ -36,6 +44,22 @@ export function DeleteTable(arg1) {
 
 export function DeleteTableArea(arg1) {
   return window['go']['services']['OrderService']['DeleteTableArea'](arg1);
+}
+
+export function EnsureDB() {
+  return window['go']['services']['OrderService']['EnsureDB']();
+}
+
+export function Find(arg1, arg2) {
+  return window['go']['services']['OrderService']['Find'](arg1, arg2);
+}
+
+export function First(arg1, arg2) {
+  return window['go']['services']['OrderService']['First'](arg1, arg2);
+}
+
+export function GetDB() {
+  return window['go']['services']['OrderService']['GetDB']();
 }
 
 export function GetOrder(arg1) {
@@ -78,12 +102,28 @@ export function GetTodayOrders() {
   return window['go']['services']['OrderService']['GetTodayOrders']();
 }
 
+export function Model(arg1) {
+  return window['go']['services']['OrderService']['Model'](arg1);
+}
+
+export function Preload(arg1) {
+  return window['go']['services']['OrderService']['Preload'](arg1);
+}
+
 export function RemoveItemFromOrder(arg1, arg2) {
   return window['go']['services']['OrderService']['RemoveItemFromOrder'](arg1, arg2);
 }
 
+export function Save(arg1) {
+  return window['go']['services']['OrderService']['Save'](arg1);
+}
+
 export function SendToKitchen(arg1) {
   return window['go']['services']['OrderService']['SendToKitchen'](arg1);
+}
+
+export function SetDB(arg1) {
+  return window['go']['services']['OrderService']['SetDB'](arg1);
 }
 
 export function SetWebSocketServer(arg1) {
@@ -108,4 +148,12 @@ export function UpdateTableArea(arg1) {
 
 export function UpdateTableStatus(arg1, arg2) {
   return window['go']['services']['OrderService']['UpdateTableStatus'](arg1, arg2);
+}
+
+export function Where(arg1, arg2) {
+  return window['go']['services']['OrderService']['Where'](arg1, arg2);
+}
+
+export function WithTransaction(arg1) {
+  return window['go']['services']['OrderService']['WithTransaction'](arg1);
 }

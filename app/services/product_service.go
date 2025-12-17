@@ -11,13 +11,13 @@ import (
 
 // ProductService handles product operations
 type ProductService struct {
-	db *gorm.DB
+	*BaseService
 }
 
 // NewProductService creates a new product service
 func NewProductService() *ProductService {
 	return &ProductService{
-		db: database.GetDB(),
+		BaseService: &BaseService{db: database.GetDB()},
 	}
 }
 

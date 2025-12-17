@@ -618,8 +618,6 @@ const Settings: React.FC = () => {
 
       // Map local state to backend DIANConfig fields
       const current = await wailsDianService.getConfig();
-      console.log('🔧 Current DIAN config from backend:', current);
-      console.log('🔧 useTestSetId state value:', dianSettings.useTestSetId);
       const updated = {
         ...current,
         is_enabled: dianSettings.enabled,
@@ -664,7 +662,6 @@ const Settings: React.FC = () => {
         updated.certificate_password = dianSettings.certificatePassword;
       }
 
-      console.log('🔧 Sending to backend - use_test_set_id:', updated.use_test_set_id, 'test_set_id:', updated.test_set_id);
       await wailsDianService.updateConfig(updated as any);
       toast.success('Configuración DIAN guardada y sincronizada con datos de empresa');
     } catch (e:any) {

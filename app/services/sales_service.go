@@ -14,7 +14,7 @@ import (
 
 // SalesService handles sales operations
 type SalesService struct {
-	db              *gorm.DB
+	*BaseService
 	orderSvc        *OrderService
 	invoiceSvc      *InvoiceService
 	printerSvc      *PrinterService
@@ -27,7 +27,7 @@ type SalesService struct {
 func NewSalesService() *SalesService {
 	db := database.GetDB()
 	return &SalesService{
-		db:              db,
+		BaseService:     &BaseService{db: db},
 		orderSvc:        NewOrderService(),
 		invoiceSvc:      NewInvoiceService(),
 		printerSvc:      NewPrinterService(),
@@ -39,34 +39,11 @@ func NewSalesService() *SalesService {
 
 // ProcessSale processes a sale from an order
 func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, sendEmailToCustomer bool, employeeID uint, cashRegisterID uint, printReceipt bool) (*models.Sale, error) {
-	// LOG: Check if electronic invoice is requested
-	fmt.Printf("\n🧾 ========== PROCESSING SALE ==========\n")
-	fmt.Printf("Order ID: %d\n", orderID)
-	fmt.Printf("Needs Electronic Invoice: %v\n", needsElectronicInvoice)
-	fmt.Printf("Print Receipt: %v\n", printReceipt)
-	if customerData != nil {
-		fmt.Printf("Customer: %s (%s)\n", customerData.Name, customerData.IdentificationNumber)
-	} else {
-		fmt.Printf("Customer: None\n")
-	}
-	fmt.Printf("======================================\n\n")
-
 	// Get order with all related data
 	order, err := s.orderSvc.GetOrder(orderID)
 	if err != nil {
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
-
-	// LOG: Verify order has OrderType loaded
-	fmt.Printf("📋 Order retrieved for sale:\n")
-	fmt.Printf("   OrderTypeID: %v\n", order.OrderTypeID)
-	if order.OrderType != nil {
-		fmt.Printf("   OrderType.Name: %s\n", order.OrderType.Name)
-		fmt.Printf("   OrderType.Code: %s\n", order.OrderType.Code)
-	} else {
-		fmt.Printf("   OrderType: nil\n")
-	}
-	fmt.Printf("   Type (deprecated): %s\n\n", order.Type)
 
 	// Validate order can be processed
 	if order.Status == models.OrderStatusPaid {
@@ -116,9 +93,8 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		if err == nil {
 			sale.CustomerID = &defaultCustomer.ID
 			sale.Customer = &defaultCustomer
-			fmt.Printf("Using default CONSUMIDOR FINAL customer for sale\n")
 		} else {
-			fmt.Printf("Warning: Default CONSUMIDOR FINAL customer not found, sale will have no customer\n")
+			log.Printf("Warning: Default CONSUMIDOR FINAL customer not found, sale will have no customer")
 		}
 	}
 
