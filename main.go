@@ -251,6 +251,7 @@ func (a *App) InitializeServicesAfterSetup() error {
 		a.ProductService,
 		a.LoggerService,
 		a.SalesService,
+		a.ConfigService,
 	)
 	a.LoggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 	go func() {
@@ -460,6 +461,7 @@ func main() {
 				app.ProductService,
 				loggerService,
 				app.SalesService,
+				app.ConfigService,
 			)
 			loggerService.LogInfo("Starting Config API server", "Port: "+configAPIPort)
 			go func() {

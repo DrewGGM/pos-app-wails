@@ -94,10 +94,13 @@ class WebSocketManager {
         private const val WS_PORT = 8080
     }
 
+    // Store current connection info
+    private var currentConnection: ServerConnection? = null
+
     sealed class ConnectionState {
         object Disconnected : ConnectionState()
         object Connecting : ConnectionState()
-        data class Connected(val clientId: String) : ConnectionState()
+        data class Connected(val clientId: String, val isTunnel: Boolean = false) : ConnectionState()
         data class Error(val message: String) : ConnectionState()
     }
 
@@ -106,7 +109,68 @@ class WebSocketManager {
         val status: String
     )
 
+    /**
+     * Connect using ServerConnection with full tunnel/local support
+     */
+    fun connect(connection: ServerConnection) {
+        if (_connectionState.value is ConnectionState.Connected) {
+            Log.d(TAG, "Already connected")
+            return
+        }
+
+        _connectionState.value = ConnectionState.Connecting
+        currentConnection = connection
+
+        val url = if (connection.isTunnel) {
+            // Tunnel connection uses the full URL with secure WebSocket
+            val protocol = if (connection.isSecure) "wss" else "ws"
+            "$protocol://${connection.address}/ws?type=kitchen"
+        } else {
+            // Local connection uses IP and port
+            "ws://${connection.address}:$WS_PORT/ws?type=kitchen"
+        }
+
+        Log.d(TAG, "Connecting to WebSocket: $url (tunnel: ${connection.isTunnel})")
+        val request = Request.Builder().url(url).build()
+
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d(TAG, "WebSocket connected via ${if (connection.isTunnel) "tunnel" else "local network"}")
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.d(TAG, "Received message: $text")
+                handleMessage(text)
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "WebSocket closing: $code $reason")
+                _connectionState.value = ConnectionState.Disconnected
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "WebSocket closed: $code $reason")
+                _connectionState.value = ConnectionState.Disconnected
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e(TAG, "WebSocket error", t)
+                _connectionState.value = ConnectionState.Error(t.message ?: "Unknown error")
+            }
+        })
+    }
+
+    /**
+     * Legacy connect method for backward compatibility - uses local network only
+     */
     fun connect(serverIp: String) {
+        connect(ServerConnection(serverIp, isTunnel = false, isSecure = false))
+    }
+
+    /**
+     * Legacy connect method with explicit tunnel URL support (for manual override)
+     */
+    fun connectToUrl(url: String, isSecure: Boolean = true) {
         if (_connectionState.value is ConnectionState.Connected) {
             Log.d(TAG, "Already connected")
             return
@@ -114,8 +178,19 @@ class WebSocketManager {
 
         _connectionState.value = ConnectionState.Connecting
 
-        val url = "ws://$serverIp:$WS_PORT/ws?type=kitchen"
-        val request = Request.Builder().url(url).build()
+        val cleanUrl = url
+            .removePrefix("wss://")
+            .removePrefix("ws://")
+            .removePrefix("https://")
+            .removePrefix("http://")
+
+        currentConnection = ServerConnection(cleanUrl, isTunnel = true, isSecure = isSecure)
+
+        val protocol = if (isSecure) "wss" else "ws"
+        val wsUrl = "$protocol://$cleanUrl/ws?type=kitchen"
+        Log.d(TAG, "Connecting to WebSocket URL: $wsUrl")
+
+        val request = Request.Builder().url(wsUrl).build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -155,8 +230,9 @@ class WebSocketManager {
 
                     if (success && id != null) {
                         clientId = id
-                        _connectionState.value = ConnectionState.Connected(id)
-                        Log.d(TAG, "Authenticated with client ID: $id")
+                        val isTunnel = currentConnection?.isTunnel ?: false
+                        _connectionState.value = ConnectionState.Connected(id, isTunnel)
+                        Log.d(TAG, "Authenticated with client ID: $id (tunnel: $isTunnel)")
                     }
                 }
 
@@ -262,5 +338,13 @@ class WebSocketManager {
 
     fun isConnected(): Boolean {
         return _connectionState.value is ConnectionState.Connected
+    }
+
+    fun getCurrentConnection(): ServerConnection? {
+        return currentConnection
+    }
+
+    fun isConnectedViaTunnel(): Boolean {
+        return currentConnection?.isTunnel == true && isConnected()
     }
 }

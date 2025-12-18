@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -66,6 +66,7 @@ import {
   ViewModule as ViewModuleIcon,
   Smartphone as SmartphoneIcon,
   SmartToy as SmartToyIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsDianService } from '../../services/wailsDianService';
@@ -90,6 +91,11 @@ import CustomPagesSettings from './CustomPagesSettings';
 import RappiSettings from './RappiSettings';
 import DIANDatabaseSettings from './DIANDatabaseSettings';
 import MCPSettings from './MCPSettings';
+import GeneralSettings, {
+  ModuleConfig,
+  loadModuleConfig,
+  isModuleEnabled
+} from './GeneralSettings';
 
 interface Department {
   id: number;
@@ -127,6 +133,7 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index, ...other })
 
 const Settings: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState(0);
+  const [moduleConfig, setModuleConfig] = useState<ModuleConfig[]>(loadModuleConfig);
   const [editMode, setEditMode] = useState(false);
   
   // Business Settings
@@ -1423,24 +1430,56 @@ const Settings: React.FC = () => {
         <Tabs
           value={selectedTab}
           onChange={(_, value) => setSelectedTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab icon={<BusinessIcon />} label="Empresa" />
-          <Tab icon={<ReceiptIcon />} label="Facturación" />
-          <Tab icon={<PaymentIcon />} label="Métodos de Pago" />
-          <Tab icon={<CategoryIcon />} label="Tipos de Pedido" />
-          <Tab icon={<ViewModuleIcon />} label="Páginas POS" />
-          <Tab icon={<PrintIcon />} label="Impresión" />
-          <Tab icon={<CloudSyncIcon />} label="Google Sheets" />
-          <Tab icon={<SmartphoneIcon />} label="Rappi POS" />
-          <Tab icon={<NotificationsIcon />} label="Notificaciones" />
-          <Tab icon={<SecurityIcon />} label="Sistema" />
-          <Tab icon={<WifiIcon />} label="WebSocket" />
-          <Tab icon={<StorageIcon />} label="BD DIAN" />
-          <Tab icon={<SmartToyIcon />} label="IA (MCP)" />
+          <Tab icon={<SettingsIcon />} label="General" />
+          {isModuleEnabled('empresa', moduleConfig) && <Tab icon={<BusinessIcon />} label="Empresa" />}
+          {isModuleEnabled('facturacion', moduleConfig) && <Tab icon={<ReceiptIcon />} label="Facturación" />}
+          {isModuleEnabled('metodos_pago', moduleConfig) && <Tab icon={<PaymentIcon />} label="Métodos de Pago" />}
+          {isModuleEnabled('tipos_pedido', moduleConfig) && <Tab icon={<CategoryIcon />} label="Tipos de Pedido" />}
+          {isModuleEnabled('paginas_pos', moduleConfig) && <Tab icon={<ViewModuleIcon />} label="Páginas POS" />}
+          {isModuleEnabled('impresion', moduleConfig) && <Tab icon={<PrintIcon />} label="Impresión" />}
+          {isModuleEnabled('google_sheets', moduleConfig) && <Tab icon={<CloudSyncIcon />} label="Google Sheets" />}
+          {isModuleEnabled('rappi', moduleConfig) && <Tab icon={<SmartphoneIcon />} label="Rappi POS" />}
+          {isModuleEnabled('notificaciones', moduleConfig) && <Tab icon={<NotificationsIcon />} label="Notificaciones" />}
+          {isModuleEnabled('sistema', moduleConfig) && <Tab icon={<SecurityIcon />} label="Sistema" />}
+          {isModuleEnabled('websocket', moduleConfig) && <Tab icon={<WifiIcon />} label="WebSocket" />}
+          {isModuleEnabled('bd_dian', moduleConfig) && <Tab icon={<StorageIcon />} label="BD DIAN" />}
+          {isModuleEnabled('ia_mcp', moduleConfig) && <Tab icon={<SmartToyIcon />} label="IA (MCP)" />}
         </Tabs>
 
+        {/* General Settings - Always Tab 0 */}
         <TabPanel value={selectedTab} index={0}>
+          <GeneralSettings
+            moduleConfig={moduleConfig}
+            onModuleConfigChange={(newConfig) => {
+              setModuleConfig(newConfig);
+              // Reset to General tab when config changes to avoid showing hidden content
+              setSelectedTab(0);
+            }}
+          />
+        </TabPanel>
+
+        {/* Tab indices are computed dynamically based on enabled modules */}
+        {/* The order is: General(0), Empresa, Facturacion, MetodosPago, TiposPedido, PaginasPOS, Impresion, GoogleSheets, Rappi, Notificaciones, Sistema, WebSocket, BDDIAN, IAMCP */}
+        {(() => {
+          // Calculate tab indices for each module based on what's enabled
+          const moduleOrder = ['empresa', 'facturacion', 'metodos_pago', 'tipos_pedido', 'paginas_pos', 'impresion', 'google_sheets', 'rappi', 'notificaciones', 'sistema', 'websocket', 'bd_dian', 'ia_mcp'];
+          const tabIndices: Record<string, number> = {};
+          let currentIndex = 1; // Start at 1 since General is 0
+          moduleOrder.forEach(moduleId => {
+            if (isModuleEnabled(moduleId, moduleConfig)) {
+              tabIndices[moduleId] = currentIndex++;
+            }
+          });
+
+          return (
+            <>
+              {/* Empresa Settings */}
+              {isModuleEnabled('empresa', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['empresa']}>
           {/* Business Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -1778,9 +1817,12 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={1}>
+              {/* Facturacion Settings */}
+              {isModuleEnabled('facturacion', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['facturacion']}>
           {/* DIAN Settings */}
           <Alert severity="info" sx={{ mb: 3 }}>
             Configuración para facturación electrónica según normativa DIAN Colombia
@@ -2781,24 +2823,33 @@ const Settings: React.FC = () => {
               Guardar Configuración DIAN
             </Button>
           </Box>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={2}>
-          {/* Payment Methods Settings */}
-          <PaymentMethodsSettings />
-        </TabPanel>
+              {/* Payment Methods Settings */}
+              {isModuleEnabled('metodos_pago', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['metodos_pago']}>
+                  <PaymentMethodsSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={3}>
-          {/* Order Types Settings */}
-          <OrderTypesSettings />
-        </TabPanel>
+              {/* Order Types Settings */}
+              {isModuleEnabled('tipos_pedido', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['tipos_pedido']}>
+                  <OrderTypesSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={4}>
-          {/* Custom Pages Settings */}
-          <CustomPagesSettings />
-        </TabPanel>
+              {/* Custom Pages Settings */}
+              {isModuleEnabled('paginas_pos', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['paginas_pos']}>
+                  <CustomPagesSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={5}>
+              {/* Print Settings */}
+              {isModuleEnabled('impresion', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['impresion']}>
           {/* Print Settings */}
           <Alert severity="info" sx={{ mb: 3 }}>
             Configuración de impresoras térmicas (USB/Red, formato 58/80mm)
@@ -3024,19 +3075,26 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={6}>
-          {/* Google Sheets Settings */}
-          <GoogleSheetsSettings />
-        </TabPanel>
+              {/* Google Sheets Settings */}
+              {isModuleEnabled('google_sheets', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['google_sheets']}>
+                  <GoogleSheetsSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={7}>
-          {/* Rappi Settings */}
-          <RappiSettings />
-        </TabPanel>
+              {/* Rappi Settings */}
+              {isModuleEnabled('rappi', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['rappi']}>
+                  <RappiSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={8}>
+              {/* Notification Settings */}
+              {isModuleEnabled('notificaciones', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['notificaciones']}>
           {/* Notification Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -3164,9 +3222,12 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={9}>
+              {/* System Settings */}
+              {isModuleEnabled('sistema', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['sistema']}>
           {/* System Settings */}
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -3330,9 +3391,12 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={10}>
+              {/* WebSocket Management */}
+              {isModuleEnabled('websocket', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['websocket']}>
           {/* WebSocket Management */}
           <Grid container spacing={3}>
             {/* Server Status */}
@@ -3569,17 +3633,25 @@ const Settings: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={11}>
-          {/* DIAN Database Settings */}
-          <DIANDatabaseSettings />
-        </TabPanel>
+              {/* DIAN Database Settings */}
+              {isModuleEnabled('bd_dian', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['bd_dian']}>
+                  <DIANDatabaseSettings />
+                </TabPanel>
+              )}
 
-        <TabPanel value={selectedTab} index={12}>
-          {/* MCP (AI) Settings */}
-          <MCPSettings />
-        </TabPanel>
+              {/* MCP (AI) Settings */}
+              {isModuleEnabled('ia_mcp', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['ia_mcp']}>
+                  <MCPSettings />
+                </TabPanel>
+              )}
+            </>
+          );
+        })()}
       </Paper>
 
       {/* Printer Edit Dialog */}

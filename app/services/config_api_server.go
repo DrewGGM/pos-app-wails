@@ -22,6 +22,7 @@ type ConfigAPIServer struct {
 	productService      *ProductService
 	loggerService       *LoggerService
 	salesService        *SalesService
+	configService       *ConfigService
 }
 
 // InvoiceLimitConfigRequest represents the request body for updating invoice limits
@@ -216,6 +217,7 @@ func NewConfigAPIServer(
 	productService *ProductService,
 	loggerService *LoggerService,
 	salesService *SalesService,
+	configService *ConfigService,
 ) *ConfigAPIServer {
 	return &ConfigAPIServer{
 		port:                port,
@@ -226,6 +228,7 @@ func NewConfigAPIServer(
 		productService:      productService,
 		loggerService:       loggerService,
 		salesService:        salesService,
+		configService:       configService,
 	}
 }
 
@@ -258,6 +261,10 @@ func (s *ConfigAPIServer) Start() error {
 
 	// Sales endpoint for PWA
 	mux.HandleFunc("/api/v1/sales", s.handleGetSales)
+
+	// Tunnel configuration endpoint for mobile apps
+	mux.HandleFunc("/api/v1/server/tunnel", s.handleTunnelConfig)
+	mux.HandleFunc("/api/v1/server/info", s.handleServerInfo)
 
 	s.server = &http.Server{
 		Addr:         s.port,
@@ -1134,5 +1141,154 @@ func (s *ConfigAPIServer) handleGetSales(w http.ResponseWriter, r *http.Request)
 	s.sendJSON(w, http.StatusOK, APIResponse{
 		Success: true,
 		Data:    salesResponse,
+	})
+}
+
+// TunnelConfigRequest represents the request body for updating tunnel configuration
+type TunnelConfigRequest struct {
+	Enabled         *bool   `json:"enabled,omitempty"`
+	URL             *string `json:"url,omitempty"`
+	WebSocketSecure *bool   `json:"websocket_secure,omitempty"`
+}
+
+// handleTunnelConfig handles GET and PUT for tunnel configuration
+func (s *ConfigAPIServer) handleTunnelConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getTunnelConfig(w, r)
+	case http.MethodPut:
+		s.updateTunnelConfig(w, r)
+	default:
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use GET or PUT.",
+		})
+	}
+}
+
+// getTunnelConfig returns current tunnel configuration
+func (s *ConfigAPIServer) getTunnelConfig(w http.ResponseWriter, r *http.Request) {
+	if s.configService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Config service not available",
+		})
+		return
+	}
+
+	config, err := s.configService.GetTunnelConfig()
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to get tunnel config: %v", err),
+		})
+		return
+	}
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    config,
+	})
+}
+
+// updateTunnelConfig updates tunnel configuration
+func (s *ConfigAPIServer) updateTunnelConfig(w http.ResponseWriter, r *http.Request) {
+	if s.configService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Config service not available",
+		})
+		return
+	}
+
+	// Parse request body
+	var req TunnelConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Get current config
+	currentConfig, err := s.configService.GetTunnelConfig()
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to get current config: %v", err),
+		})
+		return
+	}
+
+	// Apply partial updates
+	if req.Enabled != nil {
+		currentConfig.Enabled = *req.Enabled
+	}
+	if req.URL != nil {
+		currentConfig.URL = *req.URL
+	}
+	if req.WebSocketSecure != nil {
+		currentConfig.WebSocketSecure = *req.WebSocketSecure
+	}
+
+	// Save updated config
+	if err := s.configService.SetTunnelConfig(currentConfig); err != nil {
+		log.Printf("[CONFIG API] Error saving tunnel config: %v", err)
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to save configuration: %v", err),
+		})
+		return
+	}
+
+	log.Printf("[CONFIG API] Tunnel config updated: enabled=%v, url=%s, secure=%v",
+		currentConfig.Enabled, currentConfig.URL, currentConfig.WebSocketSecure)
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "Tunnel configuration updated successfully",
+		Data:    currentConfig,
+	})
+}
+
+// handleServerInfo returns server connection information for mobile apps
+func (s *ConfigAPIServer) handleServerInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use GET.",
+		})
+		return
+	}
+
+	if s.configService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Config service not available",
+		})
+		return
+	}
+
+	// Get tunnel config
+	tunnelConfig, _ := s.configService.GetTunnelConfig()
+
+	// Get WebSocket port
+	wsPort, _ := s.configService.GetWebSocketPort()
+
+	// Build response with all connection info
+	serverInfo := map[string]interface{}{
+		"websocket_port": wsPort,
+		"tunnel": map[string]interface{}{
+			"enabled":          tunnelConfig.Enabled,
+			"url":              tunnelConfig.URL,
+			"websocket_secure": tunnelConfig.WebSocketSecure,
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    serverInfo,
 	})
 }

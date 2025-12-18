@@ -10,6 +10,7 @@ import com.drewcore.kitchen_app.data.models.ItemChangeStatus
 import com.drewcore.kitchen_app.data.models.Order
 import com.drewcore.kitchen_app.data.models.OrderDisplayState
 import com.drewcore.kitchen_app.data.models.OrderItem
+import com.drewcore.kitchen_app.data.network.ServerConnection
 import com.drewcore.kitchen_app.data.network.ServerDiscovery
 import com.drewcore.kitchen_app.data.network.WebSocketManager
 import kotlinx.coroutines.delay
@@ -50,22 +51,32 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     // Using ConcurrentHashMap to prevent race conditions
     private val fullOrderQuantities = ConcurrentHashMap<String, Map<String, Int>>()
 
-    private var serverIp: String? = null
+    private var serverConnection: ServerConnection? = null
 
     // Reconnection with exponential backoff
     private var reconnectAttempts = 0
     private val maxReconnectAttempts = 5
     private val baseReconnectDelayMs = 1000L
 
+    // Connection info for display
+    private val _connectionInfo = MutableStateFlow<ConnectionInfo?>(null)
+    val connectionInfo: StateFlow<ConnectionInfo?> = _connectionInfo
+
     companion object {
         private const val TAG = "KitchenViewModel"
     }
+
+    data class ConnectionInfo(
+        val address: String,
+        val isTunnel: Boolean,
+        val isSecure: Boolean
+    )
 
     sealed class UiState {
         object Loading : UiState()
         object DiscoveringServer : UiState()
         object Connecting : UiState()
-        object Connected : UiState()
+        data class Connected(val isTunnel: Boolean = false) : UiState()
         data class Error(val message: String) : UiState()
     }
 
@@ -78,7 +89,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                         _uiState.value = UiState.Connecting
                     }
                     is WebSocketManager.ConnectionState.Connected -> {
-                        _uiState.value = UiState.Connected
+                        _uiState.value = UiState.Connected(isTunnel = state.isTunnel)
                         onConnectionSuccess() // Reset reconnect attempts
                     }
                     is WebSocketManager.ConnectionState.Error -> {
@@ -132,12 +143,18 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.value = UiState.DiscoveringServer
 
-            val ip = serverDiscovery.discoverServer()
-            if (ip != null) {
-                serverIp = ip
-                webSocketManager.connect(ip)
+            val connection = serverDiscovery.discoverServerWithMode()
+            if (connection != null) {
+                serverConnection = connection
+                _connectionInfo.value = ConnectionInfo(
+                    address = connection.address,
+                    isTunnel = connection.isTunnel,
+                    isSecure = connection.isSecure
+                )
+                Log.d(TAG, "Connecting via ${if (connection.isTunnel) "tunnel" else "local network"}: ${connection.address}")
+                webSocketManager.connect(connection)
             } else {
-                _uiState.value = UiState.Error("No se encontró el servidor POS en la red local")
+                _uiState.value = UiState.Error("No se encontró el servidor POS. Verifica la conexión de red o configura el túnel en Ajustes.")
             }
         }
     }
@@ -156,16 +173,51 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             // Check if server exists at this IP
             val serverExists = serverDiscovery.checkServer(ip)
             if (serverExists) {
-                serverIp = ip
-                webSocketManager.connect(ip)
+                val connection = ServerConnection(ip, isTunnel = false, isSecure = false)
+                serverConnection = connection
+                _connectionInfo.value = ConnectionInfo(
+                    address = ip,
+                    isTunnel = false,
+                    isSecure = false
+                )
+                webSocketManager.connect(connection)
             } else {
                 _uiState.value = UiState.Error("No se pudo conectar al servidor en $ip. Verifica que el servidor esté ejecutándose y que la IP sea correcta.")
             }
         }
     }
 
+    fun connectWithTunnelUrl(url: String) {
+        viewModelScope.launch {
+            _uiState.value = UiState.DiscoveringServer
+
+            // Check if tunnel URL is reachable
+            val isReachable = serverDiscovery.checkTunnelUrl(url)
+            if (isReachable) {
+                val cleanUrl = url
+                    .trim()
+                    .removeSuffix("/")
+                    .removePrefix("https://")
+                    .removePrefix("http://")
+                    .removePrefix("wss://")
+                    .removePrefix("ws://")
+
+                val connection = ServerConnection(cleanUrl, isTunnel = true, isSecure = true)
+                serverConnection = connection
+                _connectionInfo.value = ConnectionInfo(
+                    address = cleanUrl,
+                    isTunnel = true,
+                    isSecure = true
+                )
+                webSocketManager.connect(connection)
+            } else {
+                _uiState.value = UiState.Error("No se pudo conectar al túnel en $url. Verifica que el túnel esté activo y la URL sea correcta.")
+            }
+        }
+    }
+
     private fun reconnect() {
-        serverIp?.let { ip ->
+        serverConnection?.let { connection ->
             viewModelScope.launch {
                 if (reconnectAttempts >= maxReconnectAttempts) {
                     Log.w(TAG, "Max reconnect attempts ($maxReconnectAttempts) reached, giving up")
@@ -181,7 +233,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
                 Log.d(TAG, "Reconnecting in ${cappedDelayMs}ms (attempt $reconnectAttempts/$maxReconnectAttempts)")
                 delay(cappedDelayMs)
-                webSocketManager.connect(ip)
+                webSocketManager.connect(connection)
             }
         }
     }

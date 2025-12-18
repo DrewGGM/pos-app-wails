@@ -23,6 +23,11 @@ class WaiterPreferences(context: Context) {
         private const val KEY_PRODUCTS_CACHE_TIMESTAMP = "products_cache_timestamp"
         private const val KEY_TABLES_CACHE_TIMESTAMP = "tables_cache_timestamp"
 
+        // Tunnel configuration keys
+        private const val KEY_TUNNEL_ENABLED = "tunnel_enabled"
+        private const val KEY_TUNNEL_URL = "tunnel_url"
+        private const val KEY_TUNNEL_USE_SECURE = "tunnel_use_secure"
+
         // Cache validity: 5 minutes (products change less frequently)
         private const val CACHE_VALIDITY_MS = 5 * 60 * 1000L
 
@@ -117,6 +122,27 @@ class WaiterPreferences(context: Context) {
             .remove(KEY_CACHED_TABLES)
             .remove(KEY_PRODUCTS_CACHE_TIMESTAMP)
             .remove(KEY_TABLES_CACHE_TIMESTAMP)
+            .apply()
+    }
+
+    // Tunnel configuration
+    var tunnelEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TUNNEL_ENABLED, false)
+        set(value) { prefs.edit().putBoolean(KEY_TUNNEL_ENABLED, value).apply() }
+
+    var tunnelUrl: String?
+        get() = prefs.getString(KEY_TUNNEL_URL, null)
+        set(value) { prefs.edit().putString(KEY_TUNNEL_URL, value).apply() }
+
+    var tunnelUseSecure: Boolean
+        get() = prefs.getBoolean(KEY_TUNNEL_USE_SECURE, true)
+        set(value) { prefs.edit().putBoolean(KEY_TUNNEL_USE_SECURE, value).apply() }
+
+    fun clearTunnelConfig() {
+        prefs.edit()
+            .remove(KEY_TUNNEL_ENABLED)
+            .remove(KEY_TUNNEL_URL)
+            .remove(KEY_TUNNEL_USE_SECURE)
             .apply()
     }
 

@@ -3,6 +3,7 @@ package com.drewcore.kitchen_app.data.network
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.drewcore.kitchen_app.data.preferences.KitchenPreferences
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -10,13 +11,29 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.concurrent.TimeUnit
 
+/**
+ * Server connection result with connection mode information
+ */
+data class ServerConnection(
+    val address: String,      // IP address or tunnel URL
+    val isTunnel: Boolean,    // true if connected via tunnel
+    val isSecure: Boolean     // true if using wss://
+)
+
 class ServerDiscovery(private val context: Context? = null) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(300, TimeUnit.MILLISECONDS)
         .readTimeout(300, TimeUnit.MILLISECONDS)
         .build()
 
+    // Client with longer timeout for tunnel connections
+    private val tunnelClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
+
     private val prefs: SharedPreferences? = context?.getSharedPreferences("server_discovery", Context.MODE_PRIVATE)
+    private val kitchenPrefs: KitchenPreferences? = context?.let { KitchenPreferences(it) }
     private val mdnsDiscovery: MDNSDiscovery? = context?.let { MDNSDiscovery(it) }
 
     companion object {
@@ -24,6 +41,7 @@ class ServerDiscovery(private val context: Context? = null) {
         private const val WS_PORT = 8080
         private const val HEALTH_ENDPOINT = "/health"
         private const val PREF_LAST_SERVER_IP = "last_server_ip"
+        private const val PREF_LAST_CONNECTION_MODE = "last_connection_mode" // "tunnel" or "local"
 
         // Common router IPs to check first
         private val COMMON_IPS = listOf(
@@ -33,77 +51,157 @@ class ServerDiscovery(private val context: Context? = null) {
     }
 
     /**
-     * Discover server with mDNS first, then fallback to parallel scanning
+     * Discover server with tunnel first (if enabled), then fallback to local network
+     * Returns ServerConnection with connection details
      */
-    suspend fun discoverServer(): String? = withContext(Dispatchers.IO) {
+    suspend fun discoverServerWithMode(): ServerConnection? = withContext(Dispatchers.IO) {
         try {
-            val localIp = getLocalIpAddress() ?: return@withContext null
-            Log.d(TAG, "Local IP: $localIp")
-
-            // Special case for Android emulator
-            if (localIp == "10.0.2.15") {
-                Log.d(TAG, "Detected Android emulator, trying host IP 10.0.2.2")
-                if (checkServerAt("10.0.2.2")) {
-                    saveLastServerIp("10.0.2.2")
-                    return@withContext "10.0.2.2"
-                }
-                return@withContext null
+            // 1. Try tunnel connection first (if enabled)
+            val tunnelConnection = tryTunnelConnection()
+            if (tunnelConnection != null) {
+                saveLastConnectionMode("tunnel")
+                return@withContext tunnelConnection
             }
 
-            // 1. Try mDNS discovery first (fastest and most reliable)
-            if (mdnsDiscovery != null) {
-                Log.d(TAG, "Trying mDNS discovery...")
-                val mdnsIp = mdnsDiscovery.discoverServer()
-                if (mdnsIp != null && checkServerAt(mdnsIp)) {
-                    Log.d(TAG, "Server found via mDNS at: $mdnsIp")
-                    saveLastServerIp(mdnsIp)
-                    return@withContext mdnsIp
-                }
-                Log.d(TAG, "mDNS discovery did not find server, falling back to IP scanning")
+            // 2. Try local network discovery
+            val localConnection = discoverLocalServer()
+            if (localConnection != null) {
+                saveLastConnectionMode("local")
+                return@withContext localConnection
             }
 
-            // 2. Try last successful IP (fast fallback)
-            val lastIp = getLastServerIp()
-            if (lastIp != null) {
-                Log.d(TAG, "Trying last known server IP: $lastIp")
-                if (checkServerAt(lastIp)) {
-                    Log.d(TAG, "Server found at last known IP: $lastIp")
-                    return@withContext lastIp
-                }
-            }
-
-            // 2. Try common router/server IPs in the same subnet
-            val ipParts = localIp.split(".")
-            if (ipParts.size == 4) {
-                val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
-                val commonSubnetIps = listOf(
-                    "$networkPrefix.1",
-                    "$networkPrefix.100",
-                    "$networkPrefix.254"
-                )
-
-                Log.d(TAG, "Trying common IPs in subnet: $networkPrefix.*")
-                for (ip in commonSubnetIps) {
-                    if (ip == localIp) continue
-                    if (checkServerAt(ip)) {
-                        Log.d(TAG, "Server found at common IP: $ip")
-                        saveLastServerIp(ip)
-                        return@withContext ip
-                    }
-                }
-            }
-
-            // 3. Parallel scan of entire subnet (much faster)
-            Log.d(TAG, "Starting parallel subnet scan...")
-            val result = parallelScanSubnet(localIp)
-            if (result != null) {
-                saveLastServerIp(result)
-            }
-            result
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Error discovering server", e)
             null
         }
+    }
+
+    /**
+     * Legacy method for backward compatibility - returns IP only
+     */
+    suspend fun discoverServer(): String? = withContext(Dispatchers.IO) {
+        discoverServerWithMode()?.address
+    }
+
+    /**
+     * Try to connect via Cloudflare tunnel if enabled
+     */
+    private suspend fun tryTunnelConnection(): ServerConnection? {
+        val tunnelEnabled = kitchenPrefs?.tunnelEnabled ?: false
+        val tunnelUrl = kitchenPrefs?.tunnelUrl
+        val useSecure = kitchenPrefs?.tunnelUseSecure ?: true
+
+        if (!tunnelEnabled || tunnelUrl.isNullOrBlank()) {
+            Log.d(TAG, "Tunnel not configured, skipping")
+            return null
+        }
+
+        Log.d(TAG, "Trying tunnel connection: $tunnelUrl")
+
+        return try {
+            // Normalize URL - remove trailing slash and protocol if present
+            val cleanUrl = tunnelUrl
+                .trim()
+                .removeSuffix("/")
+                .removePrefix("https://")
+                .removePrefix("http://")
+                .removePrefix("wss://")
+                .removePrefix("ws://")
+
+            val healthUrl = "https://$cleanUrl$HEALTH_ENDPOINT"
+
+            val request = Request.Builder().url(healthUrl).build()
+            val response = tunnelClient.newCall(request).execute()
+            val isHealthy = response.isSuccessful
+            response.close()
+
+            if (isHealthy) {
+                Log.d(TAG, "Tunnel connection successful: $cleanUrl")
+                ServerConnection(
+                    address = cleanUrl,
+                    isTunnel = true,
+                    isSecure = useSecure
+                )
+            } else {
+                Log.d(TAG, "Tunnel health check failed")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Tunnel connection failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Discover server on local network with mDNS first, then fallback to parallel scanning
+     */
+    private suspend fun discoverLocalServer(): ServerConnection? {
+        val localIp = getLocalIpAddress() ?: return null
+        Log.d(TAG, "Local IP: $localIp")
+
+        // Special case for Android emulator
+        if (localIp == "10.0.2.15") {
+            Log.d(TAG, "Detected Android emulator, trying host IP 10.0.2.2")
+            if (checkServerAt("10.0.2.2")) {
+                saveLastServerIp("10.0.2.2")
+                return ServerConnection("10.0.2.2", isTunnel = false, isSecure = false)
+            }
+            return null
+        }
+
+        // 1. Try mDNS discovery first (fastest and most reliable)
+        if (mdnsDiscovery != null) {
+            Log.d(TAG, "Trying mDNS discovery...")
+            val mdnsIp = mdnsDiscovery.discoverServer()
+            if (mdnsIp != null && checkServerAt(mdnsIp)) {
+                Log.d(TAG, "Server found via mDNS at: $mdnsIp")
+                saveLastServerIp(mdnsIp)
+                return ServerConnection(mdnsIp, isTunnel = false, isSecure = false)
+            }
+            Log.d(TAG, "mDNS discovery did not find server, falling back to IP scanning")
+        }
+
+        // 2. Try last successful IP (fast fallback)
+        val lastIp = getLastServerIp()
+        if (lastIp != null) {
+            Log.d(TAG, "Trying last known server IP: $lastIp")
+            if (checkServerAt(lastIp)) {
+                Log.d(TAG, "Server found at last known IP: $lastIp")
+                return ServerConnection(lastIp, isTunnel = false, isSecure = false)
+            }
+        }
+
+        // 3. Try common router/server IPs in the same subnet
+        val ipParts = localIp.split(".")
+        if (ipParts.size == 4) {
+            val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
+            val commonSubnetIps = listOf(
+                "$networkPrefix.1",
+                "$networkPrefix.100",
+                "$networkPrefix.254"
+            )
+
+            Log.d(TAG, "Trying common IPs in subnet: $networkPrefix.*")
+            for (ip in commonSubnetIps) {
+                if (ip == localIp) continue
+                if (checkServerAt(ip)) {
+                    Log.d(TAG, "Server found at common IP: $ip")
+                    saveLastServerIp(ip)
+                    return ServerConnection(ip, isTunnel = false, isSecure = false)
+                }
+            }
+        }
+
+        // 4. Parallel scan of entire subnet (much faster)
+        Log.d(TAG, "Starting parallel subnet scan...")
+        val result = parallelScanSubnet(localIp)
+        if (result != null) {
+            saveLastServerIp(result)
+            return ServerConnection(result, isTunnel = false, isSecure = false)
+        }
+
+        return null
     }
 
     /**
@@ -215,5 +313,39 @@ class ServerDiscovery(private val context: Context? = null) {
 
     fun clearLastServerIp() {
         prefs?.edit()?.remove(PREF_LAST_SERVER_IP)?.apply()
+    }
+
+    private fun saveLastConnectionMode(mode: String) {
+        prefs?.edit()?.putString(PREF_LAST_CONNECTION_MODE, mode)?.apply()
+        Log.d(TAG, "Saved connection mode: $mode")
+    }
+
+    fun getLastConnectionMode(): String? {
+        return prefs?.getString(PREF_LAST_CONNECTION_MODE, null)
+    }
+
+    /**
+     * Check if tunnel URL is reachable
+     */
+    suspend fun checkTunnelUrl(url: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val cleanUrl = url
+                .trim()
+                .removeSuffix("/")
+                .removePrefix("https://")
+                .removePrefix("http://")
+                .removePrefix("wss://")
+                .removePrefix("ws://")
+
+            val healthUrl = "https://$cleanUrl$HEALTH_ENDPOINT"
+            val request = Request.Builder().url(healthUrl).build()
+            val response = tunnelClient.newCall(request).execute()
+            val isHealthy = response.isSuccessful
+            response.close()
+            isHealthy
+        } catch (e: Exception) {
+            Log.e(TAG, "Tunnel URL check failed: ${e.message}")
+            false
+        }
     }
 }
