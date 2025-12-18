@@ -267,11 +267,17 @@ class WebSocketManager {
                 }
 
                 "order_cancelled" -> {
-                    // Parse cancelled order ID
-                    val orderId = message.data["id"]?.toString()
-                    if (orderId != null) {
+                    // Parse cancelled order ID and clean it (remove .0 suffix if present)
+                    val rawOrderId = message.data["id"]?.toString()
+                    if (rawOrderId != null) {
+                        // Clean the ID - remove .0 suffix from Double conversion
+                        val orderId = if (rawOrderId.endsWith(".0")) {
+                            rawOrderId.substring(0, rawOrderId.length - 2)
+                        } else {
+                            rawOrderId
+                        }
                         _orderCancelled.value = orderId
-                        Log.d(TAG, "Order cancelled: $orderId")
+                        Log.d(TAG, "Order cancelled: $orderId (raw: $rawOrderId)")
                     }
                 }
 

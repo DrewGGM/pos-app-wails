@@ -32,6 +32,8 @@ import com.drewcore.waiter_app.ui.components.DeliveryInfoDialog
 import com.drewcore.waiter_app.ui.components.DeliveryInfo
 import com.drewcore.waiter_app.update.UpdateManager
 import com.drewcore.waiter_app.update.UpdateInfo
+import com.drewcore.waiter_app.data.models.TableGridLayout
+import com.drewcore.waiter_app.data.network.ServerDiscovery
 import com.drewcore.waiter_app.data.preferences.WaiterPreferences
 
 class MainActivity : ComponentActivity() {
@@ -98,9 +100,11 @@ fun WaiterApp(
     onUpdateAccepted: (UpdateInfo) -> Unit = {},
     onUpdateDismissed: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val serverDiscovery = remember { ServerDiscovery(context) }
+
     var gridColumns by remember { mutableStateOf(preferences.gridColumns) }
-    var tableGridColumns by remember { mutableStateOf(preferences.tableGridColumns) }
-    var customTableOrder by remember { mutableStateOf(preferences.getTableOrder()) }
+    var areaGridLayouts by remember { mutableStateOf(preferences.getAllAreaGridLayouts()) }
     val uiState by viewModel.uiState.collectAsState()
 
     // Log UI state changes
@@ -111,6 +115,7 @@ fun WaiterApp(
     val currentScreen by viewModel.currentScreen.collectAsState()
     val products by viewModel.products.collectAsState()
     val tables by viewModel.tables.collectAsState()
+    val tableAreas by viewModel.tableAreas.collectAsState()
     val selectedTable by viewModel.selectedTable.collectAsState()
     val orderTypes by viewModel.orderTypes.collectAsState()
     val selectedOrderType by viewModel.selectedOrderType.collectAsState()
@@ -205,11 +210,19 @@ fun WaiterApp(
                         is WaiterViewModel.Screen.TableSelection -> {
                             TableSelectionScreen(
                                 tables = tables,
+                                tableAreas = tableAreas,
+                                areaGridLayouts = areaGridLayouts,
                                 onTableSelected = { table ->
                                     viewModel.selectTable(table)
                                 },
                                 onViewOrders = {
                                     viewModel.navigateToScreen(WaiterViewModel.Screen.OrdersList)
+                                },
+                                onOpenSettings = {
+                                    viewModel.navigateToScreen(WaiterViewModel.Screen.Settings)
+                                },
+                                onRefresh = {
+                                    viewModel.refreshData()
                                 },
                                 onCreateTakeoutOrder = {
                                     viewModel.startTakeoutOrder()
@@ -219,9 +232,7 @@ fun WaiterApp(
                                     viewModel.startDeliveryOrder()
                                     // Then show dialog to enter delivery info
                                     showDeliveryDialog = true
-                                },
-                                gridColumns = tableGridColumns,
-                                customTableOrder = customTableOrder
+                                }
                             )
                         }
                         is WaiterViewModel.Screen.ProductSelection -> {
@@ -286,11 +297,12 @@ fun WaiterApp(
                             SettingsScreen(
                                 preferences = preferences,
                                 tables = tables,
+                                tableAreas = tableAreas,
+                                serverDiscovery = serverDiscovery,
                                 onBack = {
                                     // Reload all preferences after settings change
                                     gridColumns = preferences.gridColumns
-                                    tableGridColumns = preferences.tableGridColumns
-                                    customTableOrder = preferences.getTableOrder()
+                                    areaGridLayouts = preferences.getAllAreaGridLayouts()
                                     viewModel.navigateToScreen(WaiterViewModel.Screen.TableSelection)
                                 }
                             )

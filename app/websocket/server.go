@@ -137,6 +137,7 @@ func (s *Server) Start() error {
 		http.HandleFunc("/api/orders", s.restHandlers.HandleOrders)
 		http.HandleFunc("/api/tables", s.restHandlers.HandleGetTables)
 		http.HandleFunc("/api/tables/status", s.restHandlers.HandleUpdateTableStatus)
+		http.HandleFunc("/api/table-areas", s.restHandlers.HandleGetTableAreas)
 		http.HandleFunc("/api/order-types/active", s.restHandlers.HandleGetActiveOrderTypes)
 		http.HandleFunc("/api/custom-pages", s.restHandlers.HandleGetCustomPages)
 		http.HandleFunc("/api/custom-pages/", s.restHandlers.HandleGetCustomPageProducts)

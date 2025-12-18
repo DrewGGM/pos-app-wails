@@ -115,9 +115,10 @@ class WailsProductService {
     }
   }
 
-  async createProduct(product: Partial<Product>): Promise<void> {
+  async createProduct(product: Partial<Product>): Promise<Product> {
     try {
-      await CreateProduct(product as any);
+      const created = await CreateProduct(product as any);
+      return mapProduct(created as any);
     } catch (error) {
       throw new Error('Error al crear producto');
     }
@@ -256,7 +257,8 @@ class WailsProductService {
       const products = await GetProducts();
       return products
         .map(mapProduct)
-        .filter(product => product.stock <= (product.min_stock || 0));
+        // Only include products with inventory tracking enabled
+        .filter(product => product.track_inventory !== false && product.stock <= (product.min_stock || 0));
     } catch (error) {
       throw new Error('Error al obtener productos con stock bajo');
     }

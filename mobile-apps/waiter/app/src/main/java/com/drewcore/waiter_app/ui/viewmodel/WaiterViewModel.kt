@@ -28,6 +28,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _tables = MutableStateFlow<List<Table>>(emptyList())
     val tables: StateFlow<List<Table>> = _tables
 
+    private val _tableAreas = MutableStateFlow<List<TableArea>>(emptyList())
+    val tableAreas: StateFlow<List<TableArea>> = _tableAreas
+
     private val _selectedTable = MutableStateFlow<Table?>(null)
     val selectedTable: StateFlow<Table?> = _selectedTable
 
@@ -337,6 +340,19 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 // Continue without order types - fallback to old behavior
             }
 
+            // Load table areas
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getTableAreas()")
+            val tableAreasResult = apiService?.getTableAreas()
+            android.util.Log.d("WaiterViewModel", "loadInitialData: getTableAreas() returned: $tableAreasResult")
+
+            tableAreasResult?.onSuccess { areaList ->
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Received ${areaList.size} table areas from API")
+                _tableAreas.value = areaList.filter { it.isActive }
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading table areas from API: ${error.message}", error)
+                // Continue without areas - backwards compatibility
+            }
+
             // Load custom pages
             android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getCustomPages()")
             val customPagesResult = apiService?.getCustomPages()
@@ -368,6 +384,22 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             }?.onFailure { error ->
                 _uiState.value = UiState.Error(error.message ?: "Error cargando órdenes")
             }
+        }
+    }
+
+    /**
+     * Refresh all data from the server (tables, products, areas, etc.)
+     * Called when user taps the sync button
+     */
+    fun refreshData() {
+        viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "refreshData: Manual refresh triggered")
+
+            // Clear cache to force fresh data
+            preferences.clearCache()
+
+            // Reload all data
+            loadInitialData()
         }
     }
 

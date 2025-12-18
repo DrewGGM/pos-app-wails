@@ -555,8 +555,8 @@ const POS: React.FC = () => {
       return;
     }
 
-    // Warning for low stock (but allow to continue)
-    if (product.stock <= 0) {
+    // Warning for low stock (but allow to continue) - only for tracked products
+    if (product.track_inventory !== false && product.stock <= 0) {
       toast.warning('Producto sin stock - Se agregará con stock negativo', {
         position: 'bottom-center',
         autoClose: 2000,
@@ -1060,8 +1060,9 @@ const POS: React.FC = () => {
                 <Card
                   sx={{
                     height: '100%',
-                    border: product.stock <= 0 ? '3px solid #d32f2f' : 'none',
-                    boxShadow: product.stock <= 0 ? '0 0 10px rgba(211, 47, 47, 0.5)' : undefined,
+                    // Only show red border/glow for products with inventory tracking enabled
+                    border: product.track_inventory !== false && product.stock <= 0 ? '3px solid #d32f2f' : 'none',
+                    boxShadow: product.track_inventory !== false && product.stock <= 0 ? '0 0 10px rgba(211, 47, 47, 0.5)' : undefined,
                   }}
                 >
                   <CardActionArea
@@ -1082,7 +1083,8 @@ const POS: React.FC = () => {
                       <Typography variant="h6" color="primary">
                         ${product.price.toLocaleString('es-CO')}
                       </Typography>
-                      {product.stock <= 5 && (
+                      {/* Only show stock warning for products with inventory tracking enabled */}
+                      {product.track_inventory !== false && product.stock <= 5 && (
                         <Chip
                           size="small"
                           label={`Stock: ${product.stock}`}

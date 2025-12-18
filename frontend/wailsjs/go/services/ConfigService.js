@@ -74,6 +74,10 @@ export function GetTableLayout() {
   return window['go']['services']['ConfigService']['GetTableLayout']();
 }
 
+export function GetTunnelConfig() {
+  return window['go']['services']['ConfigService']['GetTunnelConfig']();
+}
+
 export function GetUITheme() {
   return window['go']['services']['ConfigService']['GetUITheme']();
 }
@@ -116,6 +120,10 @@ export function SetDB(arg1) {
 
 export function SetSystemConfig(arg1, arg2, arg3, arg4) {
   return window['go']['services']['ConfigService']['SetSystemConfig'](arg1, arg2, arg3, arg4);
+}
+
+export function SetTunnelConfig(arg1) {
+  return window['go']['services']['ConfigService']['SetTunnelConfig'](arg1);
 }
 
 export function SetWebSocketPort(arg1) {

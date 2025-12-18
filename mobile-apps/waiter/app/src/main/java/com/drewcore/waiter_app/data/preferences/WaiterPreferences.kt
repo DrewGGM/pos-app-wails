@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.drewcore.waiter_app.data.models.Product
 import com.drewcore.waiter_app.data.models.Table
+import com.drewcore.waiter_app.data.models.TableGridLayout
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -18,6 +19,8 @@ class WaiterPreferences(context: Context) {
         private const val KEY_GRID_COLUMNS = "grid_columns"
         private const val KEY_TABLE_GRID_COLUMNS = "table_grid_columns"
         private const val KEY_TABLE_ORDER = "table_order"
+        private const val KEY_TABLE_GRID_LAYOUT = "table_grid_layout"
+        private const val KEY_TABLE_GRID_LAYOUTS_BY_AREA = "table_grid_layouts_by_area"
         private const val KEY_CACHED_PRODUCTS = "cached_products"
         private const val KEY_CACHED_TABLES = "cached_tables"
         private const val KEY_PRODUCTS_CACHE_TIMESTAMP = "products_cache_timestamp"
@@ -33,7 +36,8 @@ class WaiterPreferences(context: Context) {
 
         // Default values
         const val DEFAULT_GRID_COLUMNS = 2
-        const val DEFAULT_TABLE_GRID_COLUMNS = 3
+        const val DEFAULT_TABLE_GRID_COLUMNS = 4
+        const val DEFAULT_TABLE_GRID_ROWS = 4
     }
 
     var gridColumns: Int
@@ -44,7 +48,7 @@ class WaiterPreferences(context: Context) {
         get() = prefs.getInt(KEY_TABLE_GRID_COLUMNS, DEFAULT_TABLE_GRID_COLUMNS)
         set(value) { prefs.edit().putInt(KEY_TABLE_GRID_COLUMNS, value).apply() }
 
-    // Custom table order - stores list of table IDs in custom order
+    // Legacy table order - kept for backward compatibility
     fun getTableOrder(): List<Int>? {
         val json = prefs.getString(KEY_TABLE_ORDER, null) ?: return null
         return try {
@@ -62,6 +66,75 @@ class WaiterPreferences(context: Context) {
 
     fun clearTableOrder() {
         prefs.edit().remove(KEY_TABLE_ORDER).apply()
+    }
+
+    // Table Grid Layout - visual restaurant layout
+    fun getTableGridLayout(): TableGridLayout? {
+        val json = prefs.getString(KEY_TABLE_GRID_LAYOUT, null) ?: return null
+        return try {
+            gson.fromJson(json, TableGridLayout::class.java)
+        } catch (e: Exception) {
+            android.util.Log.e("WaiterPreferences", "Failed to parse table grid layout", e)
+            null
+        }
+    }
+
+    fun setTableGridLayout(layout: TableGridLayout) {
+        val json = gson.toJson(layout)
+        prefs.edit().putString(KEY_TABLE_GRID_LAYOUT, json).apply()
+    }
+
+    fun clearTableGridLayout() {
+        prefs.edit().remove(KEY_TABLE_GRID_LAYOUT).apply()
+    }
+
+    // Per-area grid layouts - each area can have its own layout
+    fun getTableGridLayoutForArea(areaId: Int): TableGridLayout? {
+        val allLayouts = getAllAreaGridLayouts()
+        return allLayouts[areaId]
+    }
+
+    fun setTableGridLayoutForArea(areaId: Int, layout: TableGridLayout) {
+        val allLayouts = getAllAreaGridLayouts().toMutableMap()
+        allLayouts[areaId] = layout
+        saveAllAreaGridLayouts(allLayouts)
+    }
+
+    fun clearTableGridLayoutForArea(areaId: Int) {
+        val allLayouts = getAllAreaGridLayouts().toMutableMap()
+        allLayouts.remove(areaId)
+        saveAllAreaGridLayouts(allLayouts)
+    }
+
+    fun getAllAreaGridLayouts(): Map<Int, TableGridLayout> {
+        val json = prefs.getString(KEY_TABLE_GRID_LAYOUTS_BY_AREA, null) ?: return emptyMap()
+        return try {
+            val type = object : TypeToken<Map<Int, TableGridLayout>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (e: Exception) {
+            android.util.Log.e("WaiterPreferences", "Failed to parse area grid layouts", e)
+            emptyMap()
+        }
+    }
+
+    private fun saveAllAreaGridLayouts(layouts: Map<Int, TableGridLayout>) {
+        val json = gson.toJson(layouts)
+        prefs.edit().putString(KEY_TABLE_GRID_LAYOUTS_BY_AREA, json).apply()
+    }
+
+    // Create default grid layout from tables
+    fun createDefaultGridLayout(tables: List<Table>): TableGridLayout {
+        val cols = DEFAULT_TABLE_GRID_COLUMNS
+        val rows = ((tables.size + cols - 1) / cols).coerceAtLeast(DEFAULT_TABLE_GRID_ROWS)
+        val positions = mutableMapOf<String, Int>()
+
+        tables.forEachIndexed { index, table ->
+            val row = index / cols
+            val col = index % cols
+            positions[TableGridLayout.positionKey(row, col)] = table.id
+        }
+
+        return TableGridLayout(rows = rows, columns = cols, positions = positions)
     }
 
     // Products cache

@@ -1,11 +1,9 @@
 package com.drewcore.kitchen_app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -19,9 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -405,41 +401,39 @@ fun OrderCardDisplay(
                 else -> MaterialTheme.colorScheme.primary
             }
 
-            Box(
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        // Draw custom scrollbar when scrollable
-                        .drawWithContent {
-                            drawContent()
+            // Main content column with scroll
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    // Draw custom scrollbar when scrollable
+                    .drawWithContent {
+                        drawContent()
 
-                            // Draw scrollbar only if there's scrollable content
-                            if (hasScrollContent) {
-                                val scrollBarHeight = size.height * (size.height / (size.height + scrollState.maxValue.toFloat()))
-                                val scrollBarY = (scrollState.value.toFloat() / scrollState.maxValue.toFloat()) * (size.height - scrollBarHeight)
+                        // Draw scrollbar only if there's scrollable content
+                        if (hasScrollContent) {
+                            val scrollBarHeight = size.height * (size.height / (size.height + scrollState.maxValue.toFloat()))
+                            val scrollBarY = (scrollState.value.toFloat() / scrollState.maxValue.toFloat()) * (size.height - scrollBarHeight)
 
-                                // Scrollbar track (light background)
-                                drawRect(
-                                    color = Color.LightGray.copy(alpha = 0.3f),
-                                    topLeft = Offset(size.width - 6.dp.toPx(), 0f),
-                                    size = Size(4.dp.toPx(), size.height)
-                                )
+                            // Scrollbar track (light background)
+                            drawRect(
+                                color = Color.LightGray.copy(alpha = 0.3f),
+                                topLeft = Offset(size.width - 6.dp.toPx(), 0f),
+                                size = Size(4.dp.toPx(), size.height)
+                            )
 
-                                // Scrollbar thumb (visible indicator)
-                                drawRect(
-                                    color = scrollIndicatorColor.copy(alpha = 0.7f),
-                                    topLeft = Offset(size.width - 6.dp.toPx(), scrollBarY),
-                                    size = Size(4.dp.toPx(), scrollBarHeight.coerceAtLeast(24.dp.toPx()))
-                                )
-                            }
+                            // Scrollbar thumb (visible indicator)
+                            drawRect(
+                                color = scrollIndicatorColor.copy(alpha = 0.8f),
+                                topLeft = Offset(size.width - 6.dp.toPx(), scrollBarY),
+                                size = Size(4.dp.toPx(), scrollBarHeight.coerceAtLeast(24.dp.toPx()))
+                            )
                         }
-                        .padding(end = if (hasScrollContent) 10.dp else 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    cardData.items.forEach { item ->
+                    }
+                    .padding(end = if (hasScrollContent) 10.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                cardData.items.forEach { item ->
                     // Determine colors and styles based on item change status
                     // If order is cancelled, treat ALL items as removed
                     val isRemoved = isCancelled || item.changeStatus == ItemChangeStatus.REMOVED
@@ -557,68 +551,28 @@ fun OrderCardDisplay(
                         }
                     }
                 }
+            }
 
-                // Bottom gradient fade when more content below
-                AnimatedVisibility(
-                    visible = canScrollDown,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                    modifier = Modifier.align(Alignment.BottomCenter)
+            // Scroll indicator at bottom when more content below
+            AnimatedVisibility(
+                visible = canScrollDown,
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(200))
+            ) {
+                Surface(
+                    color = scrollIndicatorColor,
+                    shape = MaterialTheme.shapes.extraSmall,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
+                    Text(
+                        text = "↓ más contenido ↓",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(40.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        cardBackgroundColor.copy(alpha = 0.95f)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
-                        // Arrow indicator with text
-                        Surface(
-                            color = scrollIndicatorColor.copy(alpha = 0.9f),
-                            shape = MaterialTheme.shapes.extraSmall
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = "↓ más",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Top gradient fade when scrolled down
-                AnimatedVisibility(
-                    visible = canScrollUp,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                    modifier = Modifier.align(Alignment.TopCenter)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(24.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        cardBackgroundColor.copy(alpha = 0.95f),
-                                        Color.Transparent
-                                    )
-                                )
-                            )
+                            .padding(vertical = 4.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }

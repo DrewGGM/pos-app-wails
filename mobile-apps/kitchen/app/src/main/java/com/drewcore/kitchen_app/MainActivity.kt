@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.drewcore.kitchen_app.data.network.ServerDiscovery
 import com.drewcore.kitchen_app.data.preferences.KitchenPreferences
 import com.drewcore.kitchen_app.ui.screens.ActiveOrdersScreen
 import com.drewcore.kitchen_app.ui.screens.HistoryScreen
@@ -89,6 +90,7 @@ fun KitchenApp(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember { KitchenPreferences(context) }
+    val serverDiscovery = remember { ServerDiscovery(context) }
 
     val uiState by viewModel.uiState.collectAsState()
     val activeOrders by viewModel.activeOrders.collectAsState()
@@ -112,6 +114,7 @@ fun KitchenApp(
     if (showSettings) {
         SettingsScreen(
             preferences = preferences,
+            serverDiscovery = serverDiscovery,
             onBack = { showSettings = false }
         )
         return

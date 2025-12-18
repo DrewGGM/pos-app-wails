@@ -321,13 +321,24 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 }
 
 // TableResponse represents the table data for mobile apps
+// TableAreaResponse represents a table area for mobile apps
+type TableAreaResponse struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Color       string `json:"color"`
+	IsActive    bool   `json:"is_active"`
+}
+
 type TableResponse struct {
-	ID       uint   `json:"id"`
-	Number   string `json:"number"`
-	Name     string `json:"name"`
-	Capacity int    `json:"capacity"`
-	Status   string `json:"status"`
-	Zone     string `json:"zone"`
+	ID       uint               `json:"id"`
+	Number   string             `json:"number"`
+	Name     string             `json:"name"`
+	Capacity int                `json:"capacity"`
+	Status   string             `json:"status"`
+	Zone     string             `json:"zone"`
+	AreaID   *uint              `json:"area_id,omitempty"`
+	Area     *TableAreaResponse `json:"area,omitempty"`
 }
 
 // HandleGetTables returns all tables with their status
@@ -351,7 +362,7 @@ func (h *RESTHandlers) HandleGetTables(w http.ResponseWriter, r *http.Request) {
 	log.Println("REST API: Fetching tables")
 
 	var tables []models.Table
-	if err := h.db.Where("is_active = ?", true).Find(&tables).Error; err != nil {
+	if err := h.db.Preload("Area").Where("is_active = ?", true).Find(&tables).Error; err != nil {
 		log.Printf("REST API: Error fetching tables: %v", err)
 		http.Error(w, "Error fetching tables", http.StatusInternalServerError)
 		return
@@ -367,6 +378,17 @@ func (h *RESTHandlers) HandleGetTables(w http.ResponseWriter, r *http.Request) {
 			Capacity: t.Capacity,
 			Status:   t.Status,
 			Zone:     t.Zone,
+			AreaID:   t.AreaID,
+		}
+		// Include area if available
+		if t.Area != nil {
+			response[i].Area = &TableAreaResponse{
+				ID:          t.Area.ID,
+				Name:        t.Area.Name,
+				Description: t.Area.Description,
+				Color:       t.Area.Color,
+				IsActive:    t.Area.IsActive,
+			}
 		}
 	}
 
@@ -418,6 +440,49 @@ func (h *RESTHandlers) HandleUpdateTableStatus(w http.ResponseWriter, r *http.Re
 		"success": true,
 		"message": "Table status updated",
 	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// HandleGetTableAreas returns all active table areas
+func (h *RESTHandlers) HandleGetTableAreas(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Println("REST API: Fetching table areas")
+
+	var areas []models.TableArea
+	if err := h.db.Where("is_active = ?", true).Find(&areas).Error; err != nil {
+		log.Printf("REST API: Error fetching table areas: %v", err)
+		http.Error(w, "Error fetching table areas", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to response format
+	response := make([]TableAreaResponse, len(areas))
+	for i, a := range areas {
+		response[i] = TableAreaResponse{
+			ID:          a.ID,
+			Name:        a.Name,
+			Description: a.Description,
+			Color:       a.Color,
+			IsActive:    a.IsActive,
+		}
+	}
+
+	log.Printf("REST API: Returning %d table areas", len(response))
 	json.NewEncoder(w).Encode(response)
 }
 

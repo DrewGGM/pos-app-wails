@@ -116,15 +116,79 @@ data class AuthResponse(
     @SerializedName("client_id") val clientId: String
 )
 
+// Table Status constants
+object TableStatus {
+    const val AVAILABLE = "available"
+    const val OCCUPIED = "occupied"
+    const val RESERVED = "reserved"
+    const val CLEANING = "cleaning"
+    const val BLOCKED = "blocked"
+}
+
+// Table Area (zones in restaurant)
+data class TableArea(
+    val id: Int,
+    val name: String,
+    val description: String? = null,
+    val color: String = "#1976d2", // Hex color
+    @SerializedName("is_active") val isActive: Boolean = true
+)
+
 // Table
 data class Table(
     val id: Int,
     val number: String,
-    val name: String,
+    val name: String = "",
     val capacity: Int,
-    val status: String, // "available", "occupied", "reserved"
-    val zone: String
+    val status: String, // "available", "occupied", "reserved", "cleaning", "blocked"
+    val zone: String = "", // Legacy field
+    @SerializedName("area_id") val areaId: Int? = null,
+    val area: TableArea? = null
 )
+
+// Table Grid Layout - for visual restaurant layout configuration
+data class TableGridLayout(
+    val rows: Int = 4,
+    val columns: Int = 4,
+    val positions: Map<String, Int> = emptyMap() // "row_col" -> tableId
+) {
+    companion object {
+        fun positionKey(row: Int, col: Int) = "${row}_${col}"
+        fun parsePositionKey(key: String): Pair<Int, Int> {
+            val parts = key.split("_")
+            return Pair(parts[0].toInt(), parts[1].toInt())
+        }
+    }
+
+    fun getTableAt(row: Int, col: Int): Int? = positions[positionKey(row, col)]
+
+    fun setTableAt(row: Int, col: Int, tableId: Int?): TableGridLayout {
+        val newPositions = positions.toMutableMap()
+        val key = positionKey(row, col)
+        if (tableId == null) {
+            newPositions.remove(key)
+        } else {
+            // Remove table from old position first
+            newPositions.entries.removeIf { it.value == tableId }
+            newPositions[key] = tableId
+        }
+        return copy(positions = newPositions)
+    }
+
+    fun removeTable(tableId: Int): TableGridLayout {
+        return copy(positions = positions.filterValues { it != tableId })
+    }
+
+    fun getTablePosition(tableId: Int): Pair<Int, Int>? {
+        val entry = positions.entries.find { it.value == tableId }
+        return entry?.let { parsePositionKey(it.key) }
+    }
+
+    fun getUnassignedTables(allTables: List<Table>): List<Table> {
+        val assignedIds = positions.values.toSet()
+        return allTables.filter { it.id !in assignedIds }
+    }
+}
 
 // Order Type
 data class OrderType(

@@ -3,6 +3,7 @@ package com.drewcore.waiter_app.data.network
 import android.util.Log
 import com.drewcore.waiter_app.data.models.OrderRequest
 import com.drewcore.waiter_app.data.models.Product
+import com.drewcore.waiter_app.data.models.TableArea
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
@@ -134,6 +135,35 @@ class PosApiService(private val serverIp: String) {
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching tables", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches table areas/zones from POS server
+     */
+    suspend fun getTableAreas(): Result<List<TableArea>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/table-areas"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val type = object : TypeToken<List<TableArea>>() {}.type
+                val areas = gson.fromJson<List<TableArea>>(body, type)
+                Result.success(areas)
+            } else {
+                // If areas endpoint doesn't exist, return empty list (backwards compatibility)
+                Log.w(TAG, "Table areas not available: ${response.code}")
+                Result.success(emptyList())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching table areas", e)
+            Result.success(emptyList()) // Return empty list on error for backwards compatibility
         }
     }
 

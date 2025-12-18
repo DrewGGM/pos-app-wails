@@ -55,10 +55,10 @@ func (s *ProductService) GetProduct(id uint) (*models.Product, error) {
 	return &product, err
 }
 
-// CreateProduct creates a new product
-func (s *ProductService) CreateProduct(product *models.Product) error {
+// CreateProduct creates a new product and returns it with the generated ID
+func (s *ProductService) CreateProduct(product *models.Product) (*models.Product, error) {
 	// Start transaction
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Create product
 		if err := tx.Create(product).Error; err != nil {
 			return err
@@ -78,6 +78,12 @@ func (s *ProductService) CreateProduct(product *models.Product) error {
 
 		return tx.Create(&movement).Error
 	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return product, nil
 }
 
 // UpdateProduct updates a product

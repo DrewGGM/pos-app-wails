@@ -18,7 +18,7 @@ export function CreateModifier(arg1:models.Modifier):Promise<void>;
 
 export function CreateModifierGroup(arg1:models.ModifierGroup):Promise<void>;
 
-export function CreateProduct(arg1:models.Product):Promise<void>;
+export function CreateProduct(arg1:models.Product):Promise<models.Product>;
 
 export function Delete(arg1:any,arg2:number):Promise<void>;
 

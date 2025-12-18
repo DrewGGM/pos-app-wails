@@ -56,8 +56,8 @@ export const fetchLowStockProducts = createAsyncThunk(
 export const createProduct = createAsyncThunk(
   'products/create',
   async (product: Partial<Product>) => {
-    await wailsProductService.createProduct(product);
-    return product; // Return for state update
+    const createdProduct = await wailsProductService.createProduct(product);
+    return createdProduct; // Return the created product with ID
   }
 );
 

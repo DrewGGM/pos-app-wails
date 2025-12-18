@@ -4794,6 +4794,22 @@ export namespace services {
 	}
 	
 	
+	export class TunnelConfig {
+	    enabled: boolean;
+	    url: string;
+	    websocket_secure: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunnelConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.url = source["url"];
+	        this.websocket_secure = source["websocket_secure"];
+	    }
+	}
 	export class UpdateInfo {
 	    current_version: string;
 	    latest_version: string;

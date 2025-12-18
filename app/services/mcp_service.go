@@ -389,10 +389,11 @@ func (a *ProductMCPAdapter) CreateProduct(data map[string]interface{}) (map[stri
 	if err := mapToStruct(data, &product); err != nil {
 		return nil, err
 	}
-	if err := a.svc.CreateProduct(&product); err != nil {
+	createdProduct, err := a.svc.CreateProduct(&product)
+	if err != nil {
 		return nil, err
 	}
-	return toMap(product), nil
+	return toMap(createdProduct), nil
 }
 
 func (a *ProductMCPAdapter) UpdateProduct(id uint, data map[string]interface{}) (map[string]interface{}, error) {
