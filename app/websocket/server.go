@@ -396,6 +396,12 @@ func (c *Client) handleMessage(message *Message) {
 		// Handle order update
 		c.Server.broadcastToAll(message)
 
+	case TypeOrderCancelled:
+		// Handle order cancellation from waiter app or REST API
+		log.Printf("Broadcasting order cancellation to kitchen and POS")
+		c.Server.broadcastToKitchen(message)
+		c.Server.broadcastToPOS(message)
+
 	case TypeKitchenUpdate:
 		// Handle kitchen status update
 		if c.Type == ClientKitchen {

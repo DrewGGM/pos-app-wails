@@ -45,10 +45,21 @@ func (h *RESTHandlers) HandleOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 // ModifierResponse represents a modifier for mobile apps
+type ModifierGroupResponse struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	Required  bool   `json:"required"`
+	Multiple  bool   `json:"multiple"`
+	MinSelect int    `json:"min_select"`
+	MaxSelect int    `json:"max_select"`
+}
+
 type ModifierResponse struct {
-	ID          uint    `json:"id"`
-	Name        string  `json:"name"`
-	PriceChange float64 `json:"price_change"`
+	ID          uint                    `json:"id"`
+	Name        string                  `json:"name"`
+	PriceChange float64                 `json:"price_change"`
+	GroupID     uint                    `json:"group_id,omitempty"`
+	Group       *ModifierGroupResponse  `json:"modifier_group,omitempty"`
 }
 
 // ProductResponse represents the product data for mobile apps
@@ -122,7 +133,7 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 	log.Println("REST API: Fetching products")
 
 	var products []models.Product
-	if err := h.db.Preload("Category").Preload("Modifiers").Where("is_active = ?", true).Find(&products).Error; err != nil {
+	if err := h.db.Preload("Category").Preload("Modifiers.ModifierGroup").Where("is_active = ?", true).Find(&products).Error; err != nil {
 		log.Printf("REST API: Error fetching products: %v", err)
 		http.Error(w, "Error fetching products", http.StatusInternalServerError)
 		return
@@ -154,13 +165,25 @@ func (h *RESTHandlers) HandleGetProducts(w http.ResponseWriter, r *http.Request)
 			log.Printf("REST API: Added data URL prefix for product '%s'", p.Name)
 		}
 
-		// Map modifiers
+		// Map modifiers with group info
 		modifiers := make([]ModifierResponse, len(p.Modifiers))
 		for j, m := range p.Modifiers {
 			modifiers[j] = ModifierResponse{
 				ID:          m.ID,
 				Name:        m.Name,
 				PriceChange: m.PriceChange,
+				GroupID:     m.GroupID,
+			}
+			// Add group info if available
+			if m.ModifierGroup != nil {
+				modifiers[j].Group = &ModifierGroupResponse{
+					ID:        m.ModifierGroup.ID,
+					Name:      m.ModifierGroup.Name,
+					Required:  m.ModifierGroup.Required,
+					Multiple:  m.ModifierGroup.Multiple,
+					MinSelect: m.ModifierGroup.MinSelect,
+					MaxSelect: m.ModifierGroup.MaxSelect,
+				}
 			}
 		}
 

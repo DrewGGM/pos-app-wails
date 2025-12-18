@@ -3,6 +3,7 @@ package com.drewcore.kitchen_app.ui.viewmodel
 import android.app.Application
 import android.media.RingtoneManager
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drewcore.kitchen_app.data.models.ItemChangeStatus
@@ -15,6 +16,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.min
+import kotlin.math.pow
 
 class KitchenViewModel(application: Application) : AndroidViewModel(application) {
     private val serverDiscovery = ServerDiscovery(application.applicationContext)
@@ -38,13 +42,24 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
     // Track orders marked as ready and their items with ACCUMULATED quantities
     // Map: orderId -> Map of item keys ("productId-notes") to total accumulated ready quantity
-    private val readyOrderItems = mutableMapOf<String, MutableMap<String, Int>>()
+    // Using ConcurrentHashMap to prevent race conditions
+    private val readyOrderItems = ConcurrentHashMap<String, ConcurrentHashMap<String, Int>>()
 
     // Track the full order quantities (before filtering) for accurate calculations
     // Map: orderId -> Map of item keys to actual order quantity
-    private val fullOrderQuantities = mutableMapOf<String, Map<String, Int>>()
+    // Using ConcurrentHashMap to prevent race conditions
+    private val fullOrderQuantities = ConcurrentHashMap<String, Map<String, Int>>()
 
     private var serverIp: String? = null
+
+    // Reconnection with exponential backoff
+    private var reconnectAttempts = 0
+    private val maxReconnectAttempts = 5
+    private val baseReconnectDelayMs = 1000L
+
+    companion object {
+        private const val TAG = "KitchenViewModel"
+    }
 
     sealed class UiState {
         object Loading : UiState()
@@ -64,6 +79,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     }
                     is WebSocketManager.ConnectionState.Connected -> {
                         _uiState.value = UiState.Connected
+                        onConnectionSuccess() // Reset reconnect attempts
                     }
                     is WebSocketManager.ConnectionState.Error -> {
                         _uiState.value = UiState.Error(state.message)
@@ -151,10 +167,28 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private fun reconnect() {
         serverIp?.let { ip ->
             viewModelScope.launch {
-                delay(3000) // Wait 3 seconds before reconnecting
+                if (reconnectAttempts >= maxReconnectAttempts) {
+                    Log.w(TAG, "Max reconnect attempts ($maxReconnectAttempts) reached, giving up")
+                    _uiState.value = UiState.Error("No se pudo reconectar al servidor después de $maxReconnectAttempts intentos")
+                    reconnectAttempts = 0
+                    return@launch
+                }
+
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+                val delayMs = baseReconnectDelayMs * (2.0.pow(reconnectAttempts.toDouble())).toLong()
+                val cappedDelayMs = min(delayMs, 30000L) // Max 30 seconds
+                reconnectAttempts++
+
+                Log.d(TAG, "Reconnecting in ${cappedDelayMs}ms (attempt $reconnectAttempts/$maxReconnectAttempts)")
+                delay(cappedDelayMs)
                 webSocketManager.connect(ip)
             }
         }
+    }
+
+    // Reset reconnect attempts on successful connection
+    private fun onConnectionSuccess() {
+        reconnectAttempts = 0
     }
 
     private fun addNewOrder(order: Order) {
@@ -182,12 +216,12 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 updated.add(order.id)
                 _updatedOrderIds.value = updated
 
-                android.util.Log.d("KitchenViewModel", "Updated existing order with changes: ${order.orderNumber}")
+                Log.d(TAG, "Updated existing order with changes: ${order.orderNumber}")
             } else {
                 // No changes, just replace quietly without marking as updated
                 current[existingIndex] = OrderDisplayState(order = order, isCancelled = false)
                 _activeOrders.value = current
-                android.util.Log.d("KitchenViewModel", "Received duplicate order without changes: ${order.orderNumber}")
+                Log.d(TAG, "Received duplicate order without changes: ${order.orderNumber}")
             }
         } else {
             // Check if this order was previously marked as ready
@@ -232,15 +266,15 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     updated.add(order.id)
                     _updatedOrderIds.value = updated
 
-                    android.util.Log.d("KitchenViewModel", "Previously ready order received new items: ${order.orderNumber}, showing ${newItems.size} new items")
+                    Log.d(TAG, "Previously ready order received new items: ${order.orderNumber}, showing ${newItems.size} new items")
                 } else {
-                    android.util.Log.d("KitchenViewModel", "Previously ready order received update but no new items to show: ${order.orderNumber}")
+                    Log.d(TAG, "Previously ready order received update but no new items to show: ${order.orderNumber}")
                 }
             } else {
                 // Truly new order, add to end of list (oldest first)
                 current.add(OrderDisplayState(order = order, isCancelled = false))
                 _activeOrders.value = current
-                android.util.Log.d("KitchenViewModel", "Added new order: ${order.orderNumber}")
+                Log.d(TAG, "Added new order: ${order.orderNumber}")
             }
         }
     }
@@ -250,7 +284,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val readyItems = readyOrderItems[newOrder.id] ?: emptyMap()
 
         if (readyItems.isNotEmpty()) {
-            android.util.Log.d("KitchenViewModel", "Order ${newOrder.id} was previously marked ready. Ready items: $readyItems")
+            Log.d(TAG, "Order ${newOrder.id} was previously marked ready. Ready items: $readyItems")
         }
 
         // Group items by productId for smarter matching
@@ -266,7 +300,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             if (readyQuantity != null) {
                 val additionalQuantity = newItem.quantity - readyQuantity
                 if (additionalQuantity > 0) {
-                    android.util.Log.d("KitchenViewModel", "Item $exactKey had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
+                    Log.d(TAG, "Item $exactKey had $readyQuantity ready, now has ${newItem.quantity}. Showing $additionalQuantity additional units")
                     val newSubtotal = (newItem.subtotal / newItem.quantity) * additionalQuantity
                     return@mapNotNull newItem.copy(
                         quantity = additionalQuantity,
@@ -275,7 +309,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                         previousQuantity = 0
                     )
                 } else {
-                    android.util.Log.d("KitchenViewModel", "Filtering out item $exactKey: no additional units")
+                    Log.d(TAG, "Filtering out item $exactKey: no additional units")
                     return@mapNotNull null
                 }
             }
@@ -300,19 +334,19 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     matchedOldItem = oldItemsForProduct[anyMatchIndex]
                     matchedOldItems.add("${matchedOldItem.productId}-${matchedOldItem.notes}")
                     // This is likely a notes change - mark as modified
-                    android.util.Log.d("KitchenViewModel", "Item ${productId} notes changed from '${matchedOldItem.notes}' to '${newItem.notes}'")
+                    Log.d(TAG, "Item ${productId} notes changed from '${matchedOldItem.notes}' to '${newItem.notes}'")
                 }
             }
 
             when {
                 matchedOldItem == null -> {
                     // Truly new item
-                    android.util.Log.d("KitchenViewModel", "New item added: $exactKey")
+                    Log.d(TAG, "New item added: $exactKey")
                     newItem.copy(changeStatus = ItemChangeStatus.ADDED)
                 }
                 matchedOldItem.notes != newItem.notes -> {
                     // Notes changed - mark as modified (not as new item)
-                    android.util.Log.d("KitchenViewModel", "Item ${productId} modified (notes changed)")
+                    Log.d(TAG, "Item ${productId} modified (notes changed)")
                     newItem.copy(
                         changeStatus = ItemChangeStatus.MODIFIED,
                         previousQuantity = matchedOldItem.quantity
@@ -320,7 +354,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 }
                 matchedOldItem.quantity != newItem.quantity -> {
                     // Quantity changed
-                    android.util.Log.d("KitchenViewModel", "Item ${productId} quantity changed: ${matchedOldItem.quantity} -> ${newItem.quantity}")
+                    Log.d(TAG, "Item ${productId} quantity changed: ${matchedOldItem.quantity} -> ${newItem.quantity}")
                     newItem.copy(
                         changeStatus = ItemChangeStatus.MODIFIED,
                         previousQuantity = matchedOldItem.quantity
@@ -340,7 +374,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 key !in matchedOldItems && key !in readyItems.keys
             }
             .map { oldItem ->
-                android.util.Log.d("KitchenViewModel", "Item REMOVED: ${oldItem.product.name}")
+                Log.d(TAG, "Item REMOVED: ${oldItem.product.name}")
                 oldItem.copy(changeStatus = ItemChangeStatus.REMOVED)
             }
 
@@ -357,8 +391,8 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markOrderAsReady(order: Order) {
-        // Get or create the ready items map for this order
-        val currentReadyItems = readyOrderItems.getOrPut(order.id) { mutableMapOf() }
+        // Get or create the ready items map for this order (thread-safe)
+        val currentReadyItems = readyOrderItems.getOrPut(order.id) { ConcurrentHashMap() }
 
         // Get full order quantities (before any filtering)
         val fullQuantities = fullOrderQuantities[order.id] ?: emptyMap()
@@ -368,10 +402,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
             val currentReady = currentReadyItems[key] ?: 0
             // Set ready quantity to the full current quantity
             currentReadyItems[key] = fullQty
-            android.util.Log.d("KitchenViewModel", "Item $key: was ready=$currentReady, now marking full quantity=$fullQty as ready")
+            Log.d(TAG, "Item $key: was ready=$currentReady, now marking full quantity=$fullQty as ready")
         }
 
-        android.util.Log.d("KitchenViewModel", "Saved accumulated ready items for order ${order.id}: $currentReadyItems")
+        Log.d(TAG, "Saved accumulated ready items for order ${order.id}: $currentReadyItems")
 
         // Remove from active orders
         val active = _activeOrders.value.toMutableList()
@@ -401,7 +435,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
         // DON'T clear ready items tracking - keep the accumulated ready quantities
         // This allows us to show only new additions if the order is updated again
-        android.util.Log.d("KitchenViewModel", "Undo completion for order ${order.id}, keeping ready items: ${readyOrderItems[order.id]}")
+        Log.d(TAG, "Undo completion for order ${order.id}, keeping ready items: ${readyOrderItems[order.id]}")
 
         // Add back to active
         val active = _activeOrders.value.toMutableList()
@@ -437,7 +471,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     removeCancelledOrder(orderId, currentTime)
                 }
 
-                android.util.Log.d("KitchenViewModel", "Order ${orderId} marked as cancelled")
+                Log.d(TAG, "Order ${orderId} marked as cancelled")
             }
         }
     }
@@ -453,7 +487,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         if (index != -1) {
             active.removeAt(index)
             _activeOrders.value = active
-            android.util.Log.d("KitchenViewModel", "Auto-removed cancelled order: $orderId")
+            Log.d(TAG, "Auto-removed cancelled order: $orderId")
         }
     }
 
@@ -461,7 +495,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val active = _activeOrders.value.toMutableList()
         active.removeAll { it.order.id == orderId && it.isCancelled }
         _activeOrders.value = active
-        android.util.Log.d("KitchenViewModel", "Manually removed cancelled order: $orderId")
+        Log.d(TAG, "Manually removed cancelled order: $orderId")
     }
 
     private fun removeOrderById(orderId: String) {
@@ -477,7 +511,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                 cancelledAtMs = currentTime
             )
             _activeOrders.value = active
-            android.util.Log.d("KitchenViewModel", "Order marked as cancelled via WebSocket: $orderId")
+            Log.d(TAG, "Order marked as cancelled via WebSocket: $orderId")
 
             // Schedule automatic removal after 10 seconds
             viewModelScope.launch {

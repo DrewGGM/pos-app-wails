@@ -116,6 +116,10 @@ func (s *ConfigService) InitializeDefaultSystemConfigs() error {
 		{"low_stock_threshold", "10", "number", "inventory"},
 		{"kitchen_refresh_interval", "30", "number", "ui"},
 		{"max_offline_days", "7", "number", "sync"},
+		// Cloudflare Tunnel configuration
+		{"tunnel_enabled", "false", "boolean", "network"},
+		{"tunnel_url", "", "string", "network"},
+		{"tunnel_websocket_secure", "true", "boolean", "network"},
 	}
 
 	for _, def := range defaults {
@@ -357,6 +361,40 @@ func (s *ConfigService) GetWebSocketPort() (int, error) {
 // SetWebSocketPort sets the WebSocket server port
 func (s *ConfigService) SetWebSocketPort(port int) error {
 	return s.SetSystemConfig("websocket_port", strconv.Itoa(port), "number", "network")
+}
+
+// TunnelConfig represents the tunnel configuration for external access
+type TunnelConfig struct {
+	Enabled         bool   `json:"enabled"`
+	URL             string `json:"url"`
+	WebSocketSecure bool   `json:"websocket_secure"`
+}
+
+// GetTunnelConfig gets the Cloudflare tunnel configuration
+func (s *ConfigService) GetTunnelConfig() (*TunnelConfig, error) {
+	enabled := s.GetSystemConfigBool("tunnel_enabled", false)
+	url, _ := s.GetSystemConfig("tunnel_url")
+	wsSecure := s.GetSystemConfigBool("tunnel_websocket_secure", true)
+
+	return &TunnelConfig{
+		Enabled:         enabled,
+		URL:             url,
+		WebSocketSecure: wsSecure,
+	}, nil
+}
+
+// SetTunnelConfig sets the Cloudflare tunnel configuration
+func (s *ConfigService) SetTunnelConfig(config *TunnelConfig) error {
+	if err := s.SetSystemConfig("tunnel_enabled", strconv.FormatBool(config.Enabled), "boolean", "network"); err != nil {
+		return err
+	}
+	if err := s.SetSystemConfig("tunnel_url", config.URL, "string", "network"); err != nil {
+		return err
+	}
+	if err := s.SetSystemConfig("tunnel_websocket_secure", strconv.FormatBool(config.WebSocketSecure), "boolean", "network"); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetDatabaseConfig gets database configuration

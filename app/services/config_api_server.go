@@ -21,6 +21,7 @@ type ConfigAPIServer struct {
 	orderTypeService    *OrderTypeService
 	productService      *ProductService
 	loggerService       *LoggerService
+	salesService        *SalesService
 }
 
 // InvoiceLimitConfigRequest represents the request body for updating invoice limits
@@ -127,6 +128,40 @@ type CreateOrderModifierRequest struct {
 	PriceChange float64 `json:"price_change"`
 }
 
+// SaleResponse - sale info for PWA sales history view
+type SaleResponse struct {
+	ID            uint                 `json:"id"`
+	SaleNumber    string               `json:"sale_number"`
+	OrderNumber   string               `json:"order_number"`
+	OrderType     string               `json:"order_type"`
+	OrderTypeCode string               `json:"order_type_code"`
+	Total         float64              `json:"total"`
+	Subtotal      float64              `json:"subtotal"`
+	Tax           float64              `json:"tax"`
+	Discount      float64              `json:"discount"`
+	PaymentMethod string               `json:"payment_method"`
+	Status        string               `json:"status"`
+	CustomerName  string               `json:"customer_name,omitempty"`
+	EmployeeName  string               `json:"employee_name,omitempty"`
+	Items         []SaleItemResponse   `json:"items"`
+	Payments      []SalePaymentResponse `json:"payments"`
+	CreatedAt     string               `json:"created_at"`
+}
+
+// SaleItemResponse - sale item for PWA
+type SaleItemResponse struct {
+	ProductName string  `json:"product_name"`
+	Quantity    int     `json:"quantity"`
+	UnitPrice   float64 `json:"unit_price"`
+	Subtotal    float64 `json:"subtotal"`
+}
+
+// SalePaymentResponse - payment info for PWA
+type SalePaymentResponse struct {
+	Method string  `json:"method"`
+	Amount float64 `json:"amount"`
+}
+
 // PendingOrderResponse - order info for PWA pending orders view
 type PendingOrderResponse struct {
 	ID                   uint                        `json:"id"`
@@ -180,6 +215,7 @@ func NewConfigAPIServer(
 	orderTypeService *OrderTypeService,
 	productService *ProductService,
 	loggerService *LoggerService,
+	salesService *SalesService,
 ) *ConfigAPIServer {
 	return &ConfigAPIServer{
 		port:                port,
@@ -189,6 +225,7 @@ func NewConfigAPIServer(
 		orderTypeService:    orderTypeService,
 		productService:      productService,
 		loggerService:       loggerService,
+		salesService:        salesService,
 	}
 }
 
@@ -218,6 +255,9 @@ func (s *ConfigAPIServer) Start() error {
 
 	// Table endpoint for PWA
 	mux.HandleFunc("/api/v1/tables", s.handleGetTables)
+
+	// Sales endpoint for PWA
+	mux.HandleFunc("/api/v1/sales", s.handleGetSales)
 
 	s.server = &http.Server{
 		Addr:         s.port,
@@ -983,5 +1023,116 @@ func (s *ConfigAPIServer) handleGetTables(w http.ResponseWriter, r *http.Request
 	s.sendJSON(w, http.StatusOK, APIResponse{
 		Success: true,
 		Data:    response,
+	})
+}
+
+// handleGetSales returns today's sales for the PWA
+func (s *ConfigAPIServer) handleGetSales(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.sendJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed. Use GET.",
+		})
+		return
+	}
+
+	if s.salesService == nil {
+		s.sendJSON(w, http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Sales service not available",
+		})
+		return
+	}
+
+	// Get today's sales
+	sales, err := s.salesService.GetTodaySales()
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to get sales: %v", err),
+		})
+		return
+	}
+
+	// Convert to response format
+	salesResponse := make([]SaleResponse, len(sales))
+	for i, sale := range sales {
+		// Get order info
+		orderNumber := ""
+		orderType := ""
+		orderTypeCode := ""
+		if sale.Order != nil {
+			orderNumber = sale.Order.OrderNumber
+			if sale.Order.OrderType != nil {
+				orderType = sale.Order.OrderType.Name
+				orderTypeCode = sale.Order.OrderType.Code
+			}
+		}
+
+		// Get customer name
+		customerName := ""
+		if sale.Customer != nil {
+			customerName = sale.Customer.Name
+		}
+
+		// Get employee name
+		employeeName := ""
+		if sale.Employee != nil {
+			employeeName = sale.Employee.Name
+		}
+
+		// Convert items
+		items := []SaleItemResponse{}
+		if sale.Order != nil {
+			for _, item := range sale.Order.Items {
+				productName := ""
+				if item.Product != nil {
+					productName = item.Product.Name
+				}
+				items = append(items, SaleItemResponse{
+					ProductName: productName,
+					Quantity:    item.Quantity,
+					UnitPrice:   item.UnitPrice,
+					Subtotal:    item.Subtotal,
+				})
+			}
+		}
+
+		// Convert payments
+		payments := []SalePaymentResponse{}
+		for _, payment := range sale.PaymentDetails {
+			methodName := payment.PaymentMethod.Name
+			if methodName == "" {
+				methodName = sale.PaymentMethod
+			}
+			payments = append(payments, SalePaymentResponse{
+				Method: methodName,
+				Amount: payment.Amount,
+			})
+		}
+
+		salesResponse[i] = SaleResponse{
+			ID:            sale.ID,
+			SaleNumber:    sale.SaleNumber,
+			OrderNumber:   orderNumber,
+			OrderType:     orderType,
+			OrderTypeCode: orderTypeCode,
+			Total:         sale.Total,
+			Subtotal:      sale.Subtotal,
+			Tax:           sale.Tax,
+			Discount:      sale.Discount,
+			PaymentMethod: sale.PaymentMethod,
+			Status:        sale.Status,
+			CustomerName:  customerName,
+			EmployeeName:  employeeName,
+			Items:         items,
+			Payments:      payments,
+			CreatedAt:     sale.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	s.sendJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    salesResponse,
 	})
 }

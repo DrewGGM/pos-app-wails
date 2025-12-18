@@ -99,6 +99,8 @@ fun WaiterApp(
     onUpdateDismissed: () -> Unit = {}
 ) {
     var gridColumns by remember { mutableStateOf(preferences.gridColumns) }
+    var tableGridColumns by remember { mutableStateOf(preferences.tableGridColumns) }
+    var customTableOrder by remember { mutableStateOf(preferences.getTableOrder()) }
     val uiState by viewModel.uiState.collectAsState()
 
     // Log UI state changes
@@ -217,7 +219,9 @@ fun WaiterApp(
                                     viewModel.startDeliveryOrder()
                                     // Then show dialog to enter delivery info
                                     showDeliveryDialog = true
-                                }
+                                },
+                                gridColumns = tableGridColumns,
+                                customTableOrder = customTableOrder
                             )
                         }
                         is WaiterViewModel.Screen.ProductSelection -> {
@@ -281,9 +285,12 @@ fun WaiterApp(
                         is WaiterViewModel.Screen.Settings -> {
                             SettingsScreen(
                                 preferences = preferences,
+                                tables = tables,
                                 onBack = {
-                                    // Reload grid columns after settings change
+                                    // Reload all preferences after settings change
                                     gridColumns = preferences.gridColumns
+                                    tableGridColumns = preferences.tableGridColumns
+                                    customTableOrder = preferences.getTableOrder()
                                     viewModel.navigateToScreen(WaiterViewModel.Screen.TableSelection)
                                 }
                             )

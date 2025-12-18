@@ -125,7 +125,8 @@ class ServerDiscovery(private val context: Context? = null) {
     }
 
     /**
-     * Parallel scan of subnet - much faster than sequential
+     * Parallel scan of subnet with limited parallelism to prevent network overload
+     * Uses semaphore to limit concurrent requests to 32
      * Timeout after 10 seconds to prevent infinite loading
      */
     private suspend fun parallelScanSubnet(localIp: String): String? = withTimeoutOrNull(10000) {
@@ -134,19 +135,27 @@ class ServerDiscovery(private val context: Context? = null) {
             if (ipParts.size != 4) return@coroutineScope null
 
             val networkPrefix = "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}"
-            Log.d(TAG, "Parallel scanning network: $networkPrefix.* (timeout: 10s)")
+            Log.d(TAG, "Parallel scanning network: $networkPrefix.* (limited to 32 concurrent, timeout: 10s)")
 
-            // Create jobs for all IPs in parallel
+            // Limit parallelism to 32 concurrent requests to prevent network overload
+            val semaphore = kotlinx.coroutines.sync.Semaphore(32)
+
+            // Create jobs for all IPs with limited parallelism
             val jobs = (1..254).map { i ->
                 async {
-                    val ip = "$networkPrefix.$i"
-                    if (ip == localIp) return@async null
+                    semaphore.acquire()
+                    try {
+                        val ip = "$networkPrefix.$i"
+                        if (ip == localIp) return@async null
 
-                    if (checkServerAt(ip)) {
-                        Log.d(TAG, "Server found at: $ip")
-                        ip
-                    } else {
-                        null
+                        if (checkServerAt(ip)) {
+                            Log.d(TAG, "Server found at: $ip")
+                            ip
+                        } else {
+                            null
+                        }
+                    } finally {
+                        semaphore.release()
                     }
                 }
             }

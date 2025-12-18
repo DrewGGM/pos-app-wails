@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,8 +31,19 @@ fun TableSelectionScreen(
     onTableSelected: (Table) -> Unit,
     onViewOrders: () -> Unit,
     onCreateTakeoutOrder: () -> Unit = {},
-    onCreateDeliveryOrder: () -> Unit = {}
+    onCreateDeliveryOrder: () -> Unit = {},
+    gridColumns: Int = 3,
+    customTableOrder: List<Int>? = null
 ) {
+    // Sort tables by custom order if available
+    val sortedTables = remember(tables, customTableOrder) {
+        if (customTableOrder.isNullOrEmpty()) {
+            tables
+        } else {
+            val orderMap = customTableOrder.withIndex().associate { it.value to it.index }
+            tables.sortedBy { orderMap[it.id] ?: Int.MAX_VALUE }
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -96,7 +108,7 @@ fun TableSelectionScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (tables.isEmpty()) {
+            if (sortedTables.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -104,9 +116,9 @@ fun TableSelectionScreen(
                     CircularProgressIndicator()
                 }
             } else {
-                // Filter by status
-                val availableTables = tables.filter { it.status == "available" }
-                val occupiedTables = tables.filter { it.status == "occupied" }
+                // Filter by status (maintaining custom order)
+                val availableTables = sortedTables.filter { it.status == "available" }
+                val occupiedTables = sortedTables.filter { it.status == "occupied" }
 
                 if (availableTables.isNotEmpty()) {
                     Text(
@@ -115,7 +127,7 @@ fun TableSelectionScreen(
                         modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)
                     )
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(gridColumns),
                         modifier = Modifier.weight(1f),
                         // Extra end padding to avoid FAB overlap
                         contentPadding = PaddingValues(start = 16.dp, end = 90.dp, top = 8.dp, bottom = 8.dp),
@@ -138,7 +150,7 @@ fun TableSelectionScreen(
                         modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)
                     )
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(gridColumns),
                         modifier = Modifier.weight(if (availableTables.isEmpty()) 1f else 0.5f),
                         // Extra end padding to avoid FAB overlap
                         contentPadding = PaddingValues(start = 16.dp, end = 90.dp, top = 8.dp, bottom = 8.dp),

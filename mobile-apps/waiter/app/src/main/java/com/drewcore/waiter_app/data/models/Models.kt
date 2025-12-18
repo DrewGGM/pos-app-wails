@@ -2,11 +2,23 @@ package com.drewcore.waiter_app.data.models
 
 import com.google.gson.annotations.SerializedName
 
+// Modifier Group
+data class ModifierGroup(
+    val id: Int,
+    val name: String,
+    val required: Boolean = false,
+    val multiple: Boolean = false,
+    @SerializedName("min_select") val minSelect: Int = 0,
+    @SerializedName("max_select") val maxSelect: Int = 1
+)
+
 // Modifier
 data class Modifier(
     val id: Int,
     val name: String,
-    @SerializedName("price_change") val priceChange: Double
+    @SerializedName("price_change") val priceChange: Double,
+    @SerializedName("group_id") val groupId: Int? = null,
+    @SerializedName("modifier_group") val group: ModifierGroup? = null
 )
 
 // Order Item Modifier

@@ -1,7 +1,5 @@
 package com.drewcore.waiter_app.ui.screens
 
-import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Restaurant
@@ -21,20 +21,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.drewcore.waiter_app.data.models.Product
 import com.drewcore.waiter_app.data.models.Modifier as ProductModifier
+import com.drewcore.waiter_app.ui.util.ImageCache
 
 @Composable
 fun ProductsScreen(
@@ -280,38 +278,15 @@ fun ProductCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (!product.imageUrl.isNullOrBlank()) {
-                    // Decode Base64 image asynchronously (lazy loading)
-                    var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    // Use cached image loading to prevent memory leaks
+                    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
                     var isLoading by remember { mutableStateOf(true) }
-                    var hasFailed by remember { mutableStateOf(false) }
 
                     LaunchedEffect(product.imageUrl) {
                         isLoading = true
-                        hasFailed = false
-                        bitmap = withContext(Dispatchers.IO) {
-                            try {
-                                // Remove data URI prefix if present
-                                val base64String = if (product.imageUrl.contains("base64,")) {
-                                    product.imageUrl.substringAfter("base64,")
-                                } else {
-                                    product.imageUrl
-                                }
-
-                                // Decode Base64 to byte array
-                                val decodedBytes = Base64.decode(base64String, Base64.DEFAULT)
-
-                                // Convert to bitmap
-                                val bmp = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-                                bmp?.asImageBitmap()
-                            } catch (e: Exception) {
-                                android.util.Log.e("ProductsScreen", "Failed to decode Base64 image for ${product.name}", e)
-                                null
-                            }
-                        }
+                        // Use ImageCache singleton with LRU cache and memory-efficient decoding
+                        bitmap = ImageCache.getOrDecode(product.imageUrl!!)
                         isLoading = false
-                        if (bitmap == null) {
-                            hasFailed = true
-                        }
                     }
 
                     when {
@@ -362,7 +337,6 @@ fun ProductCard(
                         }
                     }
                 } else {
-                    android.util.Log.d("ProductsScreen", "No image URL for ${product.name}, showing placeholder")
                     // Placeholder icon if no image
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -463,65 +437,208 @@ fun ModifierDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    // Group modifiers by their group
+    val modifiersByGroup = remember(product.modifiers) {
+        product.modifiers?.groupBy { it.groupId ?: 0 } ?: emptyMap()
+    }
+
+    // Get unique groups (use first modifier's group info for each groupId)
+    val groups = remember(product.modifiers) {
+        product.modifiers
+            ?.filter { it.group != null }
+            ?.distinctBy { it.groupId }
+            ?.associate { it.groupId!! to it.group!! }
+            ?: emptyMap()
+    }
+
+    // Track selected modifiers by group for validation
+    val selectedByGroup = remember(selectedModifiers) {
+        selectedModifiers.groupBy { it.groupId ?: 0 }
+    }
+
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    // Validate required groups
+    fun validate(): Boolean {
+        for ((groupId, group) in groups) {
+            val selected = selectedByGroup[groupId]?.size ?: 0
+            if (group.required && selected < group.minSelect) {
+                validationError = "Seleccione al menos ${group.minSelect} opción(es) en ${group.name}"
+                return false
+            }
+        }
+        validationError = null
+        return true
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = product.name,
-                fontWeight = FontWeight.Bold
-            )
+            Column {
+                Text(
+                    text = product.name,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Personaliza tu orden",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 8.dp)
             ) {
-                // Modifiers section
+                // Modifiers grouped by ModifierGroup
                 if (!product.modifiers.isNullOrEmpty()) {
-                    Text(
-                        text = "Modificadores:",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    modifiersByGroup.forEach { (groupId, modifiersInGroup) ->
+                        val group = groups[groupId]
+                        val isMultiple = group?.multiple ?: true
+                        val groupName = group?.name ?: "Modificadores"
+                        val isRequired = group?.required ?: false
+                        val maxSelect = group?.maxSelect ?: Int.MAX_VALUE
 
-                    product.modifiers.forEach { modifier ->
-                        val isSelected = selectedModifiers.any { it.id == modifier.id }
+                        // Group header
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val newModifiers = if (isSelected) {
-                                        selectedModifiers.filter { it.id != modifier.id }
-                                    } else {
-                                        selectedModifiers + modifier
-                                    }
-                                    onModifiersChanged(newModifiers)
-                                }
-                                .padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = null
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = modifier.name,
+                                text = groupName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f)
                             )
-                            if (modifier.priceChange != 0.0) {
-                                Text(
-                                    text = "${if (modifier.priceChange > 0) "+" else ""}$${String.format("%.2f", modifier.priceChange)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (modifier.priceChange > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                                )
+                            if (isRequired) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = MaterialTheme.shapes.extraSmall
+                                ) {
+                                    Text(
+                                        text = "Requerido",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        if (group != null && (group.minSelect > 0 || group.maxSelect < Int.MAX_VALUE)) {
+                            Text(
+                                text = "(Mín: ${group.minSelect}, Máx: ${group.maxSelect})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Modifiers in this group
+                        modifiersInGroup.forEach { modifier ->
+                            val isSelected = selectedModifiers.any { it.id == modifier.id }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val currentGroupSelected = selectedByGroup[groupId]?.size ?: 0
+
+                                        if (isMultiple) {
+                                            // Checkbox behavior - toggle
+                                            val newModifiers = if (isSelected) {
+                                                selectedModifiers.filter { it.id != modifier.id }
+                                            } else {
+                                                // Check max select limit
+                                                if (currentGroupSelected >= maxSelect) {
+                                                    validationError = "Máximo $maxSelect opciones en $groupName"
+                                                    return@clickable
+                                                }
+                                                validationError = null
+                                                selectedModifiers + modifier
+                                            }
+                                            onModifiersChanged(newModifiers)
+                                        } else {
+                                            // Radio behavior - single select in group
+                                            val otherGroupModifiers = selectedModifiers.filter {
+                                                it.groupId != groupId
+                                            }
+                                            val newModifiers = if (isSelected) {
+                                                otherGroupModifiers // Deselect
+                                            } else {
+                                                otherGroupModifiers + modifier // Select this one
+                                            }
+                                            validationError = null
+                                            onModifiersChanged(newModifiers)
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isMultiple) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = null
+                                    )
+                                } else {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = null
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = modifier.name,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (modifier.priceChange != 0.0) {
+                                    Surface(
+                                        color = if (modifier.priceChange > 0)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.tertiaryContainer,
+                                        shape = MaterialTheme.shapes.extraSmall
+                                    ) {
+                                        Text(
+                                            text = "${if (modifier.priceChange > 0) "+" else ""}$${String.format("%.2f", modifier.priceChange)}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (modifier.priceChange > 0)
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            else
+                                                MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
+                // Validation error
+                validationError?.let { error ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
                 // Notes section
@@ -544,59 +661,72 @@ fun ModifierDialog(
                 // Price summary
                 val basePrice = customPrice ?: product.price
                 val totalModifierPrice = selectedModifiers.sumOf { it.priceChange }
-                if (customPrice != null || totalModifierPrice != 0.0) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (customPrice != null) "Precio personalizado:" else "Precio base:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "$${String.format("%.2f", basePrice)}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    if (totalModifierPrice != 0.0) {
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Modificadores:",
+                                text = if (customPrice != null) "Precio personalizado:" else "Precio base:",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                text = "${if (totalModifierPrice > 0) "+" else ""}$${String.format("%.2f", totalModifierPrice)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (totalModifierPrice > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                text = "$${String.format("%.2f", basePrice)}",
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
-                    }
-                    Divider(modifier = Modifier.padding(vertical = 4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Total:",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "$${String.format("%.2f", basePrice + totalModifierPrice)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        if (totalModifierPrice != 0.0) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Modificadores:",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "${if (totalModifierPrice > 0) "+" else ""}$${String.format("%.2f", totalModifierPrice)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (totalModifierPrice > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Total:",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "$${String.format("%.2f", basePrice + totalModifierPrice)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm) {
+            Button(
+                onClick = {
+                    if (validate()) {
+                        onConfirm()
+                    }
+                }
+            ) {
                 Text("Agregar al carrito")
             }
         },

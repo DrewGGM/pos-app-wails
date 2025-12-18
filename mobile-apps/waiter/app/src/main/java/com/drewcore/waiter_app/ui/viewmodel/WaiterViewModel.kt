@@ -736,11 +736,15 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 // Backend REST handler will broadcast to kitchen via WebSocket
                 // No need to send WebSocket message here - REST handlers handle it
 
+                // Navigate FIRST to avoid UI flash with null table on ProductSelection screen
+                navigateToScreen(Screen.TableSelection)
 
-                // Clear cart and order ID
+                // Then clear cart and order state
                 _cart.value = emptyList()
                 _currentOrderId.value = null
                 _selectedTable.value = null
+
+                // Show success state briefly (UI will show toast/snackbar)
                 _uiState.value = UiState.OrderSent(orderNumber)
 
                 // Refresh tables to get updated status
@@ -751,10 +755,9 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 // Reload orders
                 loadOrders()
 
-                // Wait 2 seconds to show success message, then navigate back to table selection
-                kotlinx.coroutines.delay(2000)
+                // Reset to Ready after a short delay (for UI to show success message)
+                kotlinx.coroutines.delay(1500)
                 _uiState.value = UiState.Ready
-                navigateToScreen(Screen.TableSelection)
             }?.onFailure { error ->
                 _uiState.value = UiState.Error(error.message ?: "Error enviando pedido")
             }
