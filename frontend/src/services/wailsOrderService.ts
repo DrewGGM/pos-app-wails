@@ -111,6 +111,7 @@ function mapOrder(w: models.Order | null): Order {
 }
 
 function mapTable(w: models.Table): Table {
+  const currentOrder = (w as any).current_order;
   return {
     id: w.id as unknown as number,
     number: w.number || '',
@@ -130,6 +131,13 @@ function mapTable(w: models.Table): Table {
     position_y: w.position_y || 0,
     shape: (w.shape || 'square') as 'square' | 'round' | 'rectangle',
     is_active: (w as any).is_active ?? true,
+    current_order: currentOrder ? {
+      id: currentOrder.id as number,
+      order_number: currentOrder.order_number || '',
+      total: currentOrder.total || 0,
+      subtotal: currentOrder.subtotal || 0,
+      status: currentOrder.status || 'pending',
+    } : undefined,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Table;

@@ -1714,7 +1714,7 @@ const Settings: React.FC = () => {
                           defaultConsumerEmail: e.target.value,
                         })}
                         disabled={!editMode}
-                        helperText="Email para facturas de CONSUMIDOR FINAL (si está vacío, usa el email del negocio)"
+                        helperText="Email para facturas de CONSUMIDOR FINAL"
                         InputProps={{
                           startAdornment: <EmailIcon sx={{ mr: 1, color: 'text.secondary' }} />,
                         }}

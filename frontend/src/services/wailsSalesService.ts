@@ -465,14 +465,14 @@ class WailsSalesService {
   }
 
   // Get aggregated customer statistics (optimized - uses SQL aggregation)
-  async getCustomerStats(): Promise<{
+  async getCustomerStats(onlyElectronic: boolean = false): Promise<{
     total_customers: number;
     total_purchases: number;
     total_spent: number;
     top_customers: Array<{ id: number; name: string; total_spent: number }>;
   }> {
     try {
-      const stats = await GetCustomerStats();
+      const stats = await GetCustomerStats(onlyElectronic);
       return {
         total_customers: (stats as any).total_customers || 0,
         total_purchases: (stats as any).total_purchases || 0,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -55,13 +55,18 @@ const ModifierDialog: React.FC<ModifierDialogProps> = ({
   const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>(getInitialSelectedModifiers());
   const [error, setError] = useState('');
 
-  // Reset state when dialog opens or initialModifiers change
-  React.useEffect(() => {
-    if (open) {
+  // Track if dialog was previously open to detect open transitions
+  const wasOpenRef = useRef(false);
+
+  // Reset state only when dialog opens (transitions from closed to open)
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      // Dialog just opened - initialize state
       setSelectedModifiers(getInitialSelectedModifiers());
       setError('');
     }
-  }, [open, initialModifiers]);
+    wasOpenRef.current = open;
+  }, [open]);
 
   // Group modifiers by their group
   const modifierGroups = product.modifiers?.reduce((groups, modifier) => {
@@ -194,6 +199,11 @@ const ModifierDialog: React.FC<ModifierDialogProps> = ({
                     {modifiers.map(modifier => (
                       <FormControlLabel
                         key={modifier.id}
+                        sx={{
+                          width: '100%',
+                          mr: 0,
+                          '& .MuiFormControlLabel-label': { flex: 1 }
+                        }}
                         control={
                           <Checkbox
                             checked={selected.includes(modifier.id!)}
@@ -205,13 +215,14 @@ const ModifierDialog: React.FC<ModifierDialogProps> = ({
                           />
                         }
                         label={
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 1 }}>
                             <Typography>{modifier.name}</Typography>
                             {modifier.price_change !== 0 && (
                               <Chip
                                 label={`${modifier.price_change > 0 ? '+' : ''}$${Math.abs(modifier.price_change).toLocaleString('es-CO')}`}
                                 color={modifier.price_change > 0 ? 'warning' : 'success'}
                                 size="small"
+                                sx={{ pointerEvents: 'none' }}
                               />
                             )}
                           </Box>
@@ -231,15 +242,21 @@ const ModifierDialog: React.FC<ModifierDialogProps> = ({
                       <FormControlLabel
                         key={modifier.id}
                         value={modifier.id}
+                        sx={{
+                          width: '100%',
+                          mr: 0,
+                          '& .MuiFormControlLabel-label': { flex: 1 }
+                        }}
                         control={<Radio />}
                         label={
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 1 }}>
                             <Typography>{modifier.name}</Typography>
                             {modifier.price_change !== 0 && (
                               <Chip
                                 label={`${modifier.price_change > 0 ? '+' : ''}$${Math.abs(modifier.price_change).toLocaleString('es-CO')}`}
                                 color={modifier.price_change > 0 ? 'warning' : 'success'}
                                 size="small"
+                                sx={{ pointerEvents: 'none' }}
                               />
                             )}
                           </Box>

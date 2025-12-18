@@ -8,7 +8,7 @@ export function ExportSalesReportCSV(arg1:services.SalesReport):Promise<Array<nu
 
 export function ExportSalesReportJSON(arg1:services.SalesReport):Promise<Array<number>>;
 
-export function GetCustomerStats(arg1:time.Time,arg2:time.Time):Promise<services.CustomerStatsData>;
+export function GetCustomerStats(arg1:time.Time,arg2:time.Time,arg3:boolean):Promise<services.CustomerStatsData>;
 
 export function GetDailySalesReport(arg1:time.Time):Promise<services.SalesReport>;
 
@@ -20,16 +20,16 @@ export function GetEmployeeSalesReport(arg1:number,arg2:time.Time,arg3:time.Time
 
 export function GetInventoryReport():Promise<services.InventoryReport>;
 
-export function GetKeyMetricsComparison(arg1:time.Time,arg2:time.Time):Promise<Array<services.KeyMetricsComparison>>;
+export function GetKeyMetricsComparison(arg1:time.Time,arg2:time.Time,arg3:boolean):Promise<Array<services.KeyMetricsComparison>>;
 
 export function GetLowStockReport(arg1:number):Promise<Array<models.Product>>;
 
 export function GetMonthlySalesReport(arg1:number,arg2:time.Month):Promise<services.SalesReport>;
 
-export function GetSalesByCategory(arg1:time.Time,arg2:time.Time):Promise<Array<services.CategorySalesComparison>>;
+export function GetSalesByCategory(arg1:time.Time,arg2:time.Time,arg3:boolean):Promise<Array<services.CategorySalesComparison>>;
 
 export function GetSalesByPaymentMethod(arg1:time.Time,arg2:time.Time):Promise<Record<string, number>>;
 
-export function GetSalesReport(arg1:time.Time,arg2:time.Time):Promise<services.SalesReport>;
+export function GetSalesReport(arg1:time.Time,arg2:time.Time,arg3:boolean):Promise<services.SalesReport>;
 
 export function GetWeeklySalesReport():Promise<services.SalesReport>;

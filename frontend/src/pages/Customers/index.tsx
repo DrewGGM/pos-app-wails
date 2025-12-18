@@ -40,6 +40,7 @@ import { wailsSalesService } from '../../services/wailsSalesService';
 import { Customer } from '../../types/models';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
+import { useDIANMode } from '../../hooks';
 
 // Customer statistics (loaded from optimized backend endpoint)
 interface CustomerStatsData {
@@ -50,6 +51,7 @@ interface CustomerStatsData {
 }
 
 const Customers: React.FC = () => {
+  const { isDIANMode } = useDIANMode();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<CustomerStatsData>({
     total_customers: 0,
@@ -78,7 +80,7 @@ const Customers: React.FC = () => {
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [isDIANMode]); // Reload when DIAN mode changes
 
   const loadCustomers = async () => {
     setLoading(true);
@@ -86,7 +88,7 @@ const Customers: React.FC = () => {
       // Load customers and stats in parallel
       const [customersData, statsData] = await Promise.all([
         wailsSalesService.getCustomers(),
-        wailsSalesService.getCustomerStats(),
+        wailsSalesService.getCustomerStats(isDIANMode),
       ]);
       setCustomers(customersData);
       setStats(statsData);

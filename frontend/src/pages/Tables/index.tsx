@@ -61,10 +61,16 @@ const Tables: React.FC = () => {
   // State
   const [tables, setTables] = useState<Table[]>([]);
   const [areas, setAreas] = useState<TableArea[]>([]);
-  const [selectedArea, setSelectedArea] = useState<number | null>(null);
+  const [selectedArea, setSelectedArea] = useState<number | null>(() => {
+    const saved = localStorage.getItem('tables_selectedArea');
+    return saved ? Number(saved) : null;
+  });
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [editMode, setEditMode] = useState(false);
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(() => {
+    const saved = localStorage.getItem('tables_showGrid');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
 
   // Drag state
@@ -140,8 +146,16 @@ const Tables: React.FC = () => {
     try {
       const data = await wailsOrderService.getTableAreas();
       setAreas(data);
-      if (data.length > 0 && selectedArea === null) {
-        setSelectedArea(data[0].id || null);
+      if (data.length > 0) {
+        // Check if saved area exists in loaded areas
+        const savedAreaExists = selectedArea && data.some(a => a.id === selectedArea);
+        if (!savedAreaExists) {
+          const firstAreaId = data[0].id || null;
+          setSelectedArea(firstAreaId);
+          if (firstAreaId) {
+            localStorage.setItem('tables_selectedArea', String(firstAreaId));
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading areas:', error);
@@ -288,7 +302,13 @@ const Tables: React.FC = () => {
         await wailsOrderService.deleteTableArea(id);
         toast.success('Área eliminada');
         if (selectedArea === id) {
-          setSelectedArea(areas.find(a => a.id !== id)?.id || null);
+          const newAreaId = areas.find(a => a.id !== id)?.id || null;
+          setSelectedArea(newAreaId);
+          if (newAreaId) {
+            localStorage.setItem('tables_selectedArea', String(newAreaId));
+          } else {
+            localStorage.removeItem('tables_selectedArea');
+          }
         }
         loadAreas();
       } catch (error) {
@@ -464,7 +484,7 @@ const Tables: React.FC = () => {
         onMouseDown={(e) => handleMouseDown(e, table)}
         onClick={() => !editMode && handleTableClick(table)}
       >
-        <Typography variant="subtitle2" fontWeight="bold" sx={{ color }}>
+        <Typography variant="h5" fontWeight="bold" sx={{ color, lineHeight: 1 }}>
           {table.number}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -476,9 +496,16 @@ const Tables: React.FC = () => {
         {table.current_order && (
           <Chip
             size="small"
-            label={`#${table.current_order.order_number?.slice(-4)}`}
-            sx={{ mt: 0.5, height: 16, fontSize: 10 }}
-            color="primary"
+            label={`$${table.current_order.total?.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) || '0'}`}
+            sx={{
+              mt: 0.5,
+              height: 18,
+              fontSize: 11,
+              fontWeight: 'bold',
+              backgroundColor: '#4caf50',
+              color: 'white',
+              '& .MuiChip-label': { px: 1 }
+            }}
           />
         )}
 
@@ -661,7 +688,15 @@ const Tables: React.FC = () => {
             <FormControl fullWidth size="small">
               <Select
                 value={selectedArea || ''}
-                onChange={(e) => setSelectedArea(e.target.value ? Number(e.target.value) : null)}
+                onChange={(e) => {
+                  const newValue = e.target.value ? Number(e.target.value) : null;
+                  setSelectedArea(newValue);
+                  if (newValue) {
+                    localStorage.setItem('tables_selectedArea', String(newValue));
+                  } else {
+                    localStorage.removeItem('tables_selectedArea');
+                  }
+                }}
                 displayEmpty
               >
                 {areas.map(area => (
@@ -712,7 +747,11 @@ const Tables: React.FC = () => {
             control={
               <Switch
                 checked={showGrid}
-                onChange={() => setShowGrid(!showGrid)}
+                onChange={() => {
+                  const newValue = !showGrid;
+                  setShowGrid(newValue);
+                  localStorage.setItem('tables_showGrid', String(newValue));
+                }}
                 size="small"
               />
             }

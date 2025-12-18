@@ -53,8 +53,10 @@ import { format, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 
 import { wailsReportsService } from '../../services/wailsReportsService';
 import { toast } from 'react-toastify';
 import { ArrowBack as ArrowBackIcon, ArrowForward as ArrowForwardIcon } from '@mui/icons-material';
+import { useDIANMode } from '../../hooks';
 
 const Reports: React.FC = () => {
+  const { isDIANMode } = useDIANMode();
   const [selectedTab, setSelectedTab] = useState(0);
   const [dateRange, setDateRange] = useState({
     start: startOfMonth(new Date()),
@@ -82,7 +84,7 @@ const Reports: React.FC = () => {
 
   useEffect(() => {
     loadReportData();
-  }, [dateRange, reportType]);
+  }, [dateRange, reportType, isDIANMode]); // Reload when DIAN mode changes
 
   const loadReportData = async () => {
     setLoading(true);
@@ -91,19 +93,19 @@ const Reports: React.FC = () => {
       const endDateStr = format(dateRange.end, 'yyyy-MM-dd');
 
       // Load sales report with all data
-      const salesReport = await wailsReportsService.getSalesReport(startDateStr, endDateStr);
+      const salesReport = await wailsReportsService.getSalesReport(startDateStr, endDateStr, isDIANMode);
 
       if (salesReport) {
         // Load customer stats
-        const custStats = await wailsReportsService.getCustomerStats(startDateStr, endDateStr);
+        const custStats = await wailsReportsService.getCustomerStats(startDateStr, endDateStr, isDIANMode);
         setCustomerStats(custStats);
 
         // Load key metrics comparison
-        const metrics = await wailsReportsService.getKeyMetricsComparison(startDateStr, endDateStr);
+        const metrics = await wailsReportsService.getKeyMetricsComparison(startDateStr, endDateStr, isDIANMode);
         setKeyMetrics(metrics || []);
 
         // Load category comparison
-        const catComparison = await wailsReportsService.getSalesByCategory(startDateStr, endDateStr);
+        const catComparison = await wailsReportsService.getSalesByCategory(startDateStr, endDateStr, isDIANMode);
         setCategoryComparison(catComparison || []);
 
         // Calculate growth from key metrics

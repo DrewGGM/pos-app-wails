@@ -1038,7 +1038,7 @@ func (a *ReportsMCPAdapter) GetSalesByPeriod(from, to, groupBy string) ([]map[st
 		return nil, fmt.Errorf("invalid to date format (use YYYY-MM-DD): %w", err)
 	}
 
-	report, err := a.svc.GetSalesReport(fromTime, toTime)
+	report, err := a.svc.GetSalesReport(fromTime, toTime, false)
 	if err != nil {
 		return nil, err
 	}

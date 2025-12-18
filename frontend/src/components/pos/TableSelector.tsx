@@ -276,9 +276,23 @@ const TableSelector: React.FC<TableSelectorProps> = ({
 
                           {/* Current order info */}
                           {table.status === 'occupied' && table.current_order && (
-                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                              Orden #{table.current_order.order_number}
-                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Orden #{table.current_order.order_number}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={`$${table.current_order.total?.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) || '0'}`}
+                                sx={{
+                                  mt: 0.5,
+                                  height: 20,
+                                  fontSize: 12,
+                                  fontWeight: 'bold',
+                                  backgroundColor: '#4caf50',
+                                  color: 'white',
+                                }}
+                              />
+                            </Box>
                           )}
                         </Box>
 

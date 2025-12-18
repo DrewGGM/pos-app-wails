@@ -512,6 +512,14 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	invoice.EstablishmentAddress = restaurantConfig.Address
 	invoice.EstablishmentPhone = restaurantConfig.Phone
 	invoice.EstablishmentEmail = restaurantConfig.Email
+
+	// Set establishment municipality if configured
+	if restaurantConfig.MunicipalityID != nil && *restaurantConfig.MunicipalityID > 0 {
+		invoice.EstablishmentMunicipality = *restaurantConfig.MunicipalityID
+	} else if s.config.MunicipalityID > 0 {
+		// Fallback to DIAN config municipality if restaurant config doesn't have it
+		invoice.EstablishmentMunicipality = s.config.MunicipalityID
+	}
 	// Note: Logo is uploaded separately via /api/ubl2.1/config/logo endpoint
 
 	// Set customer info - use helper to build customer data from DB
@@ -926,12 +934,12 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 	}
 
 	// ============================================================
-	// CONSUMIDOR FINAL - Return ONLY minimal required fields
+	// CONSUMIDOR FINAL - Return minimal required fields + email logic with priority
 	// Per DIAN API specification (Postman collection):
 	// - identification_number: 222222222222
 	// - name: "CONSUMIDOR FINAL"
 	// - merchant_registration: "0000000-00"
-	// No other fields required (no DV, no type_document_identification_id, no email)
+	// Optional: email (priority: dialog > DefaultConsumerEmail > none), municipality_id
 	// ============================================================
 	if customer.IdentificationNumber == "222222222222" {
 		invoiceCustomer := InvoiceCustomer{
@@ -940,8 +948,43 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 			MerchantRegistration: "0000000-00",
 		}
 
-		fmt.Printf("CONSUMIDOR FINAL - Minimal customer data: identification=%s, name=%s, merchant_registration=%s\n",
-			invoiceCustomer.IdentificationNumber, invoiceCustomer.Name, invoiceCustomer.MerchantRegistration)
+		// EMAIL PRIORITY LOGIC:
+		// 1. Email from payment dialog (customer.Email) - HIGHEST PRIORITY
+		// 2. DefaultConsumerEmail from config - FALLBACK
+		// 3. No email - if none configured
+
+		// Check if customer has email from payment dialog (PRIORITY 1)
+		if customer.Email != "" {
+			invoiceCustomer.Email = customer.Email
+			fmt.Printf("✅ CONSUMIDOR FINAL - Using email from payment dialog: %s\n", customer.Email)
+		} else {
+			// Load company config for fallback email (PRIORITY 2)
+			var restaurantConfig models.RestaurantConfig
+			if err := s.db.First(&restaurantConfig).Error; err == nil {
+				// DEBUG: Log all email fields to diagnose issue
+				fmt.Printf("🔍 DEBUG - Customer.Email (dialog): '%s'\n", customer.Email)
+				fmt.Printf("🔍 DEBUG - RestaurantConfig.Email: '%s'\n", restaurantConfig.Email)
+				fmt.Printf("🔍 DEBUG - RestaurantConfig.DefaultConsumerEmail: '%s'\n", restaurantConfig.DefaultConsumerEmail)
+
+				// Use DefaultConsumerEmail if configured
+				if restaurantConfig.DefaultConsumerEmail != "" {
+					invoiceCustomer.Email = restaurantConfig.DefaultConsumerEmail
+					fmt.Printf("✅ CONSUMIDOR FINAL - Using DefaultConsumerEmail from config: %s\n", restaurantConfig.DefaultConsumerEmail)
+				} else {
+					fmt.Printf("⚠️  CONSUMIDOR FINAL - No email configured (neither in dialog nor DefaultConsumerEmail)\n")
+				}
+
+				// Add company municipality if configured
+				// NO fallback - if not configured, don't send municipality_id field
+				if restaurantConfig.MunicipalityID != nil && *restaurantConfig.MunicipalityID > 0 {
+					invoiceCustomer.MunicipalityID = restaurantConfig.MunicipalityID
+					fmt.Printf("CONSUMIDOR FINAL - Using company municipality ID: %d\n", *restaurantConfig.MunicipalityID)
+				}
+			}
+		}
+
+		fmt.Printf("CONSUMIDOR FINAL - Final customer data: identification=%s, name=%s, merchant_registration=%s, email=%s\n",
+			invoiceCustomer.IdentificationNumber, invoiceCustomer.Name, invoiceCustomer.MerchantRegistration, invoiceCustomer.Email)
 		return invoiceCustomer
 	}
 

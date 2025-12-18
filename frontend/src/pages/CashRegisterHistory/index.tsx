@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { wailsAuthService } from '../../services/wailsAuthService';
+import { useDIANMode } from '../../hooks';
 
 interface CashMovement {
   id: number;
@@ -66,13 +67,14 @@ interface CashRegisterHistoryItem {
 }
 
 const CashRegisterHistory: React.FC = () => {
+  const { isDIANMode } = useDIANMode();
   const [history, setHistory] = useState<CashRegisterHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [isDIANMode]); // Reload when DIAN mode changes
 
   const loadHistory = async () => {
     try {
@@ -81,10 +83,11 @@ const CashRegisterHistory: React.FC = () => {
 
       // Use optimized backend endpoint for each register's sales summary
       // This uses SQL aggregation instead of loading 500+ sales
+      // Filter by DIAN mode: only show sales with electronic invoice when enabled
       const registersWithSummary = await Promise.all(
         registers.map(async (register: any) => {
           try {
-            const summary = await wailsAuthService.getCashRegisterSalesSummary(register.id || 0, false);
+            const summary = await wailsAuthService.getCashRegisterSalesSummary(register.id || 0, isDIANMode);
             return {
               ...register,
               sales_summary: {

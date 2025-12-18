@@ -929,7 +929,8 @@ type TopCustomer struct {
 }
 
 // GetCustomerStats returns aggregated customer statistics using SQL
-func (s *SalesService) GetCustomerStats() (*CustomerStats, error) {
+// onlyElectronic: if true, only count sales with electronic invoices (DIAN mode)
+func (s *SalesService) GetCustomerStats(onlyElectronic bool) (*CustomerStats, error) {
 	stats := &CustomerStats{}
 
 	// Count active customers
@@ -944,13 +945,19 @@ func (s *SalesService) GetCustomerStats() (*CustomerStats, error) {
 		TotalPurchases int
 		TotalSpent     float64
 	}
-	err := s.db.Model(&models.Sale{}).
+	query1 := s.db.Model(&models.Sale{}).
 		Select(`
 			COUNT(*) as total_purchases,
 			COALESCE(SUM(total), 0) as total_spent
 		`).
-		Where("customer_id IS NOT NULL").
-		Scan(&salesStats).Error
+		Where("customer_id IS NOT NULL")
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query1 = query1.Where("needs_electronic_invoice = ?", true)
+	}
+
+	err := query1.Scan(&salesStats).Error
 
 	if err != nil {
 		return nil, err
@@ -965,11 +972,17 @@ func (s *SalesService) GetCustomerStats() (*CustomerStats, error) {
 		Name       string
 		TotalSpent float64
 	}
-	err = s.db.Table("sales").
+	query2 := s.db.Table("sales").
 		Select("sales.customer_id, customers.name, SUM(sales.total) as total_spent").
 		Joins("JOIN customers ON sales.customer_id = customers.id").
-		Where("sales.customer_id IS NOT NULL AND customers.is_active = ?", true).
-		Group("sales.customer_id, customers.name").
+		Where("sales.customer_id IS NOT NULL AND customers.is_active = ?", true)
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query2 = query2.Where("sales.needs_electronic_invoice = ?", true)
+	}
+
+	err = query2.Group("sales.customer_id, customers.name").
 		Order("total_spent DESC").
 		Limit(5).
 		Scan(&topResults).Error

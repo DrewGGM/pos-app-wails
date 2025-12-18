@@ -118,7 +118,8 @@ type EmployeePerformanceData struct {
 // Sales Reports
 
 // GetSalesReport generates a sales report for a period
-func (s *ReportsService) GetSalesReport(startDate, endDate time.Time) (*SalesReport, error) {
+// onlyElectronic: if true, only include sales with electronic invoices (DIAN mode)
+func (s *ReportsService) GetSalesReport(startDate, endDate time.Time, onlyElectronic bool) (*SalesReport, error) {
 	report := &SalesReport{
 		Period:           fmt.Sprintf("%s to %s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02")),
 		StartDate:        startDate,
@@ -128,10 +129,16 @@ func (s *ReportsService) GetSalesReport(startDate, endDate time.Time) (*SalesRep
 
 	// Get sales in period (exclude refunded sales)
 	var sales []models.Sale
-	err := s.db.Preload("PaymentDetails.PaymentMethod").
+	query := s.db.Preload("PaymentDetails.PaymentMethod").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
-		Where("status NOT IN ?", []string{"refunded"}).
-		Find(&sales).Error
+		Where("status NOT IN ?", []string{"refunded"})
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query = query.Where("needs_electronic_invoice = ?", true)
+	}
+
+	err := query.Find(&sales).Error
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +179,7 @@ func (s *ReportsService) GetSalesReport(startDate, endDate time.Time) (*SalesRep
 func (s *ReportsService) GetDailySalesReport(date time.Time) (*SalesReport, error) {
 	startDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	endDate := startDate.Add(24 * time.Hour)
-	return s.GetSalesReport(startDate, endDate)
+	return s.GetSalesReport(startDate, endDate, false)
 }
 
 // GetWeeklySalesReport gets sales report for the current week
@@ -181,14 +188,14 @@ func (s *ReportsService) GetWeeklySalesReport() (*SalesReport, error) {
 	startOfWeek := now.AddDate(0, 0, -int(now.Weekday()))
 	startDate := time.Date(startOfWeek.Year(), startOfWeek.Month(), startOfWeek.Day(), 0, 0, 0, 0, startOfWeek.Location())
 	endDate := startDate.AddDate(0, 0, 7)
-	return s.GetSalesReport(startDate, endDate)
+	return s.GetSalesReport(startDate, endDate, false)
 }
 
 // GetMonthlySalesReport gets sales report for a specific month
 func (s *ReportsService) GetMonthlySalesReport(year int, month time.Month) (*SalesReport, error) {
 	startDate := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
 	endDate := startDate.AddDate(0, 1, 0)
-	return s.GetSalesReport(startDate, endDate)
+	return s.GetSalesReport(startDate, endDate, false)
 }
 
 // GetSalesByPaymentMethod gets sales grouped by payment method
@@ -627,7 +634,8 @@ type CustomerStatsData struct {
 }
 
 // GetCustomerStats gets customer statistics for a period
-func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time) (*CustomerStatsData, error) {
+// onlyElectronic: if true, only count sales with electronic invoices (DIAN mode)
+func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time, onlyElectronic bool) (*CustomerStatsData, error) {
 	stats := &CustomerStatsData{}
 
 	// Total customers
@@ -648,13 +656,18 @@ func (s *ReportsService) GetCustomerStats(startDate, endDate time.Time) (*Custom
 		TotalValue float64
 	}
 	var customerValues []CustomerValue
-	s.db.Table("sales").
+	query := s.db.Table("sales").
 		Select("customer_id, SUM(total) as total_value").
 		Where("created_at BETWEEN ? AND ?", startDate, endDate).
 		Where("customer_id IS NOT NULL").
-		Where("status NOT IN ?", []string{"refunded"}).
-		Group("customer_id").
-		Scan(&customerValues)
+		Where("status NOT IN ?", []string{"refunded"})
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query = query.Where("needs_electronic_invoice = ?", true)
+	}
+
+	query.Group("customer_id").Scan(&customerValues)
 
 	if len(customerValues) > 0 {
 		var totalValue float64
@@ -736,7 +749,8 @@ type CategorySalesComparison struct {
 }
 
 // GetSalesByCategory gets sales grouped by category with comparison
-func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time) ([]CategorySalesComparison, error) {
+// onlyElectronic: if true, only include sales with electronic invoices (DIAN mode)
+func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time, onlyElectronic bool) ([]CategorySalesComparison, error) {
 	var results []CategorySalesComparison
 
 	// Calculate period length
@@ -751,29 +765,39 @@ func (s *ReportsService) GetSalesByCategory(startDate, endDate time.Time) ([]Cat
 	}
 
 	var currentSales []CategorySales
-	s.db.Table("order_items").
+	query1 := s.db.Table("order_items").
 		Select("categories.name as category_name, SUM(order_items.subtotal) as total_sales").
 		Joins("JOIN products ON order_items.product_id = products.id").
 		Joins("JOIN categories ON products.category_id = categories.id").
 		Joins("JOIN orders ON order_items.order_id = orders.id").
 		Joins("JOIN sales ON orders.id = sales.order_id").
 		Where("sales.created_at BETWEEN ? AND ?", startDate, endDate).
-		Where("sales.status NOT IN ?", []string{"refunded"}).
-		Group("categories.name").
-		Scan(&currentSales)
+		Where("sales.status NOT IN ?", []string{"refunded"})
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query1 = query1.Where("sales.needs_electronic_invoice = ?", true)
+	}
+
+	query1.Group("categories.name").Scan(&currentSales)
 
 	// Previous period sales by category
 	var previousSales []CategorySales
-	s.db.Table("order_items").
+	query2 := s.db.Table("order_items").
 		Select("categories.name as category_name, SUM(order_items.subtotal) as total_sales").
 		Joins("JOIN products ON order_items.product_id = products.id").
 		Joins("JOIN categories ON products.category_id = categories.id").
 		Joins("JOIN orders ON order_items.order_id = orders.id").
 		Joins("JOIN sales ON orders.id = sales.order_id").
 		Where("sales.created_at BETWEEN ? AND ?", previousStart, previousEnd).
-		Where("sales.status NOT IN ?", []string{"refunded"}).
-		Group("categories.name").
-		Scan(&previousSales)
+		Where("sales.status NOT IN ?", []string{"refunded"})
+
+	// Filter for electronic invoices only if requested (DIAN mode)
+	if onlyElectronic {
+		query2 = query2.Where("sales.needs_electronic_invoice = ?", true)
+	}
+
+	query2.Group("categories.name").Scan(&previousSales)
 
 	// Create map for easy lookup
 	previousMap := make(map[string]float64)
@@ -810,7 +834,8 @@ type KeyMetricsComparison struct {
 }
 
 // GetKeyMetricsComparison gets key metrics with comparison to previous period
-func (s *ReportsService) GetKeyMetricsComparison(startDate, endDate time.Time) ([]KeyMetricsComparison, error) {
+// onlyElectronic: if true, only include sales with electronic invoices (DIAN mode)
+func (s *ReportsService) GetKeyMetricsComparison(startDate, endDate time.Time, onlyElectronic bool) ([]KeyMetricsComparison, error) {
 	var results []KeyMetricsComparison
 
 	// Calculate period length
@@ -819,8 +844,8 @@ func (s *ReportsService) GetKeyMetricsComparison(startDate, endDate time.Time) (
 	previousEnd := startDate
 
 	// Current period stats
-	currentReport, _ := s.GetSalesReport(startDate, endDate)
-	previousReport, _ := s.GetSalesReport(previousStart, previousEnd)
+	currentReport, _ := s.GetSalesReport(startDate, endDate, onlyElectronic)
+	previousReport, _ := s.GetSalesReport(previousStart, previousEnd, onlyElectronic)
 
 	// Total Sales
 	results = append(results, KeyMetricsComparison{

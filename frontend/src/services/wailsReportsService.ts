@@ -79,7 +79,7 @@ export interface InventoryReport {
 
 export const wailsReportsService = {
   // Sales Reports
-  async getSalesReport(startDate: string, endDate: string): Promise<SalesReport | null> {
+  async getSalesReport(startDate: string, endDate: string, onlyElectronic: boolean = false): Promise<SalesReport | null> {
     const svc = getReportsService();
     if (!svc) return null;
 
@@ -90,7 +90,7 @@ export const wailsReportsService = {
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
     const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999); // End of day in local time
 
-    return await svc.GetSalesReport(start, end);
+    return await svc.GetSalesReport(start, end, onlyElectronic);
   },
 
   async getDailySalesReport(date: string): Promise<SalesReport | null> {
@@ -130,7 +130,7 @@ export const wailsReportsService = {
   },
 
   // Customer Stats
-  async getCustomerStats(startDate: string, endDate: string): Promise<CustomerStatsData | null> {
+  async getCustomerStats(startDate: string, endDate: string, onlyElectronic: boolean = false): Promise<CustomerStatsData | null> {
     const svc = getReportsService();
     if (!svc) return null;
 
@@ -141,11 +141,11 @@ export const wailsReportsService = {
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
     const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
 
-    return await svc.GetCustomerStats(start, end);
+    return await svc.GetCustomerStats(start, end, onlyElectronic);
   },
 
   // Category Sales
-  async getSalesByCategory(startDate: string, endDate: string): Promise<CategorySalesComparison[]> {
+  async getSalesByCategory(startDate: string, endDate: string, onlyElectronic: boolean = false): Promise<CategorySalesComparison[]> {
     const svc = getReportsService();
     if (!svc) return [];
 
@@ -156,11 +156,11 @@ export const wailsReportsService = {
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
     const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
 
-    return await svc.GetSalesByCategory(start, end);
+    return await svc.GetSalesByCategory(start, end, onlyElectronic);
   },
 
   // Key Metrics Comparison
-  async getKeyMetricsComparison(startDate: string, endDate: string): Promise<KeyMetricsComparison[]> {
+  async getKeyMetricsComparison(startDate: string, endDate: string, onlyElectronic: boolean = false): Promise<KeyMetricsComparison[]> {
     const svc = getReportsService();
     if (!svc) return [];
 
@@ -171,7 +171,7 @@ export const wailsReportsService = {
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
     const end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
 
-    return await svc.GetKeyMetricsComparison(start, end);
+    return await svc.GetKeyMetricsComparison(start, end, onlyElectronic);
   },
 
   // Inventory Reports
