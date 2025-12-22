@@ -28,6 +28,8 @@ export function GetDatabaseConfig():Promise<Record<string, string>>;
 
 export function GetDefaultPrinter():Promise<models.PrinterConfig>;
 
+export function GetNetworkConfig():Promise<models.NetworkConfig>;
+
 export function GetPrinterConfigs():Promise<Array<models.PrinterConfig>>;
 
 export function GetRestaurantConfig():Promise<models.RestaurantConfig>;
@@ -41,6 +43,8 @@ export function GetSystemConfigInt(arg1:string,arg2:number):Promise<number>;
 export function GetTableLayout():Promise<models.TableLayout>;
 
 export function GetTunnelConfig():Promise<services.TunnelConfig>;
+
+export function GetTunnelConfigDB():Promise<models.TunnelConfig>;
 
 export function GetUITheme():Promise<models.UITheme>;
 
@@ -56,9 +60,13 @@ export function Preload(arg1:string):Promise<gorm.DB>;
 
 export function Save(arg1:any):Promise<void>;
 
+export function SaveNetworkConfig(arg1:models.NetworkConfig):Promise<void>;
+
 export function SavePrinterConfig(arg1:models.PrinterConfig):Promise<void>;
 
 export function SaveTableLayout(arg1:models.TableLayout):Promise<void>;
+
+export function SaveTunnelConfigDB(arg1:models.TunnelConfig):Promise<void>;
 
 export function SetDB(arg1:gorm.DB):Promise<void>;
 

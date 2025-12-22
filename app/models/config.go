@@ -264,3 +264,50 @@ type MCPConfig struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// NetworkConfig represents network and port configuration for all services
+type NetworkConfig struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	// WebSocket Server
+	WebSocketPort    int  `json:"websocket_port" gorm:"default:8080"`
+	WebSocketEnabled bool `json:"websocket_enabled" gorm:"default:true"`
+
+	// Config API Server (for PWA)
+	ConfigAPIPort    int  `json:"config_api_port" gorm:"default:8082"`
+	ConfigAPIEnabled bool `json:"config_api_enabled" gorm:"default:true"`
+
+	// MCP Server (AI Integration)
+	MCPPort    int  `json:"mcp_port" gorm:"default:8090"`
+	MCPEnabled bool `json:"mcp_enabled" gorm:"default:false"`
+
+	// Rappi Webhook Server
+	RappiWebhookPort    int  `json:"rappi_webhook_port" gorm:"default:8081"`
+	RappiWebhookEnabled bool `json:"rappi_webhook_enabled" gorm:"default:false"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TunnelConfig represents tunnel configuration for remote access
+type TunnelConfig struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	// Tunnel Provider (cloudflare, ngrok, custom)
+	Provider string `json:"provider" gorm:"default:''"`
+
+	// Tunnel Settings
+	Enabled    bool   `json:"enabled" gorm:"default:false"`
+	TunnelURL  string `json:"tunnel_url"`  // Public URL provided by tunnel
+	AuthToken  string `json:"auth_token"`  // Authentication token for tunnel provider
+	TunnelName string `json:"tunnel_name"` // Name/identifier for the tunnel
+
+	// Status
+	IsConnected    bool       `json:"is_connected" gorm:"default:false"`
+	LastConnected  *time.Time `json:"last_connected,omitempty"`
+	LastError      string     `json:"last_error"`
+	ConnectionTime *time.Time `json:"connection_time,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

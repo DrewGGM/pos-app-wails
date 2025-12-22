@@ -91,6 +91,7 @@ import CustomPagesSettings from './CustomPagesSettings';
 import RappiSettings from './RappiSettings';
 import DIANDatabaseSettings from './DIANDatabaseSettings';
 import MCPSettings from './MCPSettings';
+import NetworkSettings from './NetworkSettings';
 import GeneralSettings, {
   ModuleConfig,
   loadModuleConfig,
@@ -1448,6 +1449,7 @@ const Settings: React.FC = () => {
           {isModuleEnabled('websocket', moduleConfig) && <Tab icon={<WifiIcon />} label="WebSocket" />}
           {isModuleEnabled('bd_dian', moduleConfig) && <Tab icon={<StorageIcon />} label="BD DIAN" />}
           {isModuleEnabled('ia_mcp', moduleConfig) && <Tab icon={<SmartToyIcon />} label="IA (MCP)" />}
+          {isModuleEnabled('red_puertos', moduleConfig) && <Tab icon={<WifiIcon />} label="Red y Puertos" />}
         </Tabs>
 
         {/* General Settings - Always Tab 0 */}
@@ -1466,7 +1468,7 @@ const Settings: React.FC = () => {
         {/* The order is: General(0), Empresa, Facturacion, MetodosPago, TiposPedido, PaginasPOS, Impresion, GoogleSheets, Rappi, Notificaciones, Sistema, WebSocket, BDDIAN, IAMCP */}
         {(() => {
           // Calculate tab indices for each module based on what's enabled
-          const moduleOrder = ['empresa', 'facturacion', 'metodos_pago', 'tipos_pedido', 'paginas_pos', 'impresion', 'google_sheets', 'rappi', 'notificaciones', 'sistema', 'websocket', 'bd_dian', 'ia_mcp'];
+          const moduleOrder = ['empresa', 'facturacion', 'metodos_pago', 'tipos_pedido', 'paginas_pos', 'impresion', 'google_sheets', 'rappi', 'notificaciones', 'sistema', 'websocket', 'bd_dian', 'ia_mcp', 'red_puertos'];
           const tabIndices: Record<string, number> = {};
           let currentIndex = 1; // Start at 1 since General is 0
           moduleOrder.forEach(moduleId => {
@@ -3647,6 +3649,13 @@ const Settings: React.FC = () => {
               {isModuleEnabled('ia_mcp', moduleConfig) && (
                 <TabPanel value={selectedTab} index={tabIndices['ia_mcp']}>
                   <MCPSettings />
+                </TabPanel>
+              )}
+
+              {/* Network and Ports Settings */}
+              {isModuleEnabled('red_puertos', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['red_puertos']}>
+                  <NetworkSettings />
                 </TabPanel>
               )}
             </>

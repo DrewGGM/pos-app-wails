@@ -2494,6 +2494,56 @@ export namespace models {
 	
 	
 	
+	export class NetworkConfig {
+	    id: number;
+	    websocket_port: number;
+	    websocket_enabled: boolean;
+	    config_api_port: number;
+	    config_api_enabled: boolean;
+	    mcp_port: number;
+	    mcp_enabled: boolean;
+	    rappi_webhook_port: number;
+	    rappi_webhook_enabled: boolean;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.websocket_port = source["websocket_port"];
+	        this.websocket_enabled = source["websocket_enabled"];
+	        this.config_api_port = source["config_api_port"];
+	        this.config_api_enabled = source["config_api_enabled"];
+	        this.mcp_port = source["mcp_port"];
+	        this.mcp_enabled = source["mcp_enabled"];
+	        this.rappi_webhook_port = source["rappi_webhook_port"];
+	        this.rappi_webhook_enabled = source["rappi_webhook_enabled"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	
@@ -2925,6 +2975,58 @@ export namespace models {
 		}
 	}
 	
+	export class TunnelConfig {
+	    id: number;
+	    provider: string;
+	    enabled: boolean;
+	    tunnel_url: string;
+	    auth_token: string;
+	    tunnel_name: string;
+	    is_connected: boolean;
+	    last_connected?: time.Time;
+	    last_error: string;
+	    connection_time?: time.Time;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunnelConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.provider = source["provider"];
+	        this.enabled = source["enabled"];
+	        this.tunnel_url = source["tunnel_url"];
+	        this.auth_token = source["auth_token"];
+	        this.tunnel_name = source["tunnel_name"];
+	        this.is_connected = source["is_connected"];
+	        this.last_connected = this.convertValues(source["last_connected"], time.Time);
+	        this.last_error = source["last_error"];
+	        this.connection_time = this.convertValues(source["connection_time"], time.Time);
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	

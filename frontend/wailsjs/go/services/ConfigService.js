@@ -50,6 +50,10 @@ export function GetDefaultPrinter() {
   return window['go']['services']['ConfigService']['GetDefaultPrinter']();
 }
 
+export function GetNetworkConfig() {
+  return window['go']['services']['ConfigService']['GetNetworkConfig']();
+}
+
 export function GetPrinterConfigs() {
   return window['go']['services']['ConfigService']['GetPrinterConfigs']();
 }
@@ -76,6 +80,10 @@ export function GetTableLayout() {
 
 export function GetTunnelConfig() {
   return window['go']['services']['ConfigService']['GetTunnelConfig']();
+}
+
+export function GetTunnelConfigDB() {
+  return window['go']['services']['ConfigService']['GetTunnelConfigDB']();
 }
 
 export function GetUITheme() {
@@ -106,12 +114,20 @@ export function Save(arg1) {
   return window['go']['services']['ConfigService']['Save'](arg1);
 }
 
+export function SaveNetworkConfig(arg1) {
+  return window['go']['services']['ConfigService']['SaveNetworkConfig'](arg1);
+}
+
 export function SavePrinterConfig(arg1) {
   return window['go']['services']['ConfigService']['SavePrinterConfig'](arg1);
 }
 
 export function SaveTableLayout(arg1) {
   return window['go']['services']['ConfigService']['SaveTableLayout'](arg1);
+}
+
+export function SaveTunnelConfigDB(arg1) {
+  return window['go']['services']['ConfigService']['SaveTunnelConfigDB'](arg1);
 }
 
 export function SetDB(arg1) {

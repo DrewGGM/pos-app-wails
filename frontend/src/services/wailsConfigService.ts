@@ -126,6 +126,32 @@ export const wailsConfigService = {
     if (!svc) return { valid: false, errors: ['Service not ready'] };
     const result = await svc.ValidateConfiguration();
     return result;
+  },
+
+  // Network Config
+  async getNetworkConfig(): Promise<any> {
+    const svc = getConfigService();
+    if (!svc) return null;
+    return await svc.GetNetworkConfig();
+  },
+
+  async saveNetworkConfig(config: AnyObject): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.SaveNetworkConfig(config);
+  },
+
+  // Tunnel Config (DB model)
+  async getTunnelConfigDB(): Promise<any> {
+    const svc = getConfigService();
+    if (!svc) return null;
+    return await svc.GetTunnelConfigDB();
+  },
+
+  async saveTunnelConfigDB(config: AnyObject): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.SaveTunnelConfigDB(config);
   }
 };
 

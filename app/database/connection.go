@@ -209,6 +209,8 @@ func RunMigrations() error {
 		&models.UITheme{},
 		&models.GoogleSheetsConfig{},
 		&models.MCPConfig{},
+		&models.NetworkConfig{},
+		&models.TunnelConfig{},
 
 		// Rappi integration models
 		&models.RappiConfig{},

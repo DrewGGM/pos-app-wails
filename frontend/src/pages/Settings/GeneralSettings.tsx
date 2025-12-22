@@ -25,6 +25,7 @@ import {
   SmartToy as SmartToyIcon,
   Settings as SettingsIcon,
   Lock as LockIcon,
+  Router as RouterIcon,
 } from '@mui/icons-material';
 
 // Module configuration interface
@@ -113,6 +114,15 @@ export const defaultModuleConfig: ModuleConfig[] = [
     enabled: false,
     category: 'optional',
     status: 'beta',
+  },
+  {
+    id: 'red_puertos',
+    name: 'Red y Puertos',
+    description: 'Configuración de puertos y túneles',
+    icon: <RouterIcon />,
+    enabled: true,
+    category: 'optional',
+    status: 'production',
   },
   {
     id: 'paginas_pos',

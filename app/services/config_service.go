@@ -478,3 +478,74 @@ func (s *ConfigService) ValidateConfiguration() (bool, []string) {
 
 	return valid, errors
 }
+
+// GetNetworkConfig retrieves network configuration
+func (s *ConfigService) GetNetworkConfig() (*models.NetworkConfig, error) {
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
+	}
+	var config models.NetworkConfig
+	err := s.db.First(&config).Error
+	if err == gorm.ErrRecordNotFound {
+		// Create default config
+		config = models.NetworkConfig{
+			WebSocketPort:       8080,
+			WebSocketEnabled:    true,
+			ConfigAPIPort:       8082,
+			ConfigAPIEnabled:    true,
+			MCPPort:             8090,
+			MCPEnabled:          false,
+			RappiWebhookPort:    8081,
+			RappiWebhookEnabled: false,
+		}
+		if err := s.db.Create(&config).Error; err != nil {
+			return nil, err
+		}
+		return &config, nil
+	}
+	return &config, err
+}
+
+// SaveNetworkConfig saves network configuration
+func (s *ConfigService) SaveNetworkConfig(config *models.NetworkConfig) error {
+	if err := s.EnsureDB(); err != nil {
+		return err
+	}
+	if config.ID == 0 {
+		return s.db.Create(config).Error
+	}
+	return s.db.Save(config).Error
+}
+
+// GetTunnelConfigDB retrieves tunnel configuration from database model
+func (s *ConfigService) GetTunnelConfigDB() (*models.TunnelConfig, error) {
+	if err := s.EnsureDB(); err != nil {
+		return nil, err
+	}
+	var config models.TunnelConfig
+	err := s.db.First(&config).Error
+	if err == gorm.ErrRecordNotFound {
+		// Create default config
+		config = models.TunnelConfig{
+			Provider:    "",
+			Enabled:     false,
+			IsConnected: false,
+		}
+		if err := s.db.Create(&config).Error; err != nil {
+			return nil, err
+		}
+		return &config, nil
+	}
+	return &config, err
+}
+
+// SaveTunnelConfigDB saves tunnel configuration to database model
+func (s *ConfigService) SaveTunnelConfigDB(config *models.TunnelConfig) error {
+	if err := s.EnsureDB(); err != nil {
+		return err
+	}
+	if config.ID == 0 {
+		return s.db.Create(config).Error
+	}
+	return s.db.Save(config).Error
+}
