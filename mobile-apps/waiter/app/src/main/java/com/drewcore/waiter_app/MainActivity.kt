@@ -1,13 +1,22 @@
 package com.drewcore.waiter_app
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,14 +42,40 @@ import com.drewcore.waiter_app.ui.components.DeliveryInfo
 import com.drewcore.waiter_app.update.UpdateManager
 import com.drewcore.waiter_app.update.UpdateInfo
 import com.drewcore.waiter_app.data.models.TableGridLayout
+import com.drewcore.waiter_app.data.network.ServerConnection
 import com.drewcore.waiter_app.data.network.ServerDiscovery
 import com.drewcore.waiter_app.data.preferences.WaiterPreferences
+import com.drewcore.waiter_app.service.ConnectionService
 
 class MainActivity : ComponentActivity() {
     private val viewModel: WaiterViewModel by viewModels()
     private lateinit var updateManager: UpdateManager
     private lateinit var preferences: WaiterPreferences
     private var updateInfo by mutableStateOf<UpdateInfo?>(null)
+
+    // Connection service binding
+    private var connectionService: ConnectionService? = null
+    private var isServiceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as ConnectionService.LocalBinder
+            connectionService = binder.getService()
+            isServiceBound = true
+            Log.d("MainActivity", "Connection service bound")
+
+            // Update service status immediately when bound
+            val isConnected = viewModel.isConnected()
+            val isTunnel = preferences.lastServerIsTunnel
+            connectionService?.updateStatus(isConnected, isTunnel)
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            connectionService = null
+            isServiceBound = false
+            Log.d("MainActivity", "Connection service unbound")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +87,9 @@ class MainActivity : ComponentActivity() {
         // Initialize update manager and check for updates
         updateManager = UpdateManager(this)
         checkForUpdates()
+
+        // Start lifecycle-aware connection handling
+        setupLifecycleObserver()
 
         setContent {
             WaiterappTheme {
@@ -66,9 +104,103 @@ class MainActivity : ComponentActivity() {
                     },
                     onUpdateDismissed = {
                         updateInfo = null
+                    },
+                    onConnectionEstablished = { address, isTunnel, isSecure ->
+                        // Save last successful connection for quick reconnect
+                        preferences.saveLastConnection(address, isTunnel, isSecure)
+                        // Start background service if enabled
+                        if (preferences.backgroundConnectionEnabled) {
+                            startConnectionService(address, isTunnel, isSecure)
+                        }
+                    },
+                    onStartBackgroundService = {
+                        // Start background service using last saved connection
+                        val lastAddress = preferences.lastServerAddress
+                        if (lastAddress != null) {
+                            startConnectionService(
+                                lastAddress,
+                                preferences.lastServerIsTunnel,
+                                preferences.lastServerIsSecure
+                            )
+                            Toast.makeText(this, "Servicio de conexión iniciado", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onStopBackgroundService = {
+                        stopConnectionService()
+                        Toast.makeText(this, "Servicio de conexión detenido", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
+        }
+    }
+
+    private fun setupLifecycleObserver() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                Log.d("MainActivity", "App resumed - checking connection")
+                // When app resumes, try to reconnect quickly if we have last connection info
+                if (!viewModel.isConnected()) {
+                    val lastAddress = preferences.lastServerAddress
+                    if (lastAddress != null) {
+                        Log.d("MainActivity", "Attempting quick reconnect to $lastAddress")
+                        // Give a small delay to let the system stabilize
+                        delay(500)
+                        viewModel.quickReconnect(
+                            lastAddress,
+                            preferences.lastServerIsTunnel,
+                            preferences.lastServerIsSecure
+                        )
+                    }
+                }
+            }
+        }
+
+        // Observe connection state changes to update service notification
+        lifecycleScope.launch {
+            viewModel.connectionInfo.collect { connectionInfo ->
+                if (isServiceBound && connectionService != null) {
+                    val isConnected = viewModel.isConnected()
+                    val isTunnel = connectionInfo?.isTunnel ?: false
+                    connectionService?.updateStatus(isConnected, isTunnel)
+                    Log.d("MainActivity", "Updated service status: connected=$isConnected, tunnel=$isTunnel")
+                }
+            }
+        }
+    }
+
+    private fun startConnectionService(address: String, isTunnel: Boolean, isSecure: Boolean) {
+        try {
+            val intent = Intent(this, ConnectionService::class.java).apply {
+                action = ConnectionService.ACTION_START
+                putExtra(ConnectionService.EXTRA_SERVER_ADDRESS, address)
+                putExtra(ConnectionService.EXTRA_IS_TUNNEL, isTunnel)
+                putExtra(ConnectionService.EXTRA_IS_SECURE, isSecure)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            Log.d("MainActivity", "Connection service started")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start connection service", e)
+        }
+    }
+
+    private fun stopConnectionService() {
+        try {
+            if (isServiceBound) {
+                unbindService(serviceConnection)
+                isServiceBound = false
+            }
+            val intent = Intent(this, ConnectionService::class.java).apply {
+                action = ConnectionService.ACTION_STOP
+            }
+            stopService(intent)
+            Log.d("MainActivity", "Connection service stopped")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to stop connection service", e)
         }
     }
 
@@ -88,6 +220,14 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         updateManager.cleanup()
+        // Don't stop service on destroy if background connection is enabled
+        // The service will continue running
+        if (!preferences.backgroundConnectionEnabled && isServiceBound) {
+            stopConnectionService()
+        } else if (isServiceBound) {
+            unbindService(serviceConnection)
+            isServiceBound = false
+        }
     }
 }
 
@@ -98,7 +238,10 @@ fun WaiterApp(
     preferences: WaiterPreferences,
     updateInfo: UpdateInfo? = null,
     onUpdateAccepted: (UpdateInfo) -> Unit = {},
-    onUpdateDismissed: () -> Unit = {}
+    onUpdateDismissed: () -> Unit = {},
+    onConnectionEstablished: (address: String, isTunnel: Boolean, isSecure: Boolean) -> Unit = { _, _, _ -> },
+    onStartBackgroundService: () -> Unit = {},
+    onStopBackgroundService: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val serverDiscovery = remember { ServerDiscovery(context) }
@@ -106,10 +249,19 @@ fun WaiterApp(
     var gridColumns by remember { mutableStateOf(preferences.gridColumns) }
     var areaGridLayouts by remember { mutableStateOf(preferences.getAllAreaGridLayouts()) }
     val uiState by viewModel.uiState.collectAsState()
+    val connectionInfo by viewModel.connectionInfo.collectAsState()
 
     // Log UI state changes
     LaunchedEffect(uiState) {
         android.util.Log.d("MainActivity", "========== UI STATE CHANGED: ${uiState.javaClass.simpleName} ==========")
+    }
+
+    // Notify when connection is established
+    LaunchedEffect(connectionInfo) {
+        connectionInfo?.let { info ->
+            android.util.Log.d("MainActivity", "Connection established: ${info.address} (tunnel: ${info.isTunnel})")
+            onConnectionEstablished(info.address, info.isTunnel, info.isSecure)
+        }
     }
 
     val currentScreen by viewModel.currentScreen.collectAsState()
@@ -299,6 +451,9 @@ fun WaiterApp(
                                 tables = tables,
                                 tableAreas = tableAreas,
                                 serverDiscovery = serverDiscovery,
+                                isConnected = viewModel.isConnected(),
+                                onStartBackgroundService = onStartBackgroundService,
+                                onStopBackgroundService = onStopBackgroundService,
                                 onBack = {
                                     // Reload all preferences after settings change
                                     gridColumns = preferences.gridColumns

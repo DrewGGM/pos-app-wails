@@ -1,5 +1,10 @@
 package com.drewcore.waiter_app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +27,8 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncDisabled
 import androidx.compose.material.icons.filled.TableBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import com.drewcore.waiter_app.data.models.Table
 import com.drewcore.waiter_app.data.models.TableArea
 import com.drewcore.waiter_app.data.models.TableGridLayout
@@ -64,8 +73,12 @@ fun SettingsScreen(
     tables: List<Table> = emptyList(),
     tableAreas: List<TableArea> = emptyList(),
     serverDiscovery: ServerDiscovery? = null,
+    isConnected: Boolean = false,
+    onStartBackgroundService: () -> Unit = {},
+    onStopBackgroundService: () -> Unit = {},
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var gridColumns by remember { mutableStateOf(preferences.gridColumns.toFloat()) }
@@ -423,6 +436,148 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // Background Connection Section
+            Text(
+                text = "Conexion en Segundo Plano",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            var backgroundConnectionEnabled by remember { mutableStateOf(preferences.backgroundConnectionEnabled) }
+            var showPermissionDeniedMessage by remember { mutableStateOf(false) }
+
+            // Permission launcher for POST_NOTIFICATIONS (Android 13+)
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) { isGranted ->
+                if (isGranted) {
+                    // Permission granted, enable the feature and start service
+                    backgroundConnectionEnabled = true
+                    preferences.backgroundConnectionEnabled = true
+                    if (isConnected) {
+                        onStartBackgroundService()
+                    }
+                    showPermissionDeniedMessage = false
+                } else {
+                    // Permission denied, don't enable the feature
+                    backgroundConnectionEnabled = false
+                    preferences.backgroundConnectionEnabled = false
+                    showPermissionDeniedMessage = true
+                }
+            }
+
+            // Function to check and request notification permission
+            fun enableBackgroundConnection() {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    // Android 13+ requires POST_NOTIFICATIONS permission
+                    when {
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) == PackageManager.PERMISSION_GRANTED -> {
+                            // Permission already granted
+                            backgroundConnectionEnabled = true
+                            preferences.backgroundConnectionEnabled = true
+                            if (isConnected) {
+                                onStartBackgroundService()
+                            }
+                        }
+                        else -> {
+                            // Request permission
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                } else {
+                    // Android 12 and below don't need explicit notification permission
+                    backgroundConnectionEnabled = true
+                    preferences.backgroundConnectionEnabled = true
+                    if (isConnected) {
+                        onStartBackgroundService()
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (backgroundConnectionEnabled) Icons.Default.Sync else Icons.Default.SyncDisabled,
+                                contentDescription = null,
+                                tint = if (backgroundConnectionEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Column {
+                                Text(
+                                    text = "Mantener Conexion Activa",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = if (backgroundConnectionEnabled && isConnected) {
+                                        "Servicio activo"
+                                    } else if (backgroundConnectionEnabled) {
+                                        "Se activara al conectar"
+                                    } else {
+                                        "Evita reconexiones al volver a la app"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (backgroundConnectionEnabled && isConnected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = backgroundConnectionEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    enableBackgroundConnection()
+                                } else {
+                                    backgroundConnectionEnabled = false
+                                    preferences.backgroundConnectionEnabled = false
+                                    onStopBackgroundService()
+                                    showPermissionDeniedMessage = false
+                                }
+                            }
+                        )
+                    }
+
+                    // Permission denied warning
+                    if (showPermissionDeniedMessage) {
+                        Text(
+                            text = "Se requiere permiso de notificaciones para mantener la conexion en segundo plano. Por favor, habilita las notificaciones en la configuracion del dispositivo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Text(
+                        text = "Cuando esta habilitado, la app mantiene la conexion con el servidor incluso cuando esta en segundo plano. Esto usa una pequena cantidad de bateria adicional pero permite respuesta instantanea al volver.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            HorizontalDivider()
+
             // Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -432,6 +587,8 @@ fun SettingsScreen(
                 OutlinedButton(
                     onClick = {
                         gridColumns = WaiterPreferences.DEFAULT_GRID_COLUMNS.toFloat()
+                        backgroundConnectionEnabled = true
+                        preferences.backgroundConnectionEnabled = true
                         // Reset layouts for all areas
                         val newLayouts = mutableMapOf<Int, TableGridLayout>()
                         tableAreas.forEach { area ->

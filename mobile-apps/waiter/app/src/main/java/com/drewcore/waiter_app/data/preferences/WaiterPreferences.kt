@@ -31,8 +31,14 @@ class WaiterPreferences(context: Context) {
         private const val KEY_TUNNEL_URL = "tunnel_url"
         private const val KEY_TUNNEL_USE_SECURE = "tunnel_use_secure"
 
-        // Cache validity: 5 minutes (products change less frequently)
-        private const val CACHE_VALIDITY_MS = 5 * 60 * 1000L
+        // Background connection key
+        private const val KEY_BACKGROUND_CONNECTION_ENABLED = "background_connection_enabled"
+        private const val KEY_LAST_SERVER_ADDRESS = "last_server_address"
+        private const val KEY_LAST_SERVER_IS_TUNNEL = "last_server_is_tunnel"
+        private const val KEY_LAST_SERVER_IS_SECURE = "last_server_is_secure"
+
+        // Cache validity: 30 minutes (we have real-time updates via WebSocket)
+        private const val CACHE_VALIDITY_MS = 30 * 60 * 1000L
 
         // Default values
         const val DEFAULT_GRID_COLUMNS = 2
@@ -221,5 +227,39 @@ class WaiterPreferences(context: Context) {
 
     fun resetToDefaults() {
         prefs.edit().clear().apply()
+    }
+
+    // Background connection settings
+    var backgroundConnectionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_CONNECTION_ENABLED, true) // Enabled by default
+        set(value) { prefs.edit().putBoolean(KEY_BACKGROUND_CONNECTION_ENABLED, value).apply() }
+
+    // Last successful server connection info (for auto-reconnect)
+    var lastServerAddress: String?
+        get() = prefs.getString(KEY_LAST_SERVER_ADDRESS, null)
+        set(value) { prefs.edit().putString(KEY_LAST_SERVER_ADDRESS, value).apply() }
+
+    var lastServerIsTunnel: Boolean
+        get() = prefs.getBoolean(KEY_LAST_SERVER_IS_TUNNEL, false)
+        set(value) { prefs.edit().putBoolean(KEY_LAST_SERVER_IS_TUNNEL, value).apply() }
+
+    var lastServerIsSecure: Boolean
+        get() = prefs.getBoolean(KEY_LAST_SERVER_IS_SECURE, false)
+        set(value) { prefs.edit().putBoolean(KEY_LAST_SERVER_IS_SECURE, value).apply() }
+
+    fun saveLastConnection(address: String, isTunnel: Boolean, isSecure: Boolean) {
+        prefs.edit()
+            .putString(KEY_LAST_SERVER_ADDRESS, address)
+            .putBoolean(KEY_LAST_SERVER_IS_TUNNEL, isTunnel)
+            .putBoolean(KEY_LAST_SERVER_IS_SECURE, isSecure)
+            .apply()
+    }
+
+    fun clearLastConnection() {
+        prefs.edit()
+            .remove(KEY_LAST_SERVER_ADDRESS)
+            .remove(KEY_LAST_SERVER_IS_TUNNEL)
+            .remove(KEY_LAST_SERVER_IS_SECURE)
+            .apply()
     }
 }

@@ -201,16 +201,28 @@ const Tables: React.FC = () => {
     }
 
     try {
+      // Extract only the fields needed for the backend (exclude nested objects)
+      const cleanTableData = {
+        number: tableForm.number,
+        name: tableForm.name || '',
+        capacity: tableForm.capacity || 4,
+        area_id: tableForm.area_id,
+        status: tableForm.status || 'available',
+        position_x: tableForm.position_x || 0,
+        position_y: tableForm.position_y || 0,
+        shape: tableForm.shape || 'square',
+        is_active: tableForm.is_active !== false,
+      };
+
       if (selectedTable && selectedTable.id) {
         const tableData = {
-          ...tableForm,
+          ...cleanTableData,
           id: selectedTable.id,
         };
         await wailsOrderService.updateTable(selectedTable.id, tableData);
         toast.success('Mesa actualizada');
       } else {
-        const { id, ...tableData } = tableForm as any;
-        await wailsOrderService.createTable(tableData);
+        await wailsOrderService.createTable(cleanTableData);
         toast.success('Mesa creada');
       }
       handleCloseTableDialog();

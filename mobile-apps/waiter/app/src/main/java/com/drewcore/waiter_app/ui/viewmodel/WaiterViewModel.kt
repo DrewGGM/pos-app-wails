@@ -7,6 +7,7 @@ import com.drewcore.waiter_app.data.models.*
 import com.drewcore.waiter_app.data.network.PosApiService
 import com.drewcore.waiter_app.data.network.ServerDiscovery
 import com.drewcore.waiter_app.data.network.WebSocketManager
+import com.drewcore.waiter_app.data.network.ServerConnection
 import com.drewcore.waiter_app.data.preferences.WaiterPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +68,10 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentOrderId = MutableStateFlow<Int?>(null)
     val currentOrderId: StateFlow<Int?> = _currentOrderId
 
+    // Connection info for background service
+    private val _connectionInfo = MutableStateFlow<ServerConnection?>(null)
+    val connectionInfo: StateFlow<ServerConnection?> = _connectionInfo
+
     private var apiService: PosApiService? = null
     private var serverIp: String? = null
     private var orderCounter = 0
@@ -116,10 +121,20 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 when (state) {
                     is WebSocketManager.ConnectionState.Connected -> {
                         android.util.Log.d("WaiterViewModel", "WebSocket Connected. Current UI state: ${_uiState.value.javaClass.simpleName}")
+
+                        // Emit connection info for background service
+                        webSocketManager.getCurrentConnection()?.let { conn ->
+                            _connectionInfo.value = conn
+                        }
+
                         // Only load data if we're in DiscoveringServer state (freshly connected after discovery)
                         // This prevents automatic data loading if WebSocket reconnects while in Error state
                         if (_uiState.value == UiState.DiscoveringServer) {
                             android.util.Log.d("WaiterViewModel", "UI state is DiscoveringServer, calling loadInitialData()")
+                            loadInitialData()
+                        } else if (_uiState.value is UiState.Error) {
+                            // If we were in error state and now connected, load data and go to Ready
+                            android.util.Log.d("WaiterViewModel", "Was in Error state, loading data after reconnect")
                             loadInitialData()
                         } else {
                             android.util.Log.d("WaiterViewModel", "UI state is NOT DiscoveringServer, SKIPPING loadInitialData()")
@@ -961,6 +976,38 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 android.util.Log.e("WaiterViewModel", "Error deleting order: ${error.message}")
                 onError(error.message ?: "Error eliminando pedido")
             }
+        }
+    }
+
+    /**
+     * Check if WebSocket is currently connected
+     */
+    fun isConnected(): Boolean {
+        return webSocketManager.isConnected()
+    }
+
+    /**
+     * Quickly reconnect to a known server address (used when app resumes)
+     */
+    fun quickReconnect(address: String, isTunnel: Boolean, isSecure: Boolean) {
+        android.util.Log.d("WaiterViewModel", "quickReconnect called: $address (tunnel: $isTunnel)")
+
+        // Don't reconnect if already connected
+        if (webSocketManager.isConnected()) {
+            android.util.Log.d("WaiterViewModel", "Already connected, skipping quick reconnect")
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.value = UiState.DiscoveringServer
+
+            // Create connection and try to connect
+            val connection = ServerConnection(address, isTunnel, isSecure)
+            serverIp = address
+            apiService = PosApiService(address)
+            webSocketManager.connect(connection)
+
+            android.util.Log.d("WaiterViewModel", "Quick reconnect initiated to $address")
         }
     }
 

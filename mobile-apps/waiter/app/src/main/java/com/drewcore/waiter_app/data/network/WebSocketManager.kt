@@ -16,7 +16,11 @@ import java.util.concurrent.TimeUnit
 class WebSocketManager {
     private var webSocket: WebSocket? = null
     private val client = OkHttpClient.Builder()
-        .pingInterval(30, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS) // More frequent pings to detect disconnection faster
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val gson = Gson()
@@ -32,6 +36,10 @@ class WebSocketManager {
 
     // Store current connection info
     private var currentConnection: ServerConnection? = null
+
+    // Track last successful connection time for connection health monitoring
+    private var lastConnectedTime: Long = 0
+    private var lastMessageTime: Long = 0
 
     companion object {
         private const val TAG = "WebSocketManager"
@@ -72,10 +80,12 @@ class WebSocketManager {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket connected via ${if (connection.isTunnel) "tunnel" else "local network"}")
+                lastConnectedTime = System.currentTimeMillis()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.d(TAG, "Received message: $text")
+                lastMessageTime = System.currentTimeMillis()
                 handleMessage(text)
             }
 
@@ -199,5 +209,35 @@ class WebSocketManager {
 
     fun isConnectedViaTunnel(): Boolean {
         return currentConnection?.isTunnel == true && isConnected()
+    }
+
+    /**
+     * Get connection uptime in milliseconds
+     */
+    fun getConnectionUptime(): Long {
+        return if (isConnected() && lastConnectedTime > 0) {
+            System.currentTimeMillis() - lastConnectedTime
+        } else {
+            0
+        }
+    }
+
+    /**
+     * Get time since last message in milliseconds
+     */
+    fun getTimeSinceLastMessage(): Long {
+        return if (lastMessageTime > 0) {
+            System.currentTimeMillis() - lastMessageTime
+        } else {
+            Long.MAX_VALUE
+        }
+    }
+
+    /**
+     * Check if connection appears healthy (received message recently)
+     */
+    fun isConnectionHealthy(): Boolean {
+        // Consider unhealthy if no message received in last 2 minutes
+        return isConnected() && getTimeSinceLastMessage() < 120_000
     }
 }

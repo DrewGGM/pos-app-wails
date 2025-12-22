@@ -245,10 +245,9 @@ class WailsOrderService {
     }
   }
 
-  async updateTable(id: number, table: Partial<Table>): Promise<Table> {
+  async updateTable(id: number, table: Partial<Table>): Promise<void> {
     try {
-      const updated = await UpdateTable(table as any);
-      return mapTable(updated as any);
+      await UpdateTable(table as any);
     } catch (error) {
       throw new Error('Error al actualizar mesa');
     }

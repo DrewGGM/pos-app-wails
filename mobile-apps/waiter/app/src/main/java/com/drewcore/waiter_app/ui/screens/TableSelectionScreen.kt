@@ -168,7 +168,16 @@ fun TableSelectionScreen(
                 }
             }
 
-            if (filteredTables.isEmpty() && tables.isNotEmpty()) {
+            if (tables.isEmpty() || (areaGridLayouts.isNotEmpty() && tableAreas.isEmpty())) {
+                // Tables still loading OR areas not loaded yet but layouts exist
+                // Wait until both tables and areas are loaded to prevent layout flash
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (filteredTables.isEmpty() && tables.isNotEmpty()) {
                 // No tables in selected area
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -179,13 +188,6 @@ fun TableSelectionScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            } else if (tables.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
                 }
             } else if (currentGridLayout != null && currentGridLayout.positions.isNotEmpty()) {
                 // Grid layout mode - show tables according to configured layout for this area
