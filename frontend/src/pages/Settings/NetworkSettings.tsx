@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -14,10 +14,11 @@ import {
   Tab,
   Chip,
   Divider,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Paper,
+  CircularProgress,
+  IconButton,
+  Tooltip,
+  LinearProgress,
 } from '@mui/material';
 import {
   Wifi as WifiIcon,
@@ -26,6 +27,14 @@ import {
   Save as SaveIcon,
   Refresh as RefreshIcon,
   CloudQueue as TunnelIcon,
+  PlayArrow as StartIcon,
+  Stop as StopIcon,
+  Download as DownloadIcon,
+  ContentCopy as CopyIcon,
+  Delete as ClearIcon,
+  OpenInNew as OpenIcon,
+  CheckCircle as ConnectedIcon,
+  Cancel as DisconnectedIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { wailsConfigService } from '../../services/wailsConfigService';
@@ -42,15 +51,16 @@ interface NetworkConfig {
   rappi_webhook_enabled: boolean;
 }
 
-interface TunnelConfig {
-  id: number;
-  provider: string;
-  enabled: boolean;
+interface TunnelStatus {
+  is_running: boolean;
+  is_installed: boolean;
   tunnel_url: string;
-  auth_token: string;
-  tunnel_name: string;
-  is_connected: boolean;
   last_error: string;
+  output: string[];
+  provider: string;
+  connected_at?: string;
+  binary_path: string;
+  binary_exists: boolean;
 }
 
 interface TabPanelProps {
@@ -81,32 +91,64 @@ const NetworkSettings: React.FC = () => {
     rappi_webhook_port: 8081,
     rappi_webhook_enabled: false,
   });
-  const [tunnelConfig, setTunnelConfig] = useState<TunnelConfig>({
-    id: 0,
-    provider: '',
-    enabled: false,
+  const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({
+    is_running: false,
+    is_installed: false,
     tunnel_url: '',
-    auth_token: '',
-    tunnel_name: '',
-    is_connected: false,
     last_error: '',
+    output: [],
+    provider: 'cloudflare',
+    binary_path: '',
+    binary_exists: false,
   });
+  const [tunnelToken, setTunnelToken] = useState('');
+  const [tunnelPort, setTunnelPort] = useState(8082);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Load data on mount
   useEffect(() => {
     loadData();
   }, []);
 
+  // Poll for tunnel status when on tunnel tab
+  useEffect(() => {
+    if (activeTab === 1) {
+      pollTunnelStatus();
+      pollIntervalRef.current = setInterval(pollTunnelStatus, 2000);
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [activeTab]);
+
+  // Auto-scroll output log
+  useEffect(() => {
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [tunnelStatus.output]);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [netConfig, tunConfig] = await Promise.all([
-        wailsConfigService.getNetworkConfig(),
-        wailsConfigService.getTunnelConfigDB(),
-      ]);
-      if (netConfig) setNetworkConfig(netConfig);
-      if (tunConfig) setTunnelConfig(tunConfig);
+      const netConfig = await wailsConfigService.getNetworkConfig();
+      if (netConfig) {
+        setNetworkConfig(netConfig);
+        setTunnelPort(netConfig.config_api_port);
+      }
     } catch (error: any) {
       console.error('Error loading network config:', error);
       toast.error('Error cargando configuracion de red');
@@ -114,6 +156,17 @@ const NetworkSettings: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const pollTunnelStatus = useCallback(async () => {
+    try {
+      const status = await wailsConfigService.getTunnelStatus();
+      if (status) {
+        setTunnelStatus(status);
+      }
+    } catch (error) {
+      console.error('Error polling tunnel status:', error);
+    }
+  }, []);
 
   const handleSaveNetworkConfig = async () => {
     setSaving(true);
@@ -127,16 +180,78 @@ const NetworkSettings: React.FC = () => {
     }
   };
 
-  const handleSaveTunnelConfig = async () => {
-    setSaving(true);
+  const handleDownloadCloudflared = async () => {
+    setDownloading(true);
     try {
-      await wailsConfigService.saveTunnelConfigDB(tunnelConfig);
-      toast.success('Configuracion de tunnel guardada');
+      await wailsConfigService.downloadCloudflared();
+      toast.success('Cloudflared descargado correctamente');
+      await pollTunnelStatus();
     } catch (error: any) {
-      toast.error(error?.message || 'Error guardando configuracion');
+      toast.error(error?.message || 'Error descargando cloudflared');
     } finally {
-      setSaving(false);
+      setDownloading(false);
     }
+  };
+
+  const handleStartQuickTunnel = async () => {
+    setStarting(true);
+    try {
+      await wailsConfigService.startQuickTunnel(tunnelPort);
+      toast.success('Iniciando tunnel...');
+      await pollTunnelStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error iniciando tunnel');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleStartTokenTunnel = async () => {
+    if (!tunnelToken.trim()) {
+      toast.error('Ingresa un token de Cloudflare');
+      return;
+    }
+    setStarting(true);
+    try {
+      await wailsConfigService.startTunnelWithToken(tunnelToken);
+      toast.success('Iniciando tunnel con token...');
+      await pollTunnelStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error iniciando tunnel');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleStopTunnel = async () => {
+    setStopping(true);
+    try {
+      await wailsConfigService.stopTunnel();
+      toast.success('Tunnel detenido');
+      await pollTunnelStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error deteniendo tunnel');
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  const handleClearOutput = async () => {
+    try {
+      await wailsConfigService.clearTunnelOutput();
+      await pollTunnelStatus();
+    } catch (error) {
+      console.error('Error clearing output:', error);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('URL copiada al portapapeles');
+  };
+
+  const openInBrowser = (url: string) => {
+    window.open(url, '_blank');
   };
 
   return (
@@ -370,138 +485,248 @@ const NetworkSettings: React.FC = () => {
 
       {/* Tunnel Configuration Tab */}
       <TabPanel value={activeTab} index={1}>
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          La configuracion de tunnels permite exponer tu sistema a internet de forma segura.
-          Esta funcionalidad esta en desarrollo.
-        </Alert>
-
         <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <TunnelIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="h6">Configuracion de Tunnel</Typography>
-                </Box>
-
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={tunnelConfig.enabled}
-                          onChange={(e) => setTunnelConfig({ ...tunnelConfig, enabled: e.target.checked })}
-                          disabled
-                        />
-                      }
-                      label="Habilitado (Proximamente)"
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <FormControl fullWidth disabled>
-                      <InputLabel>Proveedor</InputLabel>
-                      <Select
-                        value={tunnelConfig.provider}
-                        label="Proveedor"
-                        onChange={(e) => setTunnelConfig({ ...tunnelConfig, provider: e.target.value })}
-                      >
-                        <MenuItem value="">Seleccionar...</MenuItem>
-                        <MenuItem value="cloudflare">Cloudflare Tunnel</MenuItem>
-                        <MenuItem value="ngrok">ngrok</MenuItem>
-                        <MenuItem value="localtunnel">LocalTunnel</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Nombre del Tunnel"
-                      value={tunnelConfig.tunnel_name}
-                      onChange={(e) => setTunnelConfig({ ...tunnelConfig, tunnel_name: e.target.value })}
-                      disabled
-                      placeholder="mi-restaurante-pos"
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Token de Autenticacion"
-                      type="password"
-                      value={tunnelConfig.auth_token}
-                      onChange={(e) => setTunnelConfig({ ...tunnelConfig, auth_token: e.target.value })}
-                      disabled
-                      helperText="Token proporcionado por el servicio de tunnel"
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <Divider sx={{ my: 1 }} />
-                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                      Estado del Tunnel
-                    </Typography>
-                    <Chip
-                      label={tunnelConfig.is_connected ? 'Conectado' : 'Desconectado'}
-                      color={tunnelConfig.is_connected ? 'success' : 'default'}
-                      sx={{ mr: 1 }}
-                    />
-                    {tunnelConfig.tunnel_url && (
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        URL: <strong>{tunnelConfig.tunnel_url}</strong>
-                      </Typography>
-                    )}
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Acerca de los Tunnels</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  Los tunnels permiten exponer tu sistema POS local a internet de forma segura,
-                  lo que permite:
-                </Typography>
-                <ul>
-                  <li>
-                    <Typography variant="body2" color="text.secondary">
-                      Acceder a la PWA desde cualquier lugar
-                    </Typography>
-                  </li>
-                  <li>
-                    <Typography variant="body2" color="text.secondary">
-                      Recibir webhooks de servicios externos (Rappi, etc.)
-                    </Typography>
-                  </li>
-                  <li>
-                    <Typography variant="body2" color="text.secondary">
-                      Administracion remota del sistema
-                    </Typography>
-                  </li>
-                </ul>
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Esta funcionalidad estara disponible en una proxima actualizacion.
-                </Alert>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Save Button */}
+          {/* Status Card */}
           <Grid item xs={12}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button
-                variant="contained"
-                onClick={handleSaveTunnelConfig}
-                disabled={true}
-                startIcon={<SaveIcon />}
+            <Card sx={{ bgcolor: tunnelStatus.is_running ? 'success.dark' : 'grey.800' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    {tunnelStatus.is_running ? (
+                      <ConnectedIcon sx={{ fontSize: 40, color: 'success.light' }} />
+                    ) : (
+                      <DisconnectedIcon sx={{ fontSize: 40, color: 'grey.500' }} />
+                    )}
+                    <Box>
+                      <Typography variant="h5" sx={{ color: 'white' }}>
+                        {tunnelStatus.is_running ? 'Tunnel Activo' : 'Tunnel Inactivo'}
+                      </Typography>
+                      {tunnelStatus.tunnel_url && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                          <Typography variant="body1" sx={{ color: 'grey.300', fontFamily: 'monospace' }}>
+                            {tunnelStatus.tunnel_url}
+                          </Typography>
+                          <Tooltip title="Copiar URL">
+                            <IconButton size="small" onClick={() => copyToClipboard(tunnelStatus.tunnel_url)} sx={{ color: 'grey.300' }}>
+                              <CopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Abrir en navegador">
+                            <IconButton size="small" onClick={() => openInBrowser(tunnelStatus.tunnel_url)} sx={{ color: 'grey.300' }}>
+                              <OpenIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box>
+                    {tunnelStatus.is_running ? (
+                      <Button
+                        variant="contained"
+                        color="error"
+                        onClick={handleStopTunnel}
+                        disabled={stopping}
+                        startIcon={stopping ? <CircularProgress size={20} /> : <StopIcon />}
+                      >
+                        {stopping ? 'Deteniendo...' : 'Detener'}
+                      </Button>
+                    ) : (
+                      <Chip label="Cloudflare Quick Tunnel" color="info" />
+                    )}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Installation Status */}
+          {!tunnelStatus.binary_exists && (
+            <Grid item xs={12}>
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={handleDownloadCloudflared}
+                    disabled={downloading}
+                    startIcon={downloading ? <CircularProgress size={16} /> : <DownloadIcon />}
+                  >
+                    {downloading ? 'Descargando...' : 'Descargar'}
+                  </Button>
+                }
               >
-                Guardar Tunnel (Proximamente)
-              </Button>
-            </Box>
+                <Typography variant="body2">
+                  <strong>cloudflared</strong> no esta instalado. Descargalo para usar tunnels.
+                </Typography>
+              </Alert>
+              {downloading && <LinearProgress sx={{ mt: 1 }} />}
+            </Grid>
+          )}
+
+          {/* Quick Tunnel Controls */}
+          {tunnelStatus.binary_exists && !tunnelStatus.is_running && (
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <TunnelIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="h6">Quick Tunnel (Sin cuenta)</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Inicia un tunnel rapido sin necesidad de cuenta de Cloudflare.
+                    La URL cambiara cada vez que reinicies el tunnel.
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Puerto a exponer"
+                        type="number"
+                        value={tunnelPort}
+                        onChange={(e) => setTunnelPort(parseInt(e.target.value) || 8082)}
+                        helperText="Por defecto: Puerto de la API PWA"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="primary"
+                        onClick={handleStartQuickTunnel}
+                        disabled={starting}
+                        startIcon={starting ? <CircularProgress size={20} /> : <StartIcon />}
+                      >
+                        {starting ? 'Iniciando...' : 'Iniciar Quick Tunnel'}
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Token-based Tunnel */}
+          {tunnelStatus.binary_exists && !tunnelStatus.is_running && (
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <TunnelIcon sx={{ mr: 1, color: 'secondary.main' }} />
+                    <Typography variant="h6">Tunnel con Token (URL fija)</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Usa un token de Cloudflare para una URL permanente.
+                    Requiere cuenta gratuita en Cloudflare.
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Token de Cloudflare"
+                        type="password"
+                        value={tunnelToken}
+                        onChange={(e) => setTunnelToken(e.target.value)}
+                        placeholder="eyJhIjoiYWNjb3VudC..."
+                        helperText="Obten el token desde el dashboard de Cloudflare"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="secondary"
+                        onClick={handleStartTokenTunnel}
+                        disabled={starting || !tunnelToken.trim()}
+                        startIcon={starting ? <CircularProgress size={20} /> : <StartIcon />}
+                      >
+                        {starting ? 'Iniciando...' : 'Iniciar con Token'}
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Output Log */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6">Log del Tunnel</Typography>
+                  <Box>
+                    <Tooltip title="Limpiar log">
+                      <IconButton onClick={handleClearOutput} size="small">
+                        <ClearIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Actualizar">
+                      <IconButton onClick={pollTunnelStatus} size="small">
+                        <RefreshIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+                <Paper
+                  ref={outputRef}
+                  sx={{
+                    bgcolor: 'grey.900',
+                    color: 'grey.300',
+                    p: 2,
+                    height: 200,
+                    overflow: 'auto',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {tunnelStatus.output && tunnelStatus.output.length > 0 ? (
+                    tunnelStatus.output.map((line, index) => (
+                      <Box key={index} sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        {line}
+                      </Box>
+                    ))
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'grey.600', fontStyle: 'italic' }}>
+                      No hay actividad en el tunnel...
+                    </Typography>
+                  )}
+                </Paper>
+                {tunnelStatus.last_error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {tunnelStatus.last_error}
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Info Card */}
+          <Grid item xs={12}>
+            <Card sx={{ bgcolor: 'info.dark' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ color: 'white', mb: 1 }}>
+                  Acerca de Cloudflare Tunnel
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'grey.300' }}>
+                  Cloudflare Tunnel permite exponer tu sistema POS a internet de forma segura y gratuita:
+                </Typography>
+                <Box component="ul" sx={{ color: 'grey.300', mt: 1, pl: 2 }}>
+                  <li>HTTPS automatico sin configuracion</li>
+                  <li>Sin necesidad de abrir puertos en el router</li>
+                  <li>Proteccion DDoS incluida</li>
+                  <li>Acceso remoto a la PWA desde cualquier lugar</li>
+                </Box>
+                <Divider sx={{ my: 2, borderColor: 'grey.600' }} />
+                <Typography variant="body2" sx={{ color: 'grey.400' }}>
+                  <strong>Quick Tunnel:</strong> URL temporal que cambia cada vez (ideal para pruebas)
+                  <br />
+                  <strong>Token Tunnel:</strong> URL permanente con tu dominio (requiere cuenta Cloudflare gratuita)
+                </Typography>
+              </CardContent>
+            </Card>
           </Grid>
         </Grid>
       </TabPanel>

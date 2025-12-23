@@ -152,6 +152,55 @@ export const wailsConfigService = {
     const svc = getConfigService();
     if (!svc) throw new Error('Service not ready');
     await svc.SaveTunnelConfigDB(config);
+  },
+
+  // Tunnel Management
+  async getTunnelStatus(): Promise<any> {
+    const svc = getConfigService();
+    if (!svc) return null;
+    return await svc.GetTunnelStatus();
+  },
+
+  async startQuickTunnel(port: number): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.StartQuickTunnel(port);
+  },
+
+  async startTunnelWithToken(token: string): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.StartTunnelWithToken(token);
+  },
+
+  async stopTunnel(): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.StopTunnel();
+  },
+
+  async downloadCloudflared(): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.DownloadCloudflared();
+  },
+
+  async isTunnelInstalled(): Promise<boolean> {
+    const svc = getConfigService();
+    if (!svc) return false;
+    return await svc.IsTunnelInstalled();
+  },
+
+  async getTunnelDownloadURL(): Promise<string> {
+    const svc = getConfigService();
+    if (!svc) return '';
+    return await svc.GetTunnelDownloadURL();
+  },
+
+  async clearTunnelOutput(): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) return;
+    await svc.ClearTunnelOutput();
   }
 };
 

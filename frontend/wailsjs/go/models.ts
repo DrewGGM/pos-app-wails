@@ -4912,6 +4912,34 @@ export namespace services {
 	        this.websocket_secure = source["websocket_secure"];
 	    }
 	}
+	export class TunnelStatus {
+	    is_running: boolean;
+	    is_installed: boolean;
+	    tunnel_url: string;
+	    last_error: string;
+	    output: string[];
+	    provider: string;
+	    connected_at?: string;
+	    binary_path: string;
+	    binary_exists: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunnelStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.is_running = source["is_running"];
+	        this.is_installed = source["is_installed"];
+	        this.tunnel_url = source["tunnel_url"];
+	        this.last_error = source["last_error"];
+	        this.output = source["output"];
+	        this.provider = source["provider"];
+	        this.connected_at = source["connected_at"];
+	        this.binary_path = source["binary_path"];
+	        this.binary_exists = source["binary_exists"];
+	    }
+	}
 	export class UpdateInfo {
 	    current_version: string;
 	    latest_version: string;

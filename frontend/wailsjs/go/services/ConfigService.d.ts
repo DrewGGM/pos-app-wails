@@ -4,11 +4,15 @@ import {models} from '../models';
 import {gorm} from '../models';
 import {services} from '../models';
 
+export function ClearTunnelOutput():Promise<void>;
+
 export function Create(arg1:any):Promise<void>;
 
 export function Delete(arg1:any,arg2:number):Promise<void>;
 
 export function DeletePrinterConfig(arg1:number):Promise<void>;
+
+export function DownloadCloudflared():Promise<void>;
 
 export function EnsureDB():Promise<void>;
 
@@ -46,6 +50,10 @@ export function GetTunnelConfig():Promise<services.TunnelConfig>;
 
 export function GetTunnelConfigDB():Promise<models.TunnelConfig>;
 
+export function GetTunnelDownloadURL():Promise<string>;
+
+export function GetTunnelStatus():Promise<services.TunnelStatus>;
+
 export function GetUITheme():Promise<models.UITheme>;
 
 export function GetWebSocketPort():Promise<number>;
@@ -53,6 +61,8 @@ export function GetWebSocketPort():Promise<number>;
 export function InitializeDefaultConfig():Promise<void>;
 
 export function InitializeDefaultSystemConfigs():Promise<void>;
+
+export function IsTunnelInstalled():Promise<boolean>;
 
 export function Model(arg1:any):Promise<gorm.DB>;
 
@@ -75,6 +85,12 @@ export function SetSystemConfig(arg1:string,arg2:string,arg3:string,arg4:string)
 export function SetTunnelConfig(arg1:services.TunnelConfig):Promise<void>;
 
 export function SetWebSocketPort(arg1:number):Promise<void>;
+
+export function StartQuickTunnel(arg1:number):Promise<void>;
+
+export function StartTunnelWithToken(arg1:string):Promise<void>;
+
+export function StopTunnel():Promise<void>;
 
 export function UpdateDIANConfig(arg1:models.DIANConfig):Promise<void>;
 

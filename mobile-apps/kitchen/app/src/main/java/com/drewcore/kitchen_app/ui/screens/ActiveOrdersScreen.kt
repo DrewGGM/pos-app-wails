@@ -511,8 +511,6 @@ fun OrderCardDisplay(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = if (isRemoved) textColor else MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
                                         fontSize = (preferences.itemFontSize - 2).sp,
                                         textDecoration = textDecoration
                                     )
@@ -521,12 +519,10 @@ fun OrderCardDisplay(
                             // Notes
                             if (!item.notes.isNullOrBlank()) {
                                 Text(
-                                    text = item.notes,
+                                    text = "📝 ${item.notes}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (isRemoved) textColor else Color(0xFFFF6F00),
                                     fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                     fontSize = (preferences.itemFontSize - 2).sp,
                                     textDecoration = textDecoration
                                 )

@@ -549,3 +549,55 @@ func (s *ConfigService) SaveTunnelConfigDB(config *models.TunnelConfig) error {
 	}
 	return s.db.Save(config).Error
 }
+
+// tunnelService is a singleton instance for tunnel management
+var tunnelService *TunnelService
+
+// getTunnelService returns the tunnel service singleton
+func getTunnelService() *TunnelService {
+	if tunnelService == nil {
+		tunnelService = NewTunnelService()
+		tunnelService.SetContext(nil)
+	}
+	return tunnelService
+}
+
+// GetTunnelStatus returns the current tunnel status
+func (s *ConfigService) GetTunnelStatus() (*TunnelStatus, error) {
+	return getTunnelService().GetStatus()
+}
+
+// StartQuickTunnel starts a quick tunnel (no token required)
+func (s *ConfigService) StartQuickTunnel(port int) error {
+	return getTunnelService().StartTunnel(port)
+}
+
+// StartTunnelWithToken starts tunnel with a Cloudflare token
+func (s *ConfigService) StartTunnelWithToken(token string) error {
+	return getTunnelService().StartTunnelWithToken(token)
+}
+
+// StopTunnel stops the running tunnel
+func (s *ConfigService) StopTunnel() error {
+	return getTunnelService().StopTunnel()
+}
+
+// DownloadCloudflared downloads the cloudflared binary
+func (s *ConfigService) DownloadCloudflared() error {
+	return getTunnelService().DownloadCloudflared()
+}
+
+// IsTunnelInstalled checks if cloudflared is installed
+func (s *ConfigService) IsTunnelInstalled() bool {
+	return getTunnelService().IsInstalled()
+}
+
+// GetTunnelDownloadURL returns the download URL for cloudflared
+func (s *ConfigService) GetTunnelDownloadURL() string {
+	return getTunnelService().GetDownloadURL()
+}
+
+// ClearTunnelOutput clears the tunnel output buffer
+func (s *ConfigService) ClearTunnelOutput() {
+	getTunnelService().ClearOutput()
+}
