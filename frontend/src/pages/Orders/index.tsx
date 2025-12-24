@@ -23,6 +23,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -36,6 +37,8 @@ import {
   Restaurant as RestaurantIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Warning as WarningIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { useNavigate } from 'react-router-dom';
@@ -179,7 +182,7 @@ const Orders: React.FC = () => {
     {
       field: 'order_number',
       headerName: 'Número',
-      width: 120,
+      width: 140,
       renderCell: (params: GridRenderCellParams) => {
         const order = params.row as Order;
         // Show sequence number (#1, #2) for order types that require it, otherwise show full order number
@@ -187,10 +190,26 @@ const Orders: React.FC = () => {
           ? `#${order.sequence_number}`
           : params.value;
 
+        // Check if order should show kitchen warning (pending/preparing orders not acknowledged)
+        const shouldShowKitchenWarning =
+          (order.status === 'pending' || order.status === 'preparing') &&
+          !order.kitchen_acknowledged &&
+          order.source !== 'split'; // Split bills are not sent to kitchen
+
         return (
-          <Typography variant="body2" fontWeight="bold">
-            {displayNumber}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="body2" fontWeight="bold">
+              {displayNumber}
+            </Typography>
+            {shouldShowKitchenWarning && (
+              <Tooltip title="No confirmado por cocina - Haz clic en el botón de cocina para reenviar">
+                <WarningIcon
+                  fontSize="small"
+                  sx={{ color: 'warning.main', animation: 'pulse 2s infinite' }}
+                />
+              </Tooltip>
+            )}
+          </Box>
         );
       },
     },
@@ -300,17 +319,39 @@ const Orders: React.FC = () => {
               <PaymentIcon fontSize="small" />
             </IconButton>
           )}
-          <IconButton
-            size="small"
-            color="warning"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSendToKitchen(params.row);
-            }}
-            title="Enviar a cocina"
-          >
-            <RestaurantIcon fontSize="small" />
-          </IconButton>
+          {/* Show resend button with emphasis if not acknowledged */}
+          {(params.row.status === 'pending' || params.row.status === 'preparing') &&
+           !params.row.kitchen_acknowledged &&
+           params.row.source !== 'split' ? (
+            <Tooltip title="⚠️ Reenviar a cocina (no confirmado)">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSendToKitchen(params.row);
+                }}
+                sx={{
+                  animation: 'pulse 2s infinite',
+                  '&:hover': { backgroundColor: 'error.light' }
+                }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <IconButton
+              size="small"
+              color="warning"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSendToKitchen(params.row);
+              }}
+              title="Enviar a cocina"
+            >
+              <RestaurantIcon fontSize="small" />
+            </IconButton>
+          )}
           <IconButton
             size="small"
             onClick={(e) => {

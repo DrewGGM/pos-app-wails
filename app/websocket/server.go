@@ -27,6 +27,8 @@ const (
 	TypeTableUpdate     MessageType = "table_update"
 	TypeKitchenOrder    MessageType = "kitchen_order"
 	TypeKitchenUpdate   MessageType = "kitchen_update"
+	TypeKitchenAck      MessageType = "kitchen_ack"      // Kitchen acknowledges order receipt
+	TypeKitchenAckResult MessageType = "kitchen_ack_result" // Result broadcast to source apps
 	TypeNotification    MessageType = "notification"
 	TypeHeartbeat       MessageType = "heartbeat"
 	TypeAuthenticate    MessageType = "authenticate"
@@ -422,9 +424,69 @@ func (c *Client) handleMessage(message *Message) {
 			Data:      json.RawMessage(`{"status":"alive"}`),
 		})
 
+	case TypeKitchenAck:
+		// Handle kitchen acknowledgment of order receipt
+		if c.Type == ClientKitchen {
+			c.handleKitchenAck(message)
+		}
+
 	default:
 		log.Printf("Unknown message type: %s", message.Type)
 	}
+}
+
+// KitchenAckData represents the data in a kitchen acknowledgment message
+type KitchenAckData struct {
+	OrderID     uint   `json:"order_id"`
+	OrderNumber string `json:"order_number"`
+}
+
+// handleKitchenAck handles kitchen acknowledgment of order receipt
+func (c *Client) handleKitchenAck(message *Message) {
+	log.Printf("Kitchen client %s acknowledging order", c.ID)
+
+	// Parse the acknowledgment data
+	var ackData KitchenAckData
+	if err := json.Unmarshal(message.Data, &ackData); err != nil {
+		log.Printf("Error parsing kitchen ack data: %v", err)
+		return
+	}
+
+	log.Printf("Kitchen acknowledged order ID: %d, Number: %s", ackData.OrderID, ackData.OrderNumber)
+
+	// Update the order in the database
+	if c.Server.db != nil {
+		now := time.Now()
+		result := c.Server.db.Model(&struct{}{}).Table("orders").
+			Where("id = ?", ackData.OrderID).
+			Updates(map[string]interface{}{
+				"kitchen_acknowledged":    true,
+				"kitchen_acknowledged_at": now,
+			})
+		if result.Error != nil {
+			log.Printf("Error updating kitchen acknowledgment: %v", result.Error)
+		} else {
+			log.Printf("Order %d marked as acknowledged by kitchen", ackData.OrderID)
+		}
+	}
+
+	// Broadcast acknowledgment result to POS and waiter apps
+	resultData, _ := json.Marshal(map[string]interface{}{
+		"order_id":     ackData.OrderID,
+		"order_number": ackData.OrderNumber,
+		"acknowledged": true,
+		"timestamp":    time.Now(),
+	})
+
+	resultMessage := Message{
+		Type:      TypeKitchenAckResult,
+		Timestamp: time.Now(),
+		Data:      resultData,
+	}
+
+	c.Server.broadcastToPOS(&resultMessage)
+	c.Server.broadcastToWaiters(&resultMessage)
+	log.Printf("Kitchen acknowledgment result broadcast to POS and waiters")
 }
 
 // sendMessage sends a message to the client

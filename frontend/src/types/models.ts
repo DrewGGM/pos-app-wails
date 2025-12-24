@@ -163,6 +163,9 @@ export interface Order extends BaseModel {
   source: 'pos' | 'web' | 'mobile' | 'waiter_app';
   is_synced: boolean;
   sale_id?: number;
+  // Kitchen acknowledgment tracking
+  kitchen_acknowledged?: boolean;
+  kitchen_acknowledged_at?: string;
   // Delivery information (optional, for delivery orders)
   delivery_customer_name?: string;
   delivery_address?: string;

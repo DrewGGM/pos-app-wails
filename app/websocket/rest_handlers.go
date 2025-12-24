@@ -11,10 +11,11 @@ import (
 	"PosApp/app/models"
 )
 
-// OrderCreator interface defines the contract for creating orders
+// OrderCreator interface defines the contract for creating orders and kitchen operations
 // This avoids importing the services package directly, breaking the import cycle
 type OrderCreator interface {
 	CreateOrder(order *models.Order) (*models.Order, error)
+	SendToKitchen(orderID uint) error
 }
 
 // RESTHandlers provides HTTP REST endpoints for mobile apps
@@ -306,10 +307,8 @@ func (h *RESTHandlers) HandleCreateOrder(w http.ResponseWriter, r *http.Request)
 		log.Printf("REST API: Table %d marked as occupied", *createdOrder.TableID)
 	}
 
-	// Send order to kitchen via WebSocket
-	if h.server != nil && (createdOrder.Source == "waiter_app" || createdOrder.Source == "pos") {
-		go h.sendToKitchen(createdOrder)
-	}
+	// NOTE: Kitchen notification is handled by OrderService.CreateOrder()
+	// No need to call sendToKitchen here - it would cause duplicate notifications
 
 	// Return success
 	response := map[string]interface{}{
@@ -643,16 +642,22 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleOrderByID handles GET, PUT, and DELETE for /api/orders/:id
+// HandleOrderByID handles GET, PUT, DELETE and POST (send-to-kitchen) for /api/orders/:id
 func (h *RESTHandlers) HandleOrderByID(w http.ResponseWriter, r *http.Request) {
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, PUT, DELETE, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Check for send-to-kitchen subpath
+	if strings.HasSuffix(r.URL.Path, "/send-to-kitchen") {
+		h.HandleSendToKitchen(w, r)
 		return
 	}
 
@@ -671,6 +676,39 @@ func (h *RESTHandlers) HandleOrderByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleSendToKitchen resends an order to kitchen
+func (h *RESTHandlers) HandleSendToKitchen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract order ID from URL: /api/orders/123/send-to-kitchen
+	var orderID uint
+	if _, err := fmt.Sscanf(r.URL.Path, "/api/orders/%d/send-to-kitchen", &orderID); err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("REST API: Resending order %d to kitchen", orderID)
+
+	// Use OrderService to send to kitchen
+	if err := h.orderService.SendToKitchen(orderID); err != nil {
+		log.Printf("REST API: Error sending to kitchen: %v", err)
+		http.Error(w, fmt.Sprintf("Error sending to kitchen: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("REST API: Order %d resent to kitchen successfully", orderID)
+
+	response := map[string]interface{}{
+		"success":  true,
+		"order_id": orderID,
+		"message":  "Order sent to kitchen",
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 // HandleUpdateOrder updates an existing order

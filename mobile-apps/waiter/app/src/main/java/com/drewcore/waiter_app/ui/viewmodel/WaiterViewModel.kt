@@ -9,6 +9,8 @@ import com.drewcore.waiter_app.data.network.ServerDiscovery
 import com.drewcore.waiter_app.data.network.WebSocketManager
 import com.drewcore.waiter_app.data.network.ServerConnection
 import com.drewcore.waiter_app.data.preferences.WaiterPreferences
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -71,6 +73,24 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     // Connection info for background service
     private val _connectionInfo = MutableStateFlow<ServerConnection?>(null)
     val connectionInfo: StateFlow<ServerConnection?> = _connectionInfo
+
+    // Kitchen acknowledgment tracking
+    data class PendingKitchenAck(
+        val orderId: Int,
+        val orderNumber: String,
+        val sentAt: Long = System.currentTimeMillis()
+    )
+    private val _pendingKitchenAck = MutableStateFlow<PendingKitchenAck?>(null)
+    val pendingKitchenAck: StateFlow<PendingKitchenAck?> = _pendingKitchenAck
+
+    private val _showKitchenRetryDialog = MutableStateFlow(false)
+    val showKitchenRetryDialog: StateFlow<Boolean> = _showKitchenRetryDialog
+
+    private var kitchenAckTimeoutJob: Job? = null
+
+    companion object {
+        private const val KITCHEN_ACK_TIMEOUT_MS = 10000L // 10 seconds timeout for kitchen acknowledgment
+    }
 
     private var apiService: PosApiService? = null
     private var serverIp: String? = null
@@ -196,6 +216,22 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                             // Handle general notifications
                             android.util.Log.d("WaiterViewModel", "Notification received")
                         }
+                    }
+                }
+            }
+        }
+
+        // Listen for kitchen acknowledgment results
+        viewModelScope.launch {
+            webSocketManager.kitchenAckResult.collect { ackResult ->
+                ackResult?.let {
+                    android.util.Log.d("WaiterViewModel", "Kitchen ack received for order: ${it.orderNumber}")
+                    val pending = _pendingKitchenAck.value
+                    if (pending != null && pending.orderId == it.orderId) {
+                        // Order was acknowledged, clear pending state
+                        _pendingKitchenAck.value = null
+                        _showKitchenRetryDialog.value = false
+                        android.util.Log.d("WaiterViewModel", "Kitchen acknowledgment cleared for order: ${it.orderNumber}")
                     }
                 }
             }
@@ -717,7 +753,10 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun sendOrder() {
-        if (_cart.value.isEmpty()) return
+        if (_cart.value.isEmpty()) {
+            _uiState.value = UiState.Error("El carrito está vacío")
+            return
+        }
 
         val table = _selectedTable.value
         val selectedType = _selectedOrderType.value
@@ -779,9 +818,16 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 apiService?.createOrder(order)
             }
 
-            result?.onSuccess {
+            result?.onSuccess { orderResponse ->
                 // Backend REST handler will broadcast to kitchen via WebSocket
                 // No need to send WebSocket message here - REST handlers handle it
+
+                // Start kitchen acknowledgment tracking
+                _pendingKitchenAck.value = PendingKitchenAck(
+                    orderId = orderResponse.order_id,
+                    orderNumber = orderResponse.order_number
+                )
+                startKitchenAckTimeout(orderResponse.order_id, orderResponse.order_number)
 
                 // Navigate FIRST to avoid UI flash with null table on ProductSelection screen
                 navigateToScreen(Screen.TableSelection)
@@ -803,7 +849,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 loadOrders()
 
                 // Reset to Ready after a short delay (for UI to show success message)
-                kotlinx.coroutines.delay(1500)
+                delay(1500)
                 _uiState.value = UiState.Ready
             }?.onFailure { error ->
                 _uiState.value = UiState.Error(error.message ?: "Error enviando pedido")
@@ -1011,8 +1057,59 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // Kitchen acknowledgment timeout functions
+
+    private fun startKitchenAckTimeout(orderId: Int, orderNumber: String) {
+        // Cancel any existing timeout
+        kitchenAckTimeoutJob?.cancel()
+
+        kitchenAckTimeoutJob = viewModelScope.launch {
+            delay(KITCHEN_ACK_TIMEOUT_MS)
+
+            // Check if still pending (not yet acknowledged)
+            val pending = _pendingKitchenAck.value
+            if (pending != null && pending.orderId == orderId) {
+                android.util.Log.w("WaiterViewModel", "Kitchen acknowledgment timeout for order: $orderNumber")
+                _showKitchenRetryDialog.value = true
+            }
+        }
+    }
+
+    /**
+     * Dismiss the kitchen retry dialog
+     */
+    fun dismissKitchenRetryDialog() {
+        _showKitchenRetryDialog.value = false
+        _pendingKitchenAck.value = null
+        kitchenAckTimeoutJob?.cancel()
+    }
+
+    /**
+     * Retry sending order to kitchen
+     */
+    fun retryKitchenSend() {
+        val pending = _pendingKitchenAck.value ?: return
+
+        viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Retrying kitchen send for order: ${pending.orderNumber}")
+            _showKitchenRetryDialog.value = false
+
+            // Call the API to resend to kitchen
+            apiService?.sendToKitchen(pending.orderId)?.onSuccess {
+                android.util.Log.d("WaiterViewModel", "Order resent to kitchen: ${pending.orderNumber}")
+                // Restart the timeout
+                startKitchenAckTimeout(pending.orderId, pending.orderNumber)
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "Error resending to kitchen: ${error.message}")
+                _uiState.value = UiState.Error("Error reenviando a cocina: ${error.message}")
+                _pendingKitchenAck.value = null
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        kitchenAckTimeoutJob?.cancel()
         webSocketManager.disconnect()
     }
 }

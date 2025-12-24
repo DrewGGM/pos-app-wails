@@ -415,19 +415,27 @@ func (s *OrderService) GetOrdersByTable(tableID uint) ([]models.Order, error) {
 }
 
 // GetOrdersByStatus gets orders by status
+// For 'paid' and 'cancelled' statuses, limits results to last 100 orders to prevent performance issues
 func (s *OrderService) GetOrdersByStatus(status models.OrderStatus) ([]models.Order, error) {
 	var orders []models.Order
 
-	err := s.db.Preload("Items.Product").
+	query := s.db.Preload("Items.Product").
 		Preload("Items.Modifiers.Modifier").
 		Preload("Table").
 		Preload("Customer").
 		Preload("Employee").
 		Preload("OrderType").
-		Where("status = ?", status).
-		Order("created_at ASC").
-		Find(&orders).Error
+		Where("status = ?", status)
 
+	// Limit historical statuses (paid/cancelled) to prevent loading all history
+	// Active statuses (pending, preparing, ready) are typically small lists
+	if status == models.OrderStatusPaid || status == models.OrderStatusCancelled {
+		query = query.Order("created_at DESC").Limit(100)
+	} else {
+		query = query.Order("created_at ASC")
+	}
+
+	err := query.Find(&orders).Error
 	return orders, err
 }
 

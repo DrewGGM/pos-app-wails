@@ -14,6 +14,12 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
+data class OrderCreateResponse(
+    val success: Boolean,
+    val order_id: Int,
+    val order_number: String
+)
+
 class PosApiService(private val serverIp: String) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -57,8 +63,9 @@ class PosApiService(private val serverIp: String) {
 
     /**
      * Sends a new order to POS server
+     * Returns OrderCreateResponse with order_id and order_number
      */
-    suspend fun createOrder(order: OrderRequest): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun createOrder(order: OrderRequest): Result<OrderCreateResponse> = withContext(Dispatchers.IO) {
         try {
             val url = "http://$serverIp:$PORT/api/orders"
             val json = gson.toJson(order)
@@ -73,7 +80,9 @@ class PosApiService(private val serverIp: String) {
             val response = client.newCall(request).execute()
 
             if (response.isSuccessful) {
-                Result.success(Unit)
+                val responseBody = response.body?.string()
+                val orderResponse = gson.fromJson(responseBody, OrderCreateResponse::class.java)
+                Result.success(orderResponse)
             } else {
                 val error = response.body?.string() ?: "Unknown error"
                 Result.failure(Exception("Error creating order: $error"))
@@ -332,6 +341,31 @@ class PosApiService(private val serverIp: String) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating order", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Sends an order to kitchen (resend)
+     */
+    suspend fun sendToKitchen(orderId: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/orders/$orderId/send-to-kitchen"
+            val request = Request.Builder()
+                .url(url)
+                .post("".toRequestBody(null))
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                val error = response.body?.string() ?: "Unknown error"
+                Result.failure(Exception("Error sending to kitchen: $error"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending to kitchen", e)
             Result.failure(e)
         }
     }

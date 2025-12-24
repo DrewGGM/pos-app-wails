@@ -32,6 +32,17 @@ class WebSocketManager {
     private val _messages = MutableStateFlow<WebSocketMessage?>(null)
     val messages: StateFlow<WebSocketMessage?> = _messages
 
+    // Flow to emit kitchen acknowledgment results
+    private val _kitchenAckResult = MutableStateFlow<KitchenAckResult?>(null)
+    val kitchenAckResult: StateFlow<KitchenAckResult?> = _kitchenAckResult
+
+    data class KitchenAckResult(
+        val orderId: Int,
+        val orderNumber: String,
+        val acknowledged: Boolean,
+        val timestamp: Long = System.currentTimeMillis()
+    )
+
     private var clientId: String? = null
 
     // Store current connection info
@@ -168,6 +179,21 @@ class WebSocketManager {
                 "notification" -> {
                     Log.d(TAG, "General notification received")
                     _messages.value = message
+                }
+
+                "kitchen_ack_result" -> {
+                    Log.d(TAG, "Kitchen acknowledgment result received")
+                    val data = message.data as? Map<*, *>
+                    val orderId = (data?.get("order_id") as? Number)?.toInt() ?: 0
+                    val orderNumber = data?.get("order_number") as? String ?: ""
+                    val acknowledged = data?.get("acknowledged") as? Boolean ?: false
+
+                    _kitchenAckResult.value = KitchenAckResult(
+                        orderId = orderId,
+                        orderNumber = orderNumber,
+                        acknowledged = acknowledged
+                    )
+                    Log.d(TAG, "Kitchen acknowledged order: $orderNumber (ID: $orderId)")
                 }
 
                 else -> {

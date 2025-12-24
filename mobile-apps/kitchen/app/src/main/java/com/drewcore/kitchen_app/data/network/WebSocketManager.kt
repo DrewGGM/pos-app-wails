@@ -244,6 +244,9 @@ class WebSocketManager {
                     val cleanedOrder = cleanOrderIds(order)
                     _newOrder.value = cleanedOrder
                     Log.d(TAG, "New order received: ${cleanedOrder.orderNumber}")
+
+                    // Send acknowledgment back to server
+                    sendKitchenAck(cleanedOrder.id, cleanedOrder.orderNumber)
                 }
 
                 "order_update" -> {
@@ -308,6 +311,24 @@ class WebSocketManager {
         val json = gson.toJson(message)
         webSocket?.send(json)
         Log.d(TAG, "Sent status update: $orderId -> $status")
+    }
+
+    /**
+     * Send acknowledgment that kitchen has received the order
+     */
+    fun sendKitchenAck(orderId: String, orderNumber: String) {
+        val message = mapOf(
+            "type" to "kitchen_ack",
+            "timestamp" to System.currentTimeMillis().toString(),
+            "data" to mapOf(
+                "order_id" to orderId.toIntOrNull() ?: 0,
+                "order_number" to orderNumber
+            )
+        )
+
+        val json = gson.toJson(message)
+        webSocket?.send(json)
+        Log.d(TAG, "Sent kitchen acknowledgment for order: $orderNumber (ID: $orderId)")
     }
 
     private fun cleanOrderIds(order: Order): Order {

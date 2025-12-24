@@ -82,6 +82,9 @@ type Order struct {
 	SaleID       *uint          `json:"sale_id,omitempty"`
 	Source       string         `json:"source"` // "pos", "waiter_app", "online", "split" (split bills - not sent to kitchen)
 	IsSynced     bool           `gorm:"default:false" json:"is_synced"`
+	// Kitchen acknowledgment tracking
+	KitchenAcknowledged   bool       `gorm:"default:false" json:"kitchen_acknowledged"`
+	KitchenAcknowledgedAt *time.Time `json:"kitchen_acknowledged_at,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
