@@ -19,8 +19,8 @@ android {
         applicationId = "com.drewcore.waiter_app"
         minSdk = 28
         targetSdk = 36
-        versionCode = 22
-        versionName = "3.0.1"
+        versionCode = 23
+        versionName = "3.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
