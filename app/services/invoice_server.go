@@ -1000,6 +1000,23 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 	// - dv (only for NIT)
 	// All other fields are OPTIONAL per DIAN (not required by law)
 
+	fmt.Printf("🔍 DEBUG REAL CUSTOMER - Building invoice for: %s (%s)\n", customer.Name, customer.IdentificationNumber)
+	if customer.TypeRegimeID != nil {
+		fmt.Printf("  Type Regime ID: %d\n", *customer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Type Regime ID: <nil>\n")
+	}
+	if customer.TypeLiabilityID != nil {
+		fmt.Printf("  Type Liability ID: %d\n", *customer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Type Liability ID: <nil>\n")
+	}
+	if customer.MunicipalityID != nil {
+		fmt.Printf("  Municipality ID: %d\n", *customer.MunicipalityID)
+	} else {
+		fmt.Printf("  Municipality ID: <nil>\n")
+	}
+
 	invoiceCustomer := InvoiceCustomer{
 		IdentificationNumber: customer.IdentificationNumber,
 		Name:                 customer.Name,
@@ -1047,6 +1064,26 @@ func (s *InvoiceService) buildInvoiceCustomer(customer *models.Customer) Invoice
 	}
 	if customer.MunicipalityID != nil {
 		invoiceCustomer.MunicipalityID = customer.MunicipalityID
+	}
+
+	// Debug: Log final invoice customer data
+	fmt.Printf("✅ REAL CUSTOMER - Final invoice data:\n")
+	fmt.Printf("  Identification: %s\n", invoiceCustomer.IdentificationNumber)
+	fmt.Printf("  Name: %s\n", invoiceCustomer.Name)
+	if invoiceCustomer.TypeRegimeID != nil {
+		fmt.Printf("  Type Regime ID: %d\n", *invoiceCustomer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Type Regime ID: <not included>\n")
+	}
+	if invoiceCustomer.TypeLiabilityID != nil {
+		fmt.Printf("  Type Liability ID: %d\n", *invoiceCustomer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Type Liability ID: <not included>\n")
+	}
+	if invoiceCustomer.MunicipalityID != nil {
+		fmt.Printf("  Municipality ID: %d\n", *invoiceCustomer.MunicipalityID)
+	} else {
+		fmt.Printf("  Municipality ID: <not included>\n")
 	}
 
 	return invoiceCustomer

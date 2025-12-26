@@ -88,11 +88,24 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
   const [editMode, setEditMode] = useState(false);
 
   useEffect(() => {
-    if (selectedCustomer) {
+    // Only populate formData with selectedCustomer if we're on the search tab (tab 0)
+    // This prevents overwriting the form when creating a new customer (tab 1)
+    if (selectedCustomer && tabValue === 0) {
       setFormData(selectedCustomer);
       setEditMode(true);
     }
-  }, [selectedCustomer]);
+  }, [selectedCustomer, tabValue]);
+
+  // Debug: Track formData changes for corporate fields
+  useEffect(() => {
+    if (formData.identification_type === 'NIT') {
+      console.log('📊 FormData actualizado (NIT):', {
+        type_regime_id: formData.type_regime_id,
+        type_liability_id: formData.type_liability_id,
+        municipality_id: formData.municipality_id,
+      });
+    }
+  }, [formData.type_regime_id, formData.type_liability_id, formData.municipality_id, formData.identification_type]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -153,6 +166,8 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
 
     setLoading(true);
     try {
+      console.log('💾 Guardando cliente:', formData); // Debug log
+
       if (editMode && formData.id) {
         await wailsSalesService.updateCustomer(formData.id, formData);
         toast.success('Cliente actualizado');
@@ -248,7 +263,25 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
       </DialogTitle>
 
       <DialogContent dividers>
-        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)}>
+        <Tabs value={tabValue} onChange={(_, value) => {
+          setTabValue(value);
+          // Reset form when switching to "New Customer" tab
+          if (value === 1) {
+            setFormData({
+              name: '',
+              identification_type: 'CC',
+              identification_number: '',
+              email: '',
+              phone: '',
+              address: '',
+              type_regime_id: undefined,
+              type_liability_id: undefined,
+              municipality_id: undefined,
+            });
+            setEditMode(false);
+            setFormErrors({});
+          }
+        }}>
           <Tab label="Buscar Cliente" icon={<SearchIcon />} />
           <Tab label="Nuevo Cliente" icon={<AddIcon />} />
         </Tabs>
@@ -342,7 +375,29 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
                 <InputLabel>Tipo ID</InputLabel>
                 <Select
                   value={formData.identification_type}
-                  onChange={(e) => setFormData({ ...formData, identification_type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    // When changing to NIT, initialize corporate fields with defaults if not set
+                    if (newType === 'NIT') {
+                      setFormData({
+                        ...formData,
+                        identification_type: newType,
+                        type_regime_id: formData.type_regime_id ?? 2,
+                        type_liability_id: formData.type_liability_id ?? 117,
+                        municipality_id: formData.municipality_id ?? 820,
+                      });
+                    } else {
+                      // When changing away from NIT, clear corporate fields
+                      setFormData({
+                        ...formData,
+                        identification_type: newType,
+                        type_regime_id: undefined,
+                        type_liability_id: undefined,
+                        municipality_id: undefined,
+                        dv: undefined,
+                      });
+                    }
+                  }}
                   label="Tipo ID"
                 >
                   <MenuItem value="CC">Cédula</MenuItem>
@@ -439,7 +494,11 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
                     <InputLabel>Tipo Régimen</InputLabel>
                     <Select
                       value={formData.type_regime_id || 2}
-                      onChange={(e) => setFormData({ ...formData, type_regime_id: Number(e.target.value) })}
+                      onChange={(e) => {
+                        const newValue = Number(e.target.value);
+                        console.log('🔄 Cambiando Type Regime ID:', formData.type_regime_id, '→', newValue);
+                        setFormData({ ...formData, type_regime_id: newValue });
+                      }}
                       label="Tipo Régimen"
                     >
                       <MenuItem value={1}>Responsable de IVA</MenuItem>
@@ -452,7 +511,11 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
                     <InputLabel>Responsabilidad</InputLabel>
                     <Select
                       value={formData.type_liability_id || 117}
-                      onChange={(e) => setFormData({ ...formData, type_liability_id: Number(e.target.value) })}
+                      onChange={(e) => {
+                        const newValue = Number(e.target.value);
+                        console.log('🔄 Cambiando Type Liability ID:', formData.type_liability_id, '→', newValue);
+                        setFormData({ ...formData, type_liability_id: newValue });
+                      }}
                       label="Responsabilidad"
                     >
                       <MenuItem value={117}>No responsable</MenuItem>
@@ -468,7 +531,11 @@ const CustomerDialog: React.FC<CustomerDialogProps> = ({
                     <InputLabel>Municipio</InputLabel>
                     <Select
                       value={formData.municipality_id || 820}
-                      onChange={(e) => setFormData({ ...formData, municipality_id: Number(e.target.value) })}
+                      onChange={(e) => {
+                        const newValue = Number(e.target.value);
+                        console.log('🔄 Cambiando Municipality ID:', formData.municipality_id, '→', newValue);
+                        setFormData({ ...formData, municipality_id: newValue });
+                      }}
                       label="Municipio"
                     >
                       <MenuItem value={820}>Armenia</MenuItem>

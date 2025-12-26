@@ -463,7 +463,30 @@ const Customers: React.FC = () => {
                 fullWidth
                 label="Tipo Doc"
                 value={customerForm.document_type}
-                onChange={(e) => setCustomerForm({ ...customerForm, document_type: e.target.value })}
+                onChange={(e) => {
+                  const newType = e.target.value;
+                  // When changing to NIT, initialize corporate fields with defaults if not set
+                  if (newType === 'NIT') {
+                    setCustomerForm({
+                      ...customerForm,
+                      document_type: newType,
+                      identification_type: newType,
+                      type_regime_id: customerForm.type_regime_id ?? 2,
+                      type_liability_id: customerForm.type_liability_id ?? 117,
+                      municipality_id: customerForm.municipality_id ?? 820,
+                    });
+                  } else {
+                    // When changing away from NIT, clear corporate fields
+                    setCustomerForm({
+                      ...customerForm,
+                      document_type: newType,
+                      identification_type: newType,
+                      type_regime_id: undefined,
+                      type_liability_id: undefined,
+                      municipality_id: undefined,
+                    });
+                  }
+                }}
                 SelectProps={{ native: true }}
               >
                 <option value="CC">Cédula (CC)</option>

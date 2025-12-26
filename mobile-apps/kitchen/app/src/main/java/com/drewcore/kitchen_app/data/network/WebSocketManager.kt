@@ -317,13 +317,14 @@ class WebSocketManager {
      * Send acknowledgment that kitchen has received the order
      */
     fun sendKitchenAck(orderId: String, orderNumber: String) {
-        val message = mapOf(
+        val data = mapOf<String, Any>(
+            "order_id" to (orderId.toIntOrNull() ?: 0),
+            "order_number" to orderNumber
+        )
+        val message = mapOf<String, Any>(
             "type" to "kitchen_ack",
             "timestamp" to System.currentTimeMillis().toString(),
-            "data" to mapOf(
-                "order_id" to orderId.toIntOrNull() ?: 0,
-                "order_number" to orderNumber
-            )
+            "data" to data
         )
 
         val json = gson.toJson(message)

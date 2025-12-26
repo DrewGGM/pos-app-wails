@@ -253,6 +253,10 @@ function mapCustomer(w: models.Customer): Customer {
     total_spent: (w as any).total_spent || 0,
     total_purchases: (w as any).total_purchases || 0,
     loyalty_points: (w as any).loyalty_points || 0,
+    // DIAN corporate fields (optional, only for NIT)
+    type_regime_id: w.type_regime_id || undefined,
+    type_liability_id: w.type_liability_id || undefined,
+    municipality_id: w.municipality_id || undefined,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Customer;

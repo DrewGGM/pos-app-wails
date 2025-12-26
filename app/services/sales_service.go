@@ -893,12 +893,109 @@ func (s *SalesService) SearchCustomers(query string) ([]models.Customer, error) 
 
 // CreateCustomer creates a new customer
 func (s *SalesService) CreateCustomer(customer *models.Customer) error {
-	return s.db.Create(customer).Error
+	// Debug logging to see what we're receiving - with dereferenced values
+	fmt.Printf("🔍 DEBUG CreateCustomer - Received customer data:\n")
+	fmt.Printf("  Name: %s\n", customer.Name)
+	fmt.Printf("  Identification: %s %s\n", customer.IdentificationType, customer.IdentificationNumber)
+	if customer.DV != nil {
+		fmt.Printf("  DV: %s\n", *customer.DV)
+	} else {
+		fmt.Printf("  DV: <nil>\n")
+	}
+	if customer.TypeRegimeID != nil {
+		fmt.Printf("  Type Regime ID: %d\n", *customer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Type Regime ID: <nil>\n")
+	}
+	if customer.TypeLiabilityID != nil {
+		fmt.Printf("  Type Liability ID: %d\n", *customer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Type Liability ID: <nil>\n")
+	}
+	if customer.MunicipalityID != nil {
+		fmt.Printf("  Municipality ID: %d\n", *customer.MunicipalityID)
+	} else {
+		fmt.Printf("  Municipality ID: <nil>\n")
+	}
+
+	err := s.db.Create(customer).Error
+	if err != nil {
+		fmt.Printf("❌ ERROR creating customer: %v\n", err)
+		return err
+	}
+
+	// After creating, read it back to see what was saved
+	var savedCustomer models.Customer
+	s.db.First(&savedCustomer, customer.ID)
+	fmt.Printf("✅ Customer created with ID: %d\n", savedCustomer.ID)
+	if savedCustomer.TypeRegimeID != nil {
+		fmt.Printf("  Saved Type Regime ID: %d\n", *savedCustomer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Saved Type Regime ID: <nil>\n")
+	}
+	if savedCustomer.TypeLiabilityID != nil {
+		fmt.Printf("  Saved Type Liability ID: %d\n", *savedCustomer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Saved Type Liability ID: <nil>\n")
+	}
+	if savedCustomer.MunicipalityID != nil {
+		fmt.Printf("  Saved Municipality ID: %d\n", *savedCustomer.MunicipalityID)
+	} else {
+		fmt.Printf("  Saved Municipality ID: <nil>\n")
+	}
+
+	return nil
 }
 
 // UpdateCustomer updates a customer
 func (s *SalesService) UpdateCustomer(customer *models.Customer) error {
-	return s.db.Save(customer).Error
+	// Debug logging to see what we're receiving - with dereferenced values
+	fmt.Printf("🔍 DEBUG UpdateCustomer - Received customer data:\n")
+	fmt.Printf("  ID: %d\n", customer.ID)
+	fmt.Printf("  Name: %s\n", customer.Name)
+	if customer.TypeRegimeID != nil {
+		fmt.Printf("  Type Regime ID: %d\n", *customer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Type Regime ID: <nil>\n")
+	}
+	if customer.TypeLiabilityID != nil {
+		fmt.Printf("  Type Liability ID: %d\n", *customer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Type Liability ID: <nil>\n")
+	}
+	if customer.MunicipalityID != nil {
+		fmt.Printf("  Municipality ID: %d\n", *customer.MunicipalityID)
+	} else {
+		fmt.Printf("  Municipality ID: <nil>\n")
+	}
+
+	err := s.db.Save(customer).Error
+	if err != nil {
+		fmt.Printf("❌ ERROR updating customer: %v\n", err)
+		return err
+	}
+
+	// After updating, read it back to see what was saved
+	var savedCustomer models.Customer
+	s.db.First(&savedCustomer, customer.ID)
+	fmt.Printf("✅ Customer updated - ID: %d\n", savedCustomer.ID)
+	if savedCustomer.TypeRegimeID != nil {
+		fmt.Printf("  Saved Type Regime ID: %d\n", *savedCustomer.TypeRegimeID)
+	} else {
+		fmt.Printf("  Saved Type Regime ID: <nil>\n")
+	}
+	if savedCustomer.TypeLiabilityID != nil {
+		fmt.Printf("  Saved Type Liability ID: %d\n", *savedCustomer.TypeLiabilityID)
+	} else {
+		fmt.Printf("  Saved Type Liability ID: <nil>\n")
+	}
+	if savedCustomer.MunicipalityID != nil {
+		fmt.Printf("  Saved Municipality ID: %d\n", *savedCustomer.MunicipalityID)
+	} else {
+		fmt.Printf("  Saved Municipality ID: <nil>\n")
+	}
+
+	return nil
 }
 
 // DeleteCustomer soft deletes a customer

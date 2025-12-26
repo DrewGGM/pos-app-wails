@@ -319,7 +319,7 @@ class PosApiService(private val serverIp: String) {
     /**
      * Updates an existing order
      */
-    suspend fun updateOrder(orderId: Int, order: OrderRequest): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateOrder(orderId: Int, order: OrderRequest): Result<OrderCreateResponse> = withContext(Dispatchers.IO) {
         try {
             val url = "http://$serverIp:$PORT/api/orders/$orderId"
             val json = gson.toJson(order)
@@ -334,7 +334,27 @@ class PosApiService(private val serverIp: String) {
             val response = client.newCall(request).execute()
 
             if (response.isSuccessful) {
-                Result.success(Unit)
+                val responseBody = response.body?.string()
+                if (responseBody != null) {
+                    try {
+                        val orderResponse = gson.fromJson(responseBody, OrderCreateResponse::class.java)
+                        Result.success(orderResponse)
+                    } catch (e: Exception) {
+                        // Fallback: if response doesn't have expected format, construct response manually
+                        Result.success(OrderCreateResponse(
+                            success = true,
+                            order_id = orderId,
+                            order_number = order.orderNumber
+                        ))
+                    }
+                } else {
+                    // Fallback if no response body
+                    Result.success(OrderCreateResponse(
+                        success = true,
+                        order_id = orderId,
+                        order_number = order.orderNumber
+                    ))
+                }
             } else {
                 val error = response.body?.string() ?: "Unknown error"
                 Result.failure(Exception("Error updating order: $error"))
