@@ -15,7 +15,8 @@ import {
   CreateEmployee,
   UpdateEmployee,
   DeleteEmployee,
-  AddCashMovement
+  AddCashMovement,
+  UpdateCashMovement
 } from '../../wailsjs/go/services/EmployeeService';
 import { models } from '../../wailsjs/go/models';
 import { Employee, CashRegister, CashRegisterReport } from '../types/models';
@@ -231,6 +232,19 @@ class WailsAuthService {
       await AddCashMovement(registerId, amount, type, description, reference, employeeId);
     } catch (error) {
       throw new Error('Error al registrar movimiento de caja');
+    }
+  }
+
+  async updateCashMovement(
+    movementId: number,
+    amount: number,
+    type: 'deposit' | 'withdrawal',
+    description: string
+  ): Promise<void> {
+    try {
+      await UpdateCashMovement(movementId, amount, type, description);
+    } catch (error: any) {
+      throw new Error(error?.message || 'Error al actualizar movimiento de caja');
     }
   }
 

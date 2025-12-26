@@ -73,6 +73,8 @@ export function Save(arg1:any):Promise<void>;
 
 export function SetDB(arg1:gorm.DB):Promise<void>;
 
+export function UpdateCashMovement(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+
 export function UpdateEmployee(arg1:models.Employee):Promise<void>;
 
 export function UpdateEmployeePIN(arg1:number,arg2:string):Promise<void>;

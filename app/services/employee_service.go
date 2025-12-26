@@ -520,6 +520,42 @@ func (s *EmployeeService) AddCashMovement(registerID uint, amount float64, movem
 	return s.db.Create(&movement).Error
 }
 
+// UpdateCashMovement updates an existing cash movement
+func (s *EmployeeService) UpdateCashMovement(movementID uint, amount float64, movementType, description string) error {
+	if err := s.EnsureDB(); err != nil {
+		return err
+	}
+
+	// Get the movement to verify it exists and get its register
+	var movement models.CashMovement
+	if err := s.db.First(&movement, movementID).Error; err != nil {
+		return fmt.Errorf("movement not found")
+	}
+
+	// Verify the register is still open
+	var register models.CashRegister
+	if err := s.db.First(&register, movement.CashRegisterID).Error; err != nil {
+		return fmt.Errorf("cash register not found")
+	}
+
+	if register.Status != "open" {
+		return fmt.Errorf("cannot edit movement: cash register is closed")
+	}
+
+	// Prevent editing OPENING movement
+	if movement.Reference == "OPENING" {
+		return fmt.Errorf("cannot edit opening movement")
+	}
+
+	// Update the movement
+	movement.Amount = amount
+	movement.Type = movementType
+	movement.Description = description
+	movement.Reason = description
+
+	return s.db.Save(&movement).Error
+}
+
 // GetCashMovements gets cash movements for a register
 func (s *EmployeeService) GetCashMovements(registerID uint) ([]models.CashMovement, error) {
 	if err := s.EnsureDB(); err != nil {

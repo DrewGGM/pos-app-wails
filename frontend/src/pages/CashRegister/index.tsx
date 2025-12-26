@@ -44,6 +44,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   History as HistoryIcon,
   Description as DIANReportIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -110,6 +111,8 @@ const CashRegister: React.FC = () => {
     amount: '',
     reason: '',
   });
+  const [editMovementDialog, setEditMovementDialog] = useState(false);
+  const [editingMovement, setEditingMovement] = useState<CashMovement | null>(null);
 
   useEffect(() => {
     loadRegisterStatus();
@@ -267,6 +270,34 @@ const CashRegister: React.FC = () => {
     }
   };
 
+  const handleEditMovement = (movement: CashMovement) => {
+    setEditingMovement(movement);
+    setEditMovementDialog(true);
+  };
+
+  const handleUpdateMovement = async () => {
+    if (!editingMovement || !editingMovement.amount || !editingMovement.reason) {
+      toast.error('Complete todos los campos');
+      return;
+    }
+
+    try {
+      const movementType = editingMovement.type === 'in' ? 'deposit' : 'withdrawal';
+      await wailsAuthService.updateCashMovement(
+        editingMovement.id,
+        Number(editingMovement.amount),
+        movementType,
+        editingMovement.reason
+      );
+      toast.success('Movimiento actualizado correctamente');
+      setEditMovementDialog(false);
+      setEditingMovement(null);
+      loadRegisterStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al actualizar movimiento');
+    }
+  };
+
   const handlePrintReport = async () => {
     try {
       if (!user?.id) {
@@ -324,6 +355,20 @@ const CashRegister: React.FC = () => {
 
   const formatCurrency = (amount: number) => {
     return `$${amount.toLocaleString('es-CO')}`;
+  };
+
+  // Format number input with thousands separator
+  const formatNumberInput = (value: string): string => {
+    // Remove all non-numeric characters except decimal point
+    const cleaned = value.replace(/[^\d]/g, '');
+    if (!cleaned) return '';
+    // Format with thousands separator
+    return Number(cleaned).toLocaleString('es-CO');
+  };
+
+  // Parse formatted input back to number
+  const parseNumberInput = (value: string): string => {
+    return value.replace(/\./g, '');
   };
 
   const calculateDifference = () => {
@@ -592,6 +637,7 @@ const CashRegister: React.FC = () => {
                     <TableCell>Razón</TableCell>
                     <TableCell align="right">Monto</TableCell>
                     <TableCell>Usuario</TableCell>
+                    {isRegisterOpen && <TableCell align="center">Acciones</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -618,11 +664,24 @@ const CashRegister: React.FC = () => {
                         </Typography>
                       </TableCell>
                       <TableCell>{movement.created_by}</TableCell>
+                      {isRegisterOpen && (
+                        <TableCell align="center">
+                          {movement.type === 'in' || movement.type === 'out' ? (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleEditMovement(movement)}
+                              title="Editar movimiento"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                   {registerStatus.movements.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} align="center">
+                      <TableCell colSpan={isRegisterOpen ? 6 : 5} align="center">
                         <Typography variant="body2" color="text.secondary">
                           No hay movimientos registrados
                         </Typography>
@@ -672,9 +731,9 @@ const CashRegister: React.FC = () => {
             autoFocus
             fullWidth
             label="Monto de apertura"
-            type="number"
-            value={openingAmount}
-            onChange={(e) => setOpeningAmount(e.target.value)}
+            type="text"
+            value={openingAmount ? formatNumberInput(openingAmount) : ''}
+            onChange={(e) => setOpeningAmount(parseNumberInput(e.target.value))}
             placeholder="0"
             InputProps={{
               startAdornment: '$',
@@ -700,9 +759,9 @@ const CashRegister: React.FC = () => {
             autoFocus
             fullWidth
             label="Monto de cierre"
-            type="number"
-            value={closingAmount}
-            onChange={(e) => setClosingAmount(e.target.value)}
+            type="text"
+            value={closingAmount ? formatNumberInput(closingAmount) : ''}
+            onChange={(e) => setClosingAmount(parseNumberInput(e.target.value))}
             placeholder="0"
             InputProps={{
               startAdornment: '$',
@@ -748,9 +807,9 @@ const CashRegister: React.FC = () => {
               <TextField
                 fullWidth
                 label="Monto"
-                type="number"
-                value={movement.amount}
-                onChange={(e) => setMovement({ ...movement, amount: e.target.value })}
+                type="text"
+                value={movement.amount ? formatNumberInput(movement.amount) : ''}
+                onChange={(e) => setMovement({ ...movement, amount: parseNumberInput(e.target.value) })}
                 InputProps={{
                   startAdornment: '$',
                 }}
@@ -773,6 +832,59 @@ const CashRegister: React.FC = () => {
           <Button onClick={() => setMovementDialog(false)}>Cancelar</Button>
           <Button onClick={handleCashMovement} variant="contained">
             Registrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Movement Dialog */}
+      <Dialog open={editMovementDialog} onClose={() => setEditMovementDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar Movimiento de Caja</DialogTitle>
+        <DialogContent>
+          {editingMovement && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Tipo"
+                  value={editingMovement.type}
+                  onChange={(e) => setEditingMovement({ ...editingMovement, type: e.target.value as 'in' | 'out' })}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="in">Entrada</option>
+                  <option value="out">Salida</option>
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Monto"
+                  type="text"
+                  value={editingMovement.amount ? formatNumberInput(editingMovement.amount.toString()) : ''}
+                  onChange={(e) => setEditingMovement({ ...editingMovement, amount: Number(parseNumberInput(e.target.value)) })}
+                  InputProps={{
+                    startAdornment: '$',
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Razón"
+                  multiline
+                  rows={2}
+                  value={editingMovement.reason}
+                  onChange={(e) => setEditingMovement({ ...editingMovement, reason: e.target.value })}
+                  placeholder="Ej: Pago a proveedor, cambio de billetes, etc."
+                />
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditMovementDialog(false)}>Cancelar</Button>
+          <Button onClick={handleUpdateMovement} variant="contained" color="primary">
+            Actualizar
           </Button>
         </DialogActions>
       </Dialog>

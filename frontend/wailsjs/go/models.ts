@@ -1478,6 +1478,8 @@ export namespace models {
 	    sale_id?: number;
 	    source: string;
 	    is_synced: boolean;
+	    kitchen_acknowledged: boolean;
+	    kitchen_acknowledged_at?: time.Time;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	    deleted_at?: gorm.DeletedAt;
@@ -1514,6 +1516,8 @@ export namespace models {
 	        this.sale_id = source["sale_id"];
 	        this.source = source["source"];
 	        this.is_synced = source["is_synced"];
+	        this.kitchen_acknowledged = source["kitchen_acknowledged"];
+	        this.kitchen_acknowledged_at = this.convertValues(source["kitchen_acknowledged_at"], time.Time);
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);

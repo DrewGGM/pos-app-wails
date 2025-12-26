@@ -138,6 +138,10 @@ export function SetDB(arg1) {
   return window['go']['services']['EmployeeService']['SetDB'](arg1);
 }
 
+export function UpdateCashMovement(arg1, arg2, arg3, arg4) {
+  return window['go']['services']['EmployeeService']['UpdateCashMovement'](arg1, arg2, arg3, arg4);
+}
+
 export function UpdateEmployee(arg1) {
   return window['go']['services']['EmployeeService']['UpdateEmployee'](arg1);
 }

@@ -160,7 +160,7 @@ export interface Order extends BaseModel {
   discount: number;
   total: number;
   notes?: string;
-  source: 'pos' | 'web' | 'mobile' | 'waiter_app';
+  source: 'pos' | 'web' | 'mobile' | 'waiter_app' | 'split';
   is_synced: boolean;
   sale_id?: number;
   // Kitchen acknowledgment tracking
