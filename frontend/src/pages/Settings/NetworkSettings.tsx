@@ -51,6 +51,11 @@ interface NetworkConfig {
   rappi_webhook_enabled: boolean;
 }
 
+interface RestaurantConfigPartial {
+  id?: number;
+  enable_kitchen_ack?: boolean;
+}
+
 interface TunnelStatus {
   is_running: boolean;
   is_installed: boolean;
@@ -103,8 +108,12 @@ const NetworkSettings: React.FC = () => {
   });
   const [tunnelToken, setTunnelToken] = useState('');
   const [tunnelPort, setTunnelPort] = useState(8082);
+  const [restaurantConfig, setRestaurantConfig] = useState<RestaurantConfigPartial>({
+    enable_kitchen_ack: false,
+  });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingMobileConfig, setSavingMobileConfig] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -149,6 +158,15 @@ const NetworkSettings: React.FC = () => {
         setNetworkConfig(netConfig);
         setTunnelPort(netConfig.config_api_port);
       }
+
+      // Load restaurant config for mobile apps settings
+      const restConfig = await wailsConfigService.getRestaurantConfig();
+      if (restConfig) {
+        setRestaurantConfig({
+          id: restConfig.id,
+          enable_kitchen_ack: restConfig.enable_kitchen_ack ?? false,
+        });
+      }
     } catch (error: any) {
       console.error('Error loading network config:', error);
       toast.error('Error cargando configuracion de red');
@@ -177,6 +195,25 @@ const NetworkSettings: React.FC = () => {
       toast.error(error?.message || 'Error guardando configuracion');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveMobileConfig = async () => {
+    setSavingMobileConfig(true);
+    try {
+      // Get full restaurant config and update only kitchen ack
+      const fullConfig = await wailsConfigService.getRestaurantConfig();
+      if (fullConfig) {
+        await wailsConfigService.updateRestaurantConfig({
+          ...fullConfig,
+          enable_kitchen_ack: restaurantConfig.enable_kitchen_ack,
+        });
+        toast.success('Configuracion de apps moviles guardada');
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Error guardando configuracion');
+    } finally {
+      setSavingMobileConfig(false);
     }
   };
 
@@ -418,6 +455,51 @@ const NetworkSettings: React.FC = () => {
                       disabled={!networkConfig.rappi_webhook_enabled}
                       helperText="Por defecto: 8081"
                     />
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Mobile Apps Configuration */}
+          <Grid item xs={12}>
+            <Card sx={{ border: '1px solid', borderColor: 'primary.main' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <WifiIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="h6">Configuracion de Apps Moviles</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Opciones para las aplicaciones de Cocina y Meseros
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={restaurantConfig.enable_kitchen_ack ?? false}
+                          onChange={(e) => setRestaurantConfig({ ...restaurantConfig, enable_kitchen_ack: e.target.checked })}
+                        />
+                      }
+                      label="Activar confirmaciones de cocina"
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 7 }}>
+                      Cuando esta activo, la app de meseros mostrara una alerta si la cocina no confirma recepcion del pedido
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleSaveMobileConfig}
+                        disabled={savingMobileConfig}
+                        startIcon={<SaveIcon />}
+                        size="small"
+                      >
+                        {savingMobileConfig ? 'Guardando...' : 'Guardar Apps Moviles'}
+                      </Button>
+                    </Box>
                   </Grid>
                 </Grid>
               </CardContent>

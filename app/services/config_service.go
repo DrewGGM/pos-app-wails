@@ -162,6 +162,7 @@ func (s *ConfigService) GetRestaurantConfig() (*models.RestaurantConfig, error) 
 			EnableTableManagement: false,
 			EnableKitchenDisplay:  true,
 			EnableWaiterApp:       false,
+			EnableKitchenAck:      false, // Disabled by default
 			ShowLogoOnInvoice:     true,
 			OpeningTime:           "08:00",
 			ClosingTime:           "22:00",

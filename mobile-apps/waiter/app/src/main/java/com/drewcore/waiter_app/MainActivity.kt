@@ -278,6 +278,8 @@ fun WaiterApp(
     val selectedCustomPage by viewModel.selectedCustomPage.collectAsState()
     val customPageProducts by viewModel.customPageProducts.collectAsState()
     val currentOrderId by viewModel.currentOrderId.collectAsState()
+    val showKitchenRetryDialog by viewModel.showKitchenRetryDialog.collectAsState()
+    val pendingKitchenAck by viewModel.pendingKitchenAck.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
     var showSuccessSnackbar by remember { mutableStateOf(false) }
@@ -306,6 +308,52 @@ fun WaiterApp(
                 showDeliveryDialog = false
                 // Navigate to products screen (don't call startDeliveryOrder as it would reset delivery info)
                 viewModel.navigateToScreen(WaiterViewModel.Screen.ProductSelection)
+            }
+        )
+    }
+
+    // Show kitchen retry dialog if kitchen didn't acknowledge order
+    if (showKitchenRetryDialog && pendingKitchenAck != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissKitchenRetryDialog() },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text("Cocina no confirmó recepción")
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "El pedido #${pendingKitchenAck?.orderNumber} fue enviado pero la cocina no confirmó haberlo recibido.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "¿Deseas reenviar el pedido a cocina?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.retryKitchenSend() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reenviar a Cocina")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissKitchenRetryDialog() }) {
+                    Text("Ignorar")
+                }
             }
         )
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -58,9 +58,34 @@ const Orders: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    loadOrders();
+  // Silent refresh without loading indicator (for auto-refresh)
+  const loadOrdersSilent = useCallback(async () => {
+    try {
+      let data: Order[] = [];
+      switch (selectedTab) {
+        case 0: // Today
+          data = await wailsOrderService.getTodayOrders();
+          break;
+        case 1: // Pending
+          data = await wailsOrderService.getPendingOrders();
+          break;
+        case 2: // Preparing
+          data = await wailsOrderService.getOrdersByStatus('preparing');
+          break;
+        case 3: // Ready
+          data = await wailsOrderService.getOrdersByStatus('ready');
+          break;
+        case 4: // Completed
+          data = await wailsOrderService.getOrdersByStatus('paid');
+          break;
+      }
+      setOrders(data);
+    } catch (error) {
+      // Silent fail for auto-refresh
+      console.error('Auto-refresh failed:', error);
+    }
   }, [selectedTab]);
 
   const loadOrders = async () => {
@@ -91,6 +116,31 @@ const Orders: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Load orders when tab changes
+  useEffect(() => {
+    loadOrders();
+  }, [selectedTab]);
+
+  // Auto-refresh for active order tabs (Today, Pending, Preparing)
+  // This ensures kitchen acknowledgments are reflected in the UI
+  useEffect(() => {
+    const shouldAutoRefresh = selectedTab <= 2; // Today, Pending, Preparing
+
+    if (shouldAutoRefresh) {
+      // Refresh every 5 seconds for active orders
+      refreshIntervalRef.current = setInterval(() => {
+        loadOrdersSilent();
+      }, 5000);
+    }
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [selectedTab, loadOrdersSilent]);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, order: Order) => {
     setAnchorEl(event.currentTarget);
@@ -198,9 +248,6 @@ const Orders: React.FC = () => {
 
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Typography variant="body2" fontWeight="bold">
-              {displayNumber}
-            </Typography>
             {shouldShowKitchenWarning && (
               <Tooltip title="No confirmado por cocina - Haz clic en el botón de cocina para reenviar">
                 <WarningIcon
@@ -209,6 +256,9 @@ const Orders: React.FC = () => {
                 />
               </Tooltip>
             )}
+            <Typography variant="body2" fontWeight="bold">
+              {displayNumber}
+            </Typography>
           </Box>
         );
       },

@@ -20,6 +20,15 @@ data class OrderCreateResponse(
     val order_number: String
 )
 
+data class MobileAppConfig(
+    val enable_kitchen_ack: Boolean = false,
+    val enable_table_management: Boolean = false,
+    val enable_kitchen_display: Boolean = true,
+    val enable_waiter_app: Boolean = false,
+    val restaurant_name: String = "Mi Restaurante",
+    val currency_symbol: String = "$"
+)
+
 class PosApiService(private val serverIp: String) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -387,6 +396,35 @@ class PosApiService(private val serverIp: String) {
         } catch (e: Exception) {
             Log.e(TAG, "Error sending to kitchen", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches mobile app configuration from POS server
+     */
+    suspend fun getMobileConfig(): Result<MobileAppConfig> = withContext(Dispatchers.IO) {
+        try {
+            val url = "http://$serverIp:$PORT/api/mobile-config"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                val body = response.body?.string()
+                val config = gson.fromJson(body, MobileAppConfig::class.java)
+                Result.success(config)
+            } else {
+                // Return default config if endpoint not available (backwards compatibility)
+                Log.w(TAG, "Mobile config endpoint not available: ${response.code}")
+                Result.success(MobileAppConfig())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching mobile config", e)
+            // Return default config on error for backwards compatibility
+            Result.success(MobileAppConfig())
         }
     }
 }

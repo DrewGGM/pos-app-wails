@@ -88,8 +88,16 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
     private var kitchenAckTimeoutJob: Job? = null
 
+    // Cache of recently received acks to handle race condition
+    // (ack may arrive before we set pending state)
+    private val recentAcks = mutableMapOf<Int, Long>() // orderId -> timestamp
+
+    // Configuration for kitchen acknowledgment (will be loaded from server)
+    private var kitchenAckEnabled = false
+
     companion object {
-        private const val KITCHEN_ACK_TIMEOUT_MS = 10000L // 10 seconds timeout for kitchen acknowledgment
+        private const val KITCHEN_ACK_TIMEOUT_MS = 5000L // 5 seconds timeout for kitchen acknowledgment
+        private const val ACK_CACHE_EXPIRY_MS = 30000L // 30 seconds cache for recent acks
     }
 
     private var apiService: PosApiService? = null
@@ -225,13 +233,21 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             webSocketManager.kitchenAckResult.collect { ackResult ->
                 ackResult?.let {
-                    android.util.Log.d("WaiterViewModel", "Kitchen ack received for order: ${it.orderNumber}")
+                    android.util.Log.d("WaiterViewModel", "Kitchen ack received for order: ${it.orderNumber} (ID: ${it.orderId})")
+
+                    // Always cache the ack (to handle race condition where ack arrives before pending state is set)
+                    recentAcks[it.orderId] = System.currentTimeMillis()
+                    cleanupOldAcks()
+
                     val pending = _pendingKitchenAck.value
                     if (pending != null && pending.orderId == it.orderId) {
                         // Order was acknowledged, clear pending state
+                        kitchenAckTimeoutJob?.cancel()
                         _pendingKitchenAck.value = null
                         _showKitchenRetryDialog.value = false
                         android.util.Log.d("WaiterViewModel", "Kitchen acknowledgment cleared for order: ${it.orderNumber}")
+                    } else {
+                        android.util.Log.d("WaiterViewModel", "Ack cached for order ${it.orderId} (no pending state yet)")
                     }
                 }
             }
@@ -415,6 +431,17 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
             }?.onFailure { error ->
                 android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading custom pages from API: ${error.message}", error)
                 // Continue without custom pages - fallback to categories
+            }
+
+            // Load mobile app configuration (for kitchen ack setting)
+            android.util.Log.d("WaiterViewModel", "loadInitialData: Calling getMobileConfig()")
+            val mobileConfigResult = apiService?.getMobileConfig()
+            mobileConfigResult?.onSuccess { config ->
+                android.util.Log.d("WaiterViewModel", "loadInitialData: Mobile config loaded, kitchen_ack=${config.enable_kitchen_ack}")
+                kitchenAckEnabled = config.enable_kitchen_ack
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "loadInitialData: Error loading mobile config: ${error.message}", error)
+                // Kitchen ack remains disabled (default) on error
             }
 
             // Load pending orders
@@ -822,12 +849,25 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 // Backend REST handler will broadcast to kitchen via WebSocket
                 // No need to send WebSocket message here - REST handlers handle it
 
-                // Start kitchen acknowledgment tracking
-                _pendingKitchenAck.value = PendingKitchenAck(
-                    orderId = orderResponse.order_id,
-                    orderNumber = orderResponse.order_number
-                )
-                startKitchenAckTimeout(orderResponse.order_id, orderResponse.order_number)
+                // Only track kitchen acknowledgment for NEW orders (not updates)
+                // and only if kitchen ack feature is enabled
+                val isNewOrder = currentOrderId == null
+                if (isNewOrder && kitchenAckEnabled) {
+                    // Check if we already received an ack (race condition - ack arrived before this code ran)
+                    val alreadyAcked = recentAcks.containsKey(orderResponse.order_id)
+                    if (alreadyAcked) {
+                        android.util.Log.d("WaiterViewModel", "Order ${orderResponse.order_number} already acked (from cache)")
+                        recentAcks.remove(orderResponse.order_id)
+                    } else {
+                        // Start kitchen acknowledgment tracking
+                        android.util.Log.d("WaiterViewModel", "Starting kitchen ack tracking for order: ${orderResponse.order_number}")
+                        _pendingKitchenAck.value = PendingKitchenAck(
+                            orderId = orderResponse.order_id,
+                            orderNumber = orderResponse.order_number
+                        )
+                        startKitchenAckTimeout(orderResponse.order_id, orderResponse.order_number)
+                    }
+                }
 
                 // Navigate FIRST to avoid UI flash with null table on ProductSelection screen
                 navigateToScreen(Screen.TableSelection)
@@ -1057,7 +1097,21 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Kitchen acknowledgment timeout functions
+    // Kitchen acknowledgment functions
+
+    /**
+     * Clean up old acks from cache to prevent memory leaks
+     */
+    private fun cleanupOldAcks() {
+        val now = System.currentTimeMillis()
+        val keysToRemove = recentAcks.filter { (_, timestamp) ->
+            now - timestamp > ACK_CACHE_EXPIRY_MS
+        }.keys
+        keysToRemove.forEach { recentAcks.remove(it) }
+        if (keysToRemove.isNotEmpty()) {
+            android.util.Log.d("WaiterViewModel", "Cleaned up ${keysToRemove.size} old acks from cache")
+        }
+    }
 
     private fun startKitchenAckTimeout(orderId: Int, orderNumber: String) {
         // Cancel any existing timeout

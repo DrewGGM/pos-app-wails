@@ -102,6 +102,9 @@ function mapOrder(w: models.Order | null): Order {
     notes: w.notes || '',
     source: w.source || 'pos',
     is_synced: w.is_synced || false,
+    // Kitchen acknowledgment tracking
+    kitchen_acknowledged: (w as any).kitchen_acknowledged || false,
+    kitchen_acknowledged_at: (w as any).kitchen_acknowledged_at || undefined,
     delivery_customer_name: (w as any).delivery_customer_name || undefined,
     delivery_address: (w as any).delivery_address || undefined,
     delivery_phone: (w as any).delivery_phone || undefined,

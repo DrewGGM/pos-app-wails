@@ -504,6 +504,9 @@ type OrderResponse struct {
 	Notes          string                  `json:"notes,omitempty"`
 	Source         string                  `json:"source"`
 	CreatedAt      string                  `json:"created_at"`
+	// Kitchen acknowledgment tracking
+	KitchenAcknowledged   bool    `json:"kitchen_acknowledged"`
+	KitchenAcknowledgedAt *string `json:"kitchen_acknowledged_at,omitempty"`
 	// Delivery information (optional, for delivery orders)
 	DeliveryCustomerName string `json:"delivery_customer_name,omitempty"`
 	DeliveryAddress      string `json:"delivery_address,omitempty"`
@@ -572,25 +575,34 @@ func (h *RESTHandlers) HandleGetOrders(w http.ResponseWriter, r *http.Request) {
 	// Convert to mobile app format
 	response := make([]OrderResponse, len(orders))
 	for i, o := range orders {
+		// Format kitchen acknowledged timestamp if present
+		var kitchenAckAt *string
+		if o.KitchenAcknowledgedAt != nil {
+			formatted := o.KitchenAcknowledgedAt.Format("2006-01-02T15:04:05Z07:00")
+			kitchenAckAt = &formatted
+		}
+
 		orderResp := OrderResponse{
-			ID:                   o.ID,
-			OrderNumber:          o.OrderNumber,
-			Type:                 o.Type,
-			OrderType:            o.OrderType,
-			SequenceNumber:       o.SequenceNumber,
-			TakeoutNumber:        o.TakeoutNumber,
-			Status:               string(o.Status),
-			TableID:              o.TableID,
-			Table:                o.Table,
-			Subtotal:             o.Subtotal,
-			Tax:                  o.Tax,
-			Total:                o.Total,
-			Notes:                o.Notes,
-			Source:               o.Source,
-			CreatedAt:            o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			DeliveryCustomerName: o.DeliveryCustomerName,
-			DeliveryAddress:      o.DeliveryAddress,
-			DeliveryPhone:        o.DeliveryPhone,
+			ID:                    o.ID,
+			OrderNumber:           o.OrderNumber,
+			Type:                  o.Type,
+			OrderType:             o.OrderType,
+			SequenceNumber:        o.SequenceNumber,
+			TakeoutNumber:         o.TakeoutNumber,
+			Status:                string(o.Status),
+			TableID:               o.TableID,
+			Table:                 o.Table,
+			Subtotal:              o.Subtotal,
+			Tax:                   o.Tax,
+			Total:                 o.Total,
+			Notes:                 o.Notes,
+			Source:                o.Source,
+			CreatedAt:             o.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			KitchenAcknowledged:   o.KitchenAcknowledged,
+			KitchenAcknowledgedAt: kitchenAckAt,
+			DeliveryCustomerName:  o.DeliveryCustomerName,
+			DeliveryAddress:       o.DeliveryAddress,
+			DeliveryPhone:         o.DeliveryPhone,
 		}
 
 		if o.Table != nil {
@@ -1419,5 +1431,65 @@ func (h *RESTHandlers) HandleGetCustomPageProducts(w http.ResponseWriter, r *htt
 	}
 
 	log.Printf("REST API: Returning %d products for custom page %s", len(response), pageID)
+	json.NewEncoder(w).Encode(response)
+}
+
+// MobileAppConfigResponse represents configuration for mobile apps
+type MobileAppConfigResponse struct {
+	EnableKitchenAck      bool   `json:"enable_kitchen_ack"`
+	EnableTableManagement bool   `json:"enable_table_management"`
+	EnableKitchenDisplay  bool   `json:"enable_kitchen_display"`
+	EnableWaiterApp       bool   `json:"enable_waiter_app"`
+	RestaurantName        string `json:"restaurant_name"`
+	CurrencySymbol        string `json:"currency_symbol"`
+}
+
+// HandleGetMobileAppConfig returns configuration settings for mobile apps
+func (h *RESTHandlers) HandleGetMobileAppConfig(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Println("REST API: Fetching mobile app configuration")
+
+	// Get restaurant config
+	var config models.RestaurantConfig
+	if err := h.db.First(&config).Error; err != nil {
+		log.Printf("REST API: Error fetching restaurant config: %v", err)
+		// Return default values if config not found
+		response := MobileAppConfigResponse{
+			EnableKitchenAck:      false,
+			EnableTableManagement: false,
+			EnableKitchenDisplay:  true,
+			EnableWaiterApp:       false,
+			RestaurantName:        "Mi Restaurante",
+			CurrencySymbol:        "$",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	response := MobileAppConfigResponse{
+		EnableKitchenAck:      config.EnableKitchenAck,
+		EnableTableManagement: config.EnableTableManagement,
+		EnableKitchenDisplay:  config.EnableKitchenDisplay,
+		EnableWaiterApp:       config.EnableWaiterApp,
+		RestaurantName:        config.Name,
+		CurrencySymbol:        config.CurrencySymbol,
+	}
+
+	log.Printf("REST API: Returning mobile app config: kitchen_ack=%v", config.EnableKitchenAck)
 	json.NewEncoder(w).Encode(response)
 }

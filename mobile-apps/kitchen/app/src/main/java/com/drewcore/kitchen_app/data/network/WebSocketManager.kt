@@ -298,9 +298,11 @@ class WebSocketManager {
     }
 
     fun sendOrderStatusUpdate(orderId: String, status: String) {
+        // Use ISO 8601 format for timestamp (Go expects time.Time which parses RFC3339/ISO8601)
+        val timestamp = java.time.Instant.now().toString()
         val message = mapOf(
             "type" to "kitchen_update",
-            "timestamp" to System.currentTimeMillis().toString(),
+            "timestamp" to timestamp,
             "data" to mapOf(
                 "order_id" to orderId,
                 "status" to status,
@@ -321,9 +323,11 @@ class WebSocketManager {
             "order_id" to (orderId.toIntOrNull() ?: 0),
             "order_number" to orderNumber
         )
+        // Use ISO 8601 format for timestamp (Go expects time.Time which parses RFC3339/ISO8601)
+        val timestamp = java.time.Instant.now().toString()
         val message = mapOf<String, Any>(
             "type" to "kitchen_ack",
-            "timestamp" to System.currentTimeMillis().toString(),
+            "timestamp" to timestamp,
             "data" to data
         )
 

@@ -47,6 +47,7 @@ type RestaurantConfig struct {
 	EnableTableManagement bool   `json:"enable_table_management"`
 	EnableKitchenDisplay  bool   `json:"enable_kitchen_display"`
 	EnableWaiterApp       bool   `json:"enable_waiter_app"`
+	EnableKitchenAck      bool   `json:"enable_kitchen_ack"` // Enable kitchen acknowledgment tracking for waiter app orders
 
 	// Invoice Settings
 	InvoiceHeader        string `json:"invoice_header"`

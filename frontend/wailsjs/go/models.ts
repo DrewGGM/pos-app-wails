@@ -2768,6 +2768,7 @@ export namespace models {
 	    enable_table_management: boolean;
 	    enable_kitchen_display: boolean;
 	    enable_waiter_app: boolean;
+	    enable_kitchen_ack: boolean;
 	    invoice_header: string;
 	    invoice_footer: string;
 	    show_logo_on_invoice: boolean;
@@ -2809,6 +2810,7 @@ export namespace models {
 	        this.enable_table_management = source["enable_table_management"];
 	        this.enable_kitchen_display = source["enable_kitchen_display"];
 	        this.enable_waiter_app = source["enable_waiter_app"];
+	        this.enable_kitchen_ack = source["enable_kitchen_ack"];
 	        this.invoice_header = source["invoice_header"];
 	        this.invoice_footer = source["invoice_footer"];
 	        this.show_logo_on_invoice = source["show_logo_on_invoice"];

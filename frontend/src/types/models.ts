@@ -380,6 +380,7 @@ export interface RestaurantConfig extends BaseModel {
   enable_table_management: boolean;
   enable_kitchen_display: boolean;
   enable_waiter_app: boolean;
+  enable_kitchen_ack?: boolean; // Enable kitchen acknowledgment tracking for waiter app orders
   invoice_header?: string;
   invoice_footer?: string;
   show_logo_on_invoice: boolean;

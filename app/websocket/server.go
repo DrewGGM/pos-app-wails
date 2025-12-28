@@ -144,6 +144,7 @@ func (s *Server) Start() error {
 		http.HandleFunc("/api/custom-pages", s.restHandlers.HandleGetCustomPages)
 		http.HandleFunc("/api/custom-pages/", s.restHandlers.HandleGetCustomPageProducts)
 		http.HandleFunc("/api/sales/today", s.restHandlers.HandleGetTodaySales)
+		http.HandleFunc("/api/mobile-config", s.restHandlers.HandleGetMobileAppConfig)
 		log.Println("WebSocket server: REST API endpoints registered")
 	}
 
@@ -457,7 +458,8 @@ func (c *Client) handleKitchenAck(message *Message) {
 	// Update the order in the database
 	if c.Server.db != nil {
 		now := time.Now()
-		result := c.Server.db.Model(&struct{}{}).Table("orders").
+		// Use Table directly without Model - the empty struct approach doesn't work with GORM
+		result := c.Server.db.Table("orders").
 			Where("id = ?", ackData.OrderID).
 			Updates(map[string]interface{}{
 				"kitchen_acknowledged":    true,
@@ -465,8 +467,10 @@ func (c *Client) handleKitchenAck(message *Message) {
 			})
 		if result.Error != nil {
 			log.Printf("Error updating kitchen acknowledgment: %v", result.Error)
+		} else if result.RowsAffected == 0 {
+			log.Printf("Warning: No order found with ID %d to acknowledge", ackData.OrderID)
 		} else {
-			log.Printf("Order %d marked as acknowledged by kitchen", ackData.OrderID)
+			log.Printf("Order %d marked as acknowledged by kitchen (rows affected: %d)", ackData.OrderID, result.RowsAffected)
 		}
 	}
 
