@@ -102,6 +102,7 @@ const CashRegister: React.FC = () => {
   // DIAN Closing Report state
   const [dianReportDialog, setDianReportDialog] = useState(false);
   const [dianReportDate, setDianReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dianReportPeriod, setDianReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [dianReport, setDianReport] = useState<DIANClosingReport | null>(null);
   const [loadingDianReport, setLoadingDianReport] = useState(false);
   const [printingDianReport, setPrintingDianReport] = useState(false);
@@ -332,7 +333,7 @@ const CashRegister: React.FC = () => {
   const handleLoadDianReport = async () => {
     try {
       setLoadingDianReport(true);
-      const report = await wailsSalesService.getDIANClosingReport(dianReportDate);
+      const report = await wailsSalesService.getDIANClosingReport(dianReportDate, dianReportPeriod);
       setDianReport(report);
     } catch (error: any) {
       toast.error(error?.message || 'Error al generar reporte DIAN');
@@ -897,15 +898,15 @@ const CashRegister: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DIANReportIcon /> Reporte Diario de Cierre DIAN
+          <DIANReportIcon /> Reporte de Cierre DIAN
         </DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 3 }}>
             Este reporte muestra un resumen de las ventas procesadas por la DIAN (facturación electrónica) para control fiscal.
           </Alert>
 
-          {/* Date Selector */}
-          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+          {/* Date and Period Selector */}
+          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
               type="date"
               label="Fecha del Reporte"
@@ -914,6 +915,19 @@ const CashRegister: React.FC = () => {
               InputLabelProps={{ shrink: true }}
               sx={{ width: 200 }}
             />
+            <TextField
+              select
+              label="Periodo"
+              value={dianReportPeriod}
+              onChange={(e) => setDianReportPeriod(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
+              sx={{ width: 150 }}
+              SelectProps={{ native: true }}
+            >
+              <option value="daily">Diario</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensual</option>
+              <option value="yearly">Anual</option>
+            </TextField>
             <Button
               variant="contained"
               onClick={handleLoadDianReport}
@@ -995,47 +1009,21 @@ const CashRegister: React.FC = () => {
                 </Paper>
               )}
 
-              {/* Sales by Category */}
-              {dianReport.sales_by_category && dianReport.sales_by_category.length > 0 && (
-                <Paper sx={{ p: 2, mb: 2 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Ventas por Categoría
-                  </Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Categoría</TableCell>
-                          <TableCell align="right">Cantidad</TableCell>
-                          <TableCell align="right">Total</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {dianReport.sales_by_category.map((cat, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell>{cat.category_name}</TableCell>
-                            <TableCell align="right">{cat.quantity}</TableCell>
-                            <TableCell align="right">{formatCurrency(cat.total)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Paper>
-              )}
-
-              {/* Payment Methods */}
+              {/* Payment Methods - Enhanced Breakdown */}
               {dianReport.payment_methods && dianReport.payment_methods.length > 0 && (
                 <Paper sx={{ p: 2, mb: 2 }}>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Medios de Pago
+                    Ventas por Tipo de Pago
                   </Typography>
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell>Método</TableCell>
-                          <TableCell align="right">Transacciones</TableCell>
+                          <TableCell>Método de Pago</TableCell>
+                          <TableCell align="right">Trans.</TableCell>
+                          <TableCell align="right">Subtotal</TableCell>
+                          <TableCell align="right">Impuesto</TableCell>
+                          <TableCell align="right">Descuento</TableCell>
                           <TableCell align="right">Total</TableCell>
                         </TableRow>
                       </TableHead>
@@ -1044,7 +1032,10 @@ const CashRegister: React.FC = () => {
                           <TableRow key={idx}>
                             <TableCell>{pm.method_name}</TableCell>
                             <TableCell align="right">{pm.transactions}</TableCell>
-                            <TableCell align="right">{formatCurrency(pm.total)}</TableCell>
+                            <TableCell align="right">{formatCurrency(pm.subtotal)}</TableCell>
+                            <TableCell align="right">{formatCurrency(pm.tax)}</TableCell>
+                            <TableCell align="right">{formatCurrency(pm.discount)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatCurrency(pm.total)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -59,6 +59,9 @@ export interface PaymentMethodSummary {
   method_name: string;
   method_type: string;
   transactions: number;
+  subtotal: number;
+  tax: number;
+  discount: number;
   total: number;
 }
 
@@ -591,10 +594,18 @@ class WailsSalesService {
   }
 
   // DIAN Closing Report Methods
-  async getDIANClosingReport(date: string): Promise<DIANClosingReport> {
+  async getDIANClosingReport(date: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily'): Promise<DIANClosingReport> {
     try {
-      const report = await GetDIANClosingReport(date);
-      return report as unknown as DIANClosingReport;
+      // Try to use the new method with period if available, fallback to old method
+      const windowGo = (window as any).go;
+      if (windowGo?.services?.SalesService?.GetDIANClosingReportWithPeriod) {
+        const report = await windowGo.services.SalesService.GetDIANClosingReportWithPeriod(date, period);
+        return report as unknown as DIANClosingReport;
+      } else {
+        // Fallback to old method (only daily)
+        const report = await GetDIANClosingReport(date);
+        return report as unknown as DIANClosingReport;
+      }
     } catch (error: any) {
       throw new Error(error?.message || 'Error al generar reporte de cierre DIAN');
     }

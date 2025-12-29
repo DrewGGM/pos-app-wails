@@ -1357,11 +1357,18 @@ type PaymentMethodSummary struct {
 	MethodName   string  `json:"method_name"`
 	MethodType   string  `json:"method_type"`
 	Transactions int     `json:"transactions"`
+	Subtotal     float64 `json:"subtotal"`
+	Tax          float64 `json:"tax"`
+	Discount     float64 `json:"discount"`
 	Total        float64 `json:"total"`
 }
 
 // GetDIANClosingReport generates the DIAN closing report for a specific date
 func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport, error) {
+	return s.GetDIANClosingReportWithPeriod(dateStr, "daily")
+}
+
+func (s *SalesService) GetDIANClosingReportWithPeriod(dateStr string, period string) (*DIANClosingReport, error) {
 	// Parse date
 	reportDate, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
@@ -1438,9 +1445,35 @@ func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport,
 		report.ResolutionDateTo = dianConfig.ResolutionDateTo.Format("2006-01-02")
 	}
 
-	// Get all DIAN sales for the date (only sales with electronic invoices)
-	startOfDay := time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local)
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	// Calculate start and end dates based on period
+	var startDate, endDate time.Time
+	switch period {
+	case "daily":
+		startDate = time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local)
+		endDate = startDate.Add(24 * time.Hour)
+	case "weekly":
+		// Start from beginning of week (Monday)
+		weekday := reportDate.Weekday()
+		daysToMonday := int(weekday - time.Monday)
+		if daysToMonday < 0 {
+			daysToMonday += 7
+		}
+		startDate = time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -daysToMonday)
+		endDate = startDate.AddDate(0, 0, 7)
+	case "monthly":
+		// Start from first day of month
+		startDate = time.Date(reportDate.Year(), reportDate.Month(), 1, 0, 0, 0, 0, time.Local)
+		endDate = startDate.AddDate(0, 1, 0)
+	case "yearly":
+		// Start from first day of year
+		startDate = time.Date(reportDate.Year(), 1, 1, 0, 0, 0, 0, time.Local)
+		endDate = startDate.AddDate(1, 0, 0)
+	default:
+		startDate = time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local)
+		endDate = startDate.Add(24 * time.Hour)
+	}
+
+	// Get all DIAN sales for the period (only sales with electronic invoices)
 
 	var sales []models.Sale
 	err = s.db.Preload("Order.Items.Product.Category").
@@ -1449,7 +1482,7 @@ func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport,
 		Preload("PaymentDetails.PaymentMethod").
 		Preload("ElectronicInvoice.CreditNotes").
 		Preload("ElectronicInvoice.DebitNotes").
-		Where("created_at >= ? AND created_at < ?", startOfDay, endOfDay).
+		Where("created_at >= ? AND created_at < ?", startDate, endDate).
 		Where("needs_electronic_invoice = ?", true).
 		Order("created_at ASC").
 		Find(&sales).Error
@@ -1567,6 +1600,8 @@ func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport,
 		}
 
 		// Process payment methods
+		// Calculate proportional breakdown if there are multiple payment methods
+		saleTotal := sale.Total
 		for _, payment := range sale.PaymentDetails {
 			if payment.PaymentMethod == nil {
 				continue
@@ -1580,6 +1615,15 @@ func (s *SalesService) GetDIANClosingReport(dateStr string) (*DIANClosingReport,
 				}
 			}
 			paymentMap[methodID].Transactions++
+
+			// Calculate proportional breakdown based on payment amount
+			proportion := 1.0
+			if saleTotal > 0 {
+				proportion = payment.Amount / saleTotal
+			}
+			paymentMap[methodID].Subtotal += sale.Subtotal * proportion
+			paymentMap[methodID].Tax += sale.Tax * proportion
+			paymentMap[methodID].Discount += sale.Discount * proportion
 			paymentMap[methodID].Total += payment.Amount
 		}
 

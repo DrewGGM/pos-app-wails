@@ -45,6 +45,8 @@ export function GetDB():Promise<gorm.DB>;
 
 export function GetDIANClosingReport(arg1:string):Promise<services.DIANClosingReport>;
 
+export function GetDIANClosingReportWithPeriod(arg1:string,arg2:string):Promise<services.DIANClosingReport>;
+
 export function GetPaymentMethodSalesCount(arg1:number):Promise<number>;
 
 export function GetPaymentMethods():Promise<Array<models.PaymentMethod>>;

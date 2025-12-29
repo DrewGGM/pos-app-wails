@@ -82,6 +82,10 @@ export function GetDIANClosingReport(arg1) {
   return window['go']['services']['SalesService']['GetDIANClosingReport'](arg1);
 }
 
+export function GetDIANClosingReportWithPeriod(arg1, arg2) {
+  return window['go']['services']['SalesService']['GetDIANClosingReportWithPeriod'](arg1, arg2);
+}
+
 export function GetPaymentMethodSalesCount(arg1) {
   return window['go']['services']['SalesService']['GetPaymentMethodSalesCount'](arg1);
 }

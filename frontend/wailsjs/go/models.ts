@@ -3699,6 +3699,9 @@ export namespace services {
 	    method_name: string;
 	    method_type: string;
 	    transactions: number;
+	    subtotal: number;
+	    tax: number;
+	    discount: number;
 	    total: number;
 	
 	    static createFrom(source: any = {}) {
@@ -3711,6 +3714,9 @@ export namespace services {
 	        this.method_name = source["method_name"];
 	        this.method_type = source["method_type"];
 	        this.transactions = source["transactions"];
+	        this.subtotal = source["subtotal"];
+	        this.tax = source["tax"];
+	        this.discount = source["discount"];
 	        this.total = source["total"];
 	    }
 	}
