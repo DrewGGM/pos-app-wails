@@ -1164,6 +1164,6 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         kitchenAckTimeoutJob?.cancel()
-        webSocketManager.disconnect()
+        webSocketManager.cleanup()
     }
 }

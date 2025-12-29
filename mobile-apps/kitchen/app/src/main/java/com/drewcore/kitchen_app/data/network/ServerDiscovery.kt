@@ -10,6 +10,7 @@ import okhttp3.Request
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.TimeoutCancellationException
 
 /**
  * Server connection result with connection mode information
@@ -43,6 +44,11 @@ class ServerDiscovery(private val context: Context? = null) {
         private const val PREF_LAST_SERVER_IP = "last_server_ip"
         private const val PREF_LAST_CONNECTION_MODE = "last_connection_mode" // "tunnel" or "local"
 
+        // Timeouts
+        private const val DISCOVERY_TIMEOUT_MS = 15000L // 15 seconds max for entire discovery
+        private const val MDNS_TIMEOUT_MS = 3000L // 3 seconds for mDNS
+        private const val PARALLEL_SCAN_TIMEOUT_MS = 10000L // 10 seconds for parallel scan
+
         // Common router IPs to check first
         private val COMMON_IPS = listOf(
             "192.168.1.1", "192.168.0.1", "192.168.1.100", "192.168.0.100",
@@ -53,23 +59,30 @@ class ServerDiscovery(private val context: Context? = null) {
     /**
      * Discover server with tunnel first (if enabled), then fallback to local network
      * Returns ServerConnection with connection details
+     * IMPROVED: Now with global timeout to prevent infinite loading
      */
     suspend fun discoverServerWithMode(): ServerConnection? = withContext(Dispatchers.IO) {
         try {
-            // 1. Try tunnel connection first (if enabled)
-            val tunnelConnection = tryTunnelConnection()
-            if (tunnelConnection != null) {
-                saveLastConnectionMode("tunnel")
-                return@withContext tunnelConnection
-            }
+            // Wrap entire discovery in timeout
+            withTimeout(DISCOVERY_TIMEOUT_MS) {
+                // 1. Try tunnel connection first (if enabled)
+                val tunnelConnection = tryTunnelConnection()
+                if (tunnelConnection != null) {
+                    saveLastConnectionMode("tunnel")
+                    return@withTimeout tunnelConnection
+                }
 
-            // 2. Try local network discovery
-            val localConnection = discoverLocalServer()
-            if (localConnection != null) {
-                saveLastConnectionMode("local")
-                return@withContext localConnection
-            }
+                // 2. Try local network discovery
+                val localConnection = discoverLocalServer()
+                if (localConnection != null) {
+                    saveLastConnectionMode("local")
+                    return@withTimeout localConnection
+                }
 
+                null
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Discovery timeout after ${DISCOVERY_TIMEOUT_MS}ms")
             null
         } catch (e: Exception) {
             Log.e(TAG, "Error discovering server", e)
@@ -150,14 +163,20 @@ class ServerDiscovery(private val context: Context? = null) {
             return null
         }
 
-        // 1. Try mDNS discovery first (fastest and most reliable)
+        // 1. Try mDNS discovery first (fastest and most reliable) with timeout
         if (mdnsDiscovery != null) {
             Log.d(TAG, "Trying mDNS discovery...")
-            val mdnsIp = mdnsDiscovery.discoverServer()
-            if (mdnsIp != null && checkServerAt(mdnsIp)) {
-                Log.d(TAG, "Server found via mDNS at: $mdnsIp")
-                saveLastServerIp(mdnsIp)
-                return ServerConnection(mdnsIp, isTunnel = false, isSecure = false)
+            try {
+                val mdnsIp = withTimeout(MDNS_TIMEOUT_MS) {
+                    mdnsDiscovery.discoverServer()
+                }
+                if (mdnsIp != null && checkServerAt(mdnsIp)) {
+                    Log.d(TAG, "Server found via mDNS at: $mdnsIp")
+                    saveLastServerIp(mdnsIp)
+                    return ServerConnection(mdnsIp, isTunnel = false, isSecure = false)
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "mDNS discovery timeout after ${MDNS_TIMEOUT_MS}ms")
             }
             Log.d(TAG, "mDNS discovery did not find server, falling back to IP scanning")
         }
@@ -193,12 +212,18 @@ class ServerDiscovery(private val context: Context? = null) {
             }
         }
 
-        // 4. Parallel scan of entire subnet (much faster)
+        // 4. Parallel scan of entire subnet (much faster) with timeout
         Log.d(TAG, "Starting parallel subnet scan...")
-        val result = parallelScanSubnet(localIp)
-        if (result != null) {
-            saveLastServerIp(result)
-            return ServerConnection(result, isTunnel = false, isSecure = false)
+        try {
+            val result = withTimeout(PARALLEL_SCAN_TIMEOUT_MS) {
+                parallelScanSubnet(localIp)
+            }
+            if (result != null) {
+                saveLastServerIp(result)
+                return ServerConnection(result, isTunnel = false, isSecure = false)
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "Parallel scan timeout after ${PARALLEL_SCAN_TIMEOUT_MS}ms")
         }
 
         return null

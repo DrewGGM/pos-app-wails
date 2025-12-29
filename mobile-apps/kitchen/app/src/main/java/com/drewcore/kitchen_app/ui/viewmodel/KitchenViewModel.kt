@@ -57,6 +57,8 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private var reconnectAttempts = 0
     private val maxReconnectAttempts = 5
     private val baseReconnectDelayMs = 1000L
+    private var lastReconnectTime = 0L // Track when last reconnect was attempted
+    private val reconnectCooldownMs = 60000L // 1 minute cooldown after max attempts
 
     // Connection info for display
     private val _connectionInfo = MutableStateFlow<ConnectionInfo?>(null)
@@ -219,22 +221,35 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     private fun reconnect() {
         serverConnection?.let { connection ->
             viewModelScope.launch {
+                val now = System.currentTimeMillis()
+
+                // Check if we're in cooldown period after max attempts
                 if (reconnectAttempts >= maxReconnectAttempts) {
-                    Log.w(TAG, "Max reconnect attempts ($maxReconnectAttempts) reached, giving up")
-                    _uiState.value = UiState.Error("No se pudo reconectar al servidor después de $maxReconnectAttempts intentos")
-                    reconnectAttempts = 0
-                    return@launch
+                    val timeSinceLastAttempt = now - lastReconnectTime
+                    if (timeSinceLastAttempt < reconnectCooldownMs) {
+                        Log.w(TAG, "In cooldown period, skipping reconnect (${(reconnectCooldownMs - timeSinceLastAttempt) / 1000}s remaining)")
+                        _uiState.value = UiState.Error("No se pudo reconectar. Presiona 🔄 para reintentar.")
+                        return@launch
+                    } else {
+                        // Cooldown expired, reset attempts
+                        Log.d(TAG, "Cooldown expired, resetting reconnect attempts")
+                        reconnectAttempts = 0
+                    }
                 }
 
                 // Exponential backoff: 1s, 2s, 4s, 8s, 16s
                 val delayMs = baseReconnectDelayMs * (2.0.pow(reconnectAttempts.toDouble())).toLong()
                 val cappedDelayMs = min(delayMs, 30000L) // Max 30 seconds
                 reconnectAttempts++
+                lastReconnectTime = now
 
                 Log.d(TAG, "Reconnecting in ${cappedDelayMs}ms (attempt $reconnectAttempts/$maxReconnectAttempts)")
                 delay(cappedDelayMs)
                 webSocketManager.connect(connection)
             }
+        } ?: run {
+            Log.e(TAG, "Cannot reconnect - no server connection info available")
+            _uiState.value = UiState.Error("Información de conexión no disponible. Presiona 🔄 para buscar servidor nuevamente.")
         }
     }
 
@@ -596,6 +611,6 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         super.onCleared()
-        webSocketManager.disconnect()
+        webSocketManager.cleanup()
     }
 }

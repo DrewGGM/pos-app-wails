@@ -43,6 +43,11 @@ class ServerDiscovery(private val context: Context? = null) {
         private const val PREF_LAST_SERVER_IP = "last_server_ip"
         private const val PREF_LAST_CONNECTION_MODE = "last_connection_mode" // "tunnel" or "local"
 
+        // Timeouts
+        private const val DISCOVERY_TIMEOUT_MS = 15000L // 15 seconds max for entire discovery
+        private const val MDNS_TIMEOUT_MS = 3000L // 3 seconds for mDNS
+        private const val PARALLEL_SCAN_TIMEOUT_MS = 10000L // 10 seconds for parallel scan
+
         // Common router IPs to check first
         private val COMMON_IPS = listOf(
             "192.168.1.1", "192.168.0.1", "192.168.1.100", "192.168.0.100",

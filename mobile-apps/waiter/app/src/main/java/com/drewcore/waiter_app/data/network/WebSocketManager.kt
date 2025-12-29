@@ -6,6 +6,7 @@ import com.drewcore.waiter_app.data.models.WebSocketMessage
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -52,9 +53,14 @@ class WebSocketManager {
     private var lastConnectedTime: Long = 0
     private var lastMessageTime: Long = 0
 
+    // Auth timeout job
+    private var authTimeoutJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
     companion object {
         private const val TAG = "WebSocketManager"
         private const val WS_PORT = 8080
+        private const val AUTH_TIMEOUT_MS = 5000L // 5 seconds to receive auth_response
     }
 
     sealed class ConnectionState {
@@ -92,6 +98,9 @@ class WebSocketManager {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket connected via ${if (connection.isTunnel) "tunnel" else "local network"}")
                 lastConnectedTime = System.currentTimeMillis()
+
+                // Start auth timeout - if no auth_response in 5 seconds, fail connection
+                startAuthTimeout()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -135,10 +144,17 @@ class WebSocketManager {
                     val id = data?.get("client_id") as? String
 
                     if (success && id != null) {
+                        // Cancel auth timeout - we got authenticated
+                        cancelAuthTimeout()
+
                         clientId = id
                         val isTunnel = currentConnection?.isTunnel ?: false
                         _connectionState.value = ConnectionState.Connected(id, isTunnel)
                         Log.d(TAG, "Authenticated with client ID: $id (tunnel: $isTunnel)")
+                    } else {
+                        Log.e(TAG, "Authentication failed")
+                        _connectionState.value = ConnectionState.Error("Authentication failed")
+                        disconnect()
                     }
                 }
 
@@ -219,12 +235,45 @@ class WebSocketManager {
         Log.d(TAG, "Sent new order: ${order.orderNumber}")
     }
 
+    /**
+     * Start auth timeout - if no auth_response received within AUTH_TIMEOUT_MS, fail connection
+     */
+    private fun startAuthTimeout() {
+        cancelAuthTimeout() // Cancel any existing timeout
+        authTimeoutJob = scope.launch {
+            delay(AUTH_TIMEOUT_MS)
+            // If we reach here, authentication timed out
+            if (_connectionState.value !is ConnectionState.Connected) {
+                Log.e(TAG, "Authentication timeout - no auth_response received within ${AUTH_TIMEOUT_MS}ms")
+                _connectionState.value = ConnectionState.Error("Connection timeout - server not responding")
+                disconnect()
+            }
+        }
+    }
+
+    /**
+     * Cancel auth timeout (called when auth_response is received)
+     */
+    private fun cancelAuthTimeout() {
+        authTimeoutJob?.cancel()
+        authTimeoutJob = null
+    }
+
     fun disconnect() {
+        cancelAuthTimeout()
         webSocket?.close(1000, "Client disconnecting")
         webSocket = null
         _connectionState.value = ConnectionState.Disconnected
         clientId = null
         currentConnection = null
+    }
+
+    /**
+     * Cleanup coroutine scope
+     */
+    fun cleanup() {
+        disconnect()
+        scope.cancel()
     }
 
     fun isConnected(): Boolean {
