@@ -1884,7 +1884,7 @@ func (s *PrinterService) GetAvailableSerialPorts() ([]string, error) {
 }
 
 // PrintDIANClosingReport prints the daily DIAN closing report
-func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport) error {
+func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport, period string) error {
 	// Get default printer config
 	config, err := s.getDefaultPrinterConfig()
 	if err != nil {
@@ -1901,10 +1901,22 @@ func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport) error
 	s.init()
 	s.setAlign("center")
 
-	// Print header - REPORTE DIARIO DE CIERRE DIAN
+	// Print header - period-specific title
 	s.setEmphasize(true)
 	s.setSize(2, 2)
-	s.write("REPORTE DIARIO\n")
+	// Determine period title
+	periodTitle := "REPORTE DIARIO"
+	switch period {
+	case "weekly":
+		periodTitle = "REPORTE SEMANAL"
+	case "monthly":
+		periodTitle = "REPORTE MENSUAL"
+	case "yearly":
+		periodTitle = "REPORTE ANUAL"
+	case "custom":
+		periodTitle = "REPORTE PERSONALIZADO"
+	}
+	s.write(periodTitle + "\n")
 	s.write("CIERRE DIAN\n")
 	s.setSize(1, 1)
 	s.setEmphasize(false)
@@ -1995,29 +2007,18 @@ func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport) error
 		s.write("Sin ventas\n")
 	}
 
-	// Print sales by category
+	// Print payment methods with detailed breakdown
 	s.write(s.printSeparator())
 	s.setEmphasize(true)
-	s.write("VENTAS POR CATEGORIA\n")
-	s.setEmphasize(false)
-	if len(report.SalesByCategory) > 0 {
-		for _, cat := range report.SalesByCategory {
-			s.write(fmt.Sprintf("%s:\n", cat.CategoryName))
-			s.write(fmt.Sprintf("  Cant: %d  Total: $%s\n", cat.Quantity, s.formatMoney(cat.Total)))
-		}
-	} else {
-		s.write("Sin ventas por categoria\n")
-	}
-
-	// Print payment methods
-	s.write(s.printSeparator())
-	s.setEmphasize(true)
-	s.write("MEDIOS DE PAGO\n")
+	s.write("VENTAS POR TIPO DE PAGO\n")
 	s.setEmphasize(false)
 	if len(report.PaymentMethods) > 0 {
 		for _, pm := range report.PaymentMethods {
-			s.write(fmt.Sprintf("%-20s %d trans.\n", pm.MethodName, pm.Transactions))
-			s.write(fmt.Sprintf("                     $%s\n", s.formatMoney(pm.Total)))
+			s.write(fmt.Sprintf("%s (%d trans.):\n", pm.MethodName, pm.Transactions))
+			s.write(fmt.Sprintf("  Subtotal:  $%s\n", s.formatMoney(pm.Subtotal)))
+			s.write(fmt.Sprintf("  Impuesto:  $%s\n", s.formatMoney(pm.Tax)))
+			s.write(fmt.Sprintf("  Descuento: $%s\n", s.formatMoney(pm.Discount)))
+			s.write(fmt.Sprintf("  Total:     $%s\n", s.formatMoney(pm.Total)))
 		}
 	} else {
 		s.write("Sin pagos registrados\n")

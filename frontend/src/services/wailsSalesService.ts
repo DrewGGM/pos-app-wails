@@ -594,10 +594,17 @@ class WailsSalesService {
   }
 
   // DIAN Closing Report Methods
-  async getDIANClosingReport(date: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily'): Promise<DIANClosingReport> {
+  async getDIANClosingReport(date: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom' = 'daily', endDate?: string): Promise<DIANClosingReport> {
     try {
-      // Try to use the new method with period if available, fallback to old method
       const windowGo = (window as any).go;
+
+      // Handle custom period with date range
+      if (period === 'custom' && endDate && windowGo?.services?.SalesService?.GetDIANClosingReportCustomRange) {
+        const report = await windowGo.services.SalesService.GetDIANClosingReportCustomRange(date, endDate);
+        return report as unknown as DIANClosingReport;
+      }
+
+      // Try to use the new method with period if available, fallback to old method
       if (windowGo?.services?.SalesService?.GetDIANClosingReportWithPeriod) {
         const report = await windowGo.services.SalesService.GetDIANClosingReportWithPeriod(date, period);
         return report as unknown as DIANClosingReport;
@@ -611,9 +618,23 @@ class WailsSalesService {
     }
   }
 
-  async printDIANClosingReport(date: string): Promise<void> {
+  async printDIANClosingReport(date: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom' = 'daily', endDate?: string): Promise<void> {
     try {
-      await PrintDIANClosingReport(date);
+      const windowGo = (window as any).go;
+
+      // Handle custom period with date range
+      if (period === 'custom' && endDate && windowGo?.services?.SalesService?.PrintDIANClosingReportCustomRange) {
+        await windowGo.services.SalesService.PrintDIANClosingReportCustomRange(date, endDate);
+        return;
+      }
+
+      // Try to use the new method with period if available, fallback to old method
+      if (windowGo?.services?.SalesService?.PrintDIANClosingReportWithPeriod) {
+        await windowGo.services.SalesService.PrintDIANClosingReportWithPeriod(date, period);
+      } else {
+        // Fallback to old method (only daily)
+        await PrintDIANClosingReport(date);
+      }
     } catch (error: any) {
       throw new Error(error?.message || 'Error al imprimir reporte de cierre DIAN');
     }

@@ -46,7 +46,8 @@ import {
   Description as DIANReportIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, useDIANMode } from '../../hooks';
 import { wailsAuthService } from '../../services/wailsAuthService';
@@ -102,10 +103,17 @@ const CashRegister: React.FC = () => {
   // DIAN Closing Report state
   const [dianReportDialog, setDianReportDialog] = useState(false);
   const [dianReportDate, setDianReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [dianReportPeriod, setDianReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
+  const [dianReportPeriod, setDianReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'>('daily');
   const [dianReport, setDianReport] = useState<DIANClosingReport | null>(null);
   const [loadingDianReport, setLoadingDianReport] = useState(false);
   const [printingDianReport, setPrintingDianReport] = useState(false);
+  // For custom date range
+  const [customStartDate, setCustomStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [customEndDate, setCustomEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  // For monthly selection
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
+  // For yearly selection
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [closingNotes, setClosingNotes] = useState('');
   const [movement, setMovement] = useState({
     type: 'in' as 'in' | 'out',
@@ -330,11 +338,40 @@ const CashRegister: React.FC = () => {
     setDianReportDialog(true);
   };
 
+  // Helper function to get the appropriate date based on period type
+  const getReportDate = (): string => {
+    switch (dianReportPeriod) {
+      case 'daily':
+        return dianReportDate;
+      case 'weekly':
+        // Use the selected date to determine the week
+        return dianReportDate;
+      case 'monthly':
+        // Use first day of selected month
+        return `${selectedMonth}-01`;
+      case 'yearly':
+        // Use first day of selected year
+        return `${selectedYear}-01-01`;
+      case 'custom':
+        // Use the start date for custom range
+        return customStartDate;
+      default:
+        return dianReportDate;
+    }
+  };
+
   const handleLoadDianReport = async () => {
     try {
       setLoadingDianReport(true);
-      const report = await wailsSalesService.getDIANClosingReport(dianReportDate, dianReportPeriod);
-      setDianReport(report);
+      const reportDate = getReportDate();
+
+      if (dianReportPeriod === 'custom') {
+        const report = await wailsSalesService.getDIANClosingReport(customStartDate, 'custom', customEndDate);
+        setDianReport(report);
+      } else {
+        const report = await wailsSalesService.getDIANClosingReport(reportDate, dianReportPeriod);
+        setDianReport(report);
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Error al generar reporte DIAN');
     } finally {
@@ -345,7 +382,14 @@ const CashRegister: React.FC = () => {
   const handlePrintDianReport = async () => {
     try {
       setPrintingDianReport(true);
-      await wailsSalesService.printDIANClosingReport(dianReportDate);
+      const reportDate = getReportDate();
+
+      if (dianReportPeriod === 'custom') {
+        await wailsSalesService.printDIANClosingReport(customStartDate, 'custom', customEndDate);
+      } else {
+        await wailsSalesService.printDIANClosingReport(reportDate, dianReportPeriod);
+      }
+
       toast.success('Reporte DIAN enviado a imprimir');
     } catch (error: any) {
       toast.error(error?.message || 'Error al imprimir reporte DIAN');
@@ -356,6 +400,32 @@ const CashRegister: React.FC = () => {
 
   const formatCurrency = (amount: number) => {
     return `$${amount.toLocaleString('es-CO')}`;
+  };
+
+  // Helper function to get date range description
+  const getDateRangeDescription = (): string => {
+    switch (dianReportPeriod) {
+      case 'daily':
+        return format(new Date(dianReportDate), 'dd/MM/yyyy');
+      case 'weekly': {
+        const date = new Date(dianReportDate);
+        const weekStart = startOfWeek(date, { weekStartsOn: 1 }); // Monday
+        const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
+        return `${format(weekStart, 'dd/MM/yyyy')} - ${format(weekEnd, 'dd/MM/yyyy')}`;
+      }
+      case 'monthly': {
+        const date = new Date(`${selectedMonth}-01`);
+        const monthName = format(date, 'MMMM yyyy', { locale: es });
+        // Capitalize first letter
+        return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      }
+      case 'yearly':
+        return selectedYear;
+      case 'custom':
+        return `${format(new Date(customStartDate), 'dd/MM/yyyy')} - ${format(new Date(customEndDate), 'dd/MM/yyyy')}`;
+      default:
+        return '';
+    }
   };
 
   // Format number input with thousands separator
@@ -905,38 +975,144 @@ const CashRegister: React.FC = () => {
             Este reporte muestra un resumen de las ventas procesadas por la DIAN (facturación electrónica) para control fiscal.
           </Alert>
 
-          {/* Date and Period Selector */}
-          <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
-            <TextField
-              type="date"
-              label="Fecha del Reporte"
-              value={dianReportDate}
-              onChange={(e) => setDianReportDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ width: 200 }}
-            />
-            <TextField
-              select
-              label="Periodo"
-              value={dianReportPeriod}
-              onChange={(e) => setDianReportPeriod(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
-              sx={{ width: 150 }}
-              SelectProps={{ native: true }}
-            >
-              <option value="daily">Diario</option>
-              <option value="weekly">Semanal</option>
-              <option value="monthly">Mensual</option>
-              <option value="yearly">Anual</option>
-            </TextField>
-            <Button
-              variant="contained"
-              onClick={handleLoadDianReport}
-              disabled={loadingDianReport}
-              startIcon={loadingDianReport ? <CircularProgress size={20} /> : <ReportIcon />}
-            >
-              {loadingDianReport ? 'Generando...' : 'Generar Reporte'}
-            </Button>
-          </Box>
+          {/* Period Type Selector */}
+          <Paper sx={{ p: 3, mb: 3, bgcolor: 'background.default' }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+              Seleccionar Periodo del Reporte
+            </Typography>
+
+            <Grid container spacing={2}>
+              {/* Period Type Selection */}
+              <Grid item xs={12}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Tipo de Periodo"
+                  value={dianReportPeriod}
+                  onChange={(e) => setDianReportPeriod(e.target.value as typeof dianReportPeriod)}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="daily">📅 Diario - Un día específico</option>
+                  <option value="weekly">📆 Semanal - Una semana completa</option>
+                  <option value="monthly">🗓️ Mensual - Un mes completo</option>
+                  <option value="yearly">📊 Anual - Un año completo</option>
+                  <option value="custom">🔧 Personalizado - Rango de fechas</option>
+                </TextField>
+              </Grid>
+
+              {/* Date Selectors based on period type */}
+              {dianReportPeriod === 'daily' && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    type="date"
+                    fullWidth
+                    label="Fecha"
+                    value={dianReportDate}
+                    onChange={(e) => setDianReportDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              )}
+
+              {dianReportPeriod === 'weekly' && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    type="date"
+                    fullWidth
+                    label="Seleccionar día de la semana"
+                    value={dianReportDate}
+                    onChange={(e) => setDianReportDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Selecciona cualquier día y se calculará la semana completa (Lun-Dom)"
+                  />
+                </Grid>
+              )}
+
+              {dianReportPeriod === 'monthly' && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    type="month"
+                    fullWidth
+                    label="Mes y Año"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              )}
+
+              {dianReportPeriod === 'yearly' && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    type="number"
+                    fullWidth
+                    label="Año"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    InputProps={{
+                      inputProps: { min: 2020, max: 2099 }
+                    }}
+                  />
+                </Grid>
+              )}
+
+              {dianReportPeriod === 'custom' && (
+                <>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      label="Fecha Inicio"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      type="date"
+                      fullWidth
+                      label="Fecha Fin"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      inputProps={{
+                        min: customStartDate
+                      }}
+                    />
+                  </Grid>
+                </>
+              )}
+
+              {/* Date Range Preview */}
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold">
+                      Periodo seleccionado:
+                    </Typography>
+                    <Typography variant="body1">
+                      {getDateRangeDescription()}
+                    </Typography>
+                  </Box>
+                </Alert>
+              </Grid>
+
+              {/* Generate Button */}
+              <Grid item xs={12}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  onClick={handleLoadDianReport}
+                  disabled={loadingDianReport}
+                  startIcon={loadingDianReport ? <CircularProgress size={20} /> : <ReportIcon />}
+                >
+                  {loadingDianReport ? 'Generando Reporte...' : 'Generar Reporte'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
 
           {/* Report Content */}
           {dianReport && (

@@ -1682,14 +1682,299 @@ func (s *SalesService) GetDIANClosingReportWithPeriod(dateStr string, period str
 	return report, nil
 }
 
-// PrintDIANClosingReport prints the DIAN closing report
+// PrintDIANClosingReport prints the DIAN closing report (daily only - for backward compatibility)
 func (s *SalesService) PrintDIANClosingReport(dateStr string) error {
 	report, err := s.GetDIANClosingReport(dateStr)
 	if err != nil {
 		return err
 	}
 
-	return s.printerSvc.PrintDIANClosingReport(report)
+	return s.printerSvc.PrintDIANClosingReport(report, "daily")
+}
+
+// PrintDIANClosingReportWithPeriod prints the DIAN closing report with specified period
+func (s *SalesService) PrintDIANClosingReportWithPeriod(dateStr string, period string) error {
+	report, err := s.GetDIANClosingReportWithPeriod(dateStr, period)
+	if err != nil {
+		return err
+	}
+
+	return s.printerSvc.PrintDIANClosingReport(report, period)
+}
+
+// GetDIANClosingReportCustomRange generates a DIAN closing report for a custom date range
+func (s *SalesService) GetDIANClosingReportCustomRange(startDateStr string, endDateStr string) (*DIANClosingReport, error) {
+	// Parse start date
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start date format: %w", err)
+	}
+
+	// Parse end date
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end date format: %w", err)
+	}
+
+	// Validate date range
+	if endDate.Before(startDate) {
+		return nil, fmt.Errorf("end date cannot be before start date")
+	}
+
+	// Set time to start of day for startDate and end of day for endDate
+	startDate = time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.Local)
+	endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, time.Local)
+
+	// Load configs (same as GetDIANClosingReportWithPeriod)
+	var dianConfig models.DIANConfig
+	if err := s.db.First(&dianConfig).Error; err != nil {
+		return nil, fmt.Errorf("failed to load DIAN config: %w", err)
+	}
+
+	var restaurantConfig models.RestaurantConfig
+	if err := s.db.First(&restaurantConfig).Error; err != nil {
+		return nil, fmt.Errorf("failed to load restaurant config: %w", err)
+	}
+
+	// Get parametric data
+	parametricData := models.GetDIANParametricData()
+
+	// Initialize report
+	report := &DIANClosingReport{
+		ReportDate:  startDateStr + " a " + endDateStr,
+		GeneratedAt: time.Now(),
+	}
+
+	// Fill business info (same as GetDIANClosingReportWithPeriod)
+	report.BusinessName = dianConfig.BusinessName
+	if report.BusinessName == "" {
+		report.BusinessName = restaurantConfig.BusinessName
+	}
+	report.CommercialName = restaurantConfig.Name
+	report.NIT = dianConfig.IdentificationNumber
+	if report.NIT == "" {
+		report.NIT = restaurantConfig.IdentificationNumber
+	}
+	report.DV = dianConfig.DV
+	if report.DV == "" {
+		report.DV = restaurantConfig.DV
+	}
+
+	// Get regime and liability names
+	if regime, ok := parametricData.TypeRegimes[dianConfig.TypeRegimeID]; ok {
+		report.Regime = regime.Name
+	}
+	if liability, ok := parametricData.TypeLiabilities[dianConfig.TypeLiabilityID]; ok {
+		report.Liability = liability.Name
+	}
+
+	report.Address = restaurantConfig.Address
+	report.Phone = restaurantConfig.Phone
+	report.Email = restaurantConfig.Email
+
+	// Get city and department
+	if dianConfig.MunicipalityID > 0 {
+		if municipality, ok := parametricData.Municipalities[dianConfig.MunicipalityID]; ok {
+			report.City = municipality.Name
+			if dept, ok := parametricData.Departments[municipality.DepartmentID]; ok {
+				report.Department = dept.Name
+			}
+		}
+	}
+
+	// Resolution info
+	report.Resolution = dianConfig.ResolutionNumber
+	report.ResolutionPrefix = dianConfig.ResolutionPrefix
+	report.ResolutionFrom = dianConfig.ResolutionFrom
+	report.ResolutionTo = dianConfig.ResolutionTo
+	if !dianConfig.ResolutionDateFrom.IsZero() {
+		report.ResolutionDateFrom = dianConfig.ResolutionDateFrom.Format("2006-01-02")
+	}
+	if !dianConfig.ResolutionDateTo.IsZero() {
+		report.ResolutionDateTo = dianConfig.ResolutionDateTo.Format("2006-01-02")
+	}
+
+	// Get all DIAN sales for the custom range
+	var sales []models.Sale
+	err = s.db.Preload("Order.Items.Product.Category").
+		Preload("Order.Items.Product.Tax").
+		Preload("PaymentDetails.PaymentMethod").
+		Preload("ElectronicInvoice").
+		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
+		Where("electronic_invoice_id IS NOT NULL").
+		Find(&sales).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch DIAN sales: %w", err)
+	}
+
+	// Initialize maps for aggregation
+	categoryMap := make(map[uint]*CategorySalesDetail)
+	taxMap := make(map[int]*TaxBreakdownDetail)
+	paymentMap := make(map[uint]*PaymentMethodSummary)
+
+	// Process each sale
+	for _, sale := range sales {
+		if sale.ElectronicInvoice != nil {
+			report.TotalInvoices++
+		}
+
+		report.TotalTransactions++
+		report.TotalSubtotal += sale.Subtotal
+		report.TotalTax += sale.Tax
+		report.TotalDiscount += sale.Discount
+		report.TotalSales += sale.Total
+
+		// Process order items for category and tax breakdown
+		if sale.Order != nil {
+			for _, item := range sale.Order.Items {
+				if item.Product == nil {
+					continue
+				}
+
+				// Calculate item totals
+				itemSubtotal := item.Subtotal
+				taxTypeID := item.Product.TaxTypeID
+				if taxTypeID == 0 {
+					taxTypeID = 1 // Default to IVA 19%
+				}
+
+				// Get tax info
+				taxType, ok := parametricData.TaxTypes[taxTypeID]
+				if !ok {
+					taxType = models.TaxType{ID: taxTypeID, Name: "IVA", Percent: 19.0}
+				}
+
+				// Calculate tax amount for this item
+				itemTax := itemSubtotal * (taxType.Percent / 100)
+				itemTotal := itemSubtotal + itemTax
+
+				// Aggregate by category
+				categoryID := item.Product.CategoryID
+				categoryName := "Sin Categoría"
+				if item.Product.Category != nil {
+					categoryName = item.Product.Category.Name
+				}
+
+				if _, exists := categoryMap[categoryID]; !exists {
+					categoryMap[categoryID] = &CategorySalesDetail{
+						CategoryID:   categoryID,
+						CategoryName: categoryName,
+					}
+				}
+				categoryMap[categoryID].Quantity += item.Quantity
+				categoryMap[categoryID].Subtotal += itemSubtotal
+				categoryMap[categoryID].Tax += itemTax
+				categoryMap[categoryID].Total += itemTotal
+
+				// Aggregate by tax type
+				if _, exists := taxMap[taxTypeID]; !exists {
+					taxMap[taxTypeID] = &TaxBreakdownDetail{
+						TaxTypeID:   taxTypeID,
+						TaxTypeName: taxType.Name,
+						TaxPercent:  taxType.Percent,
+					}
+				}
+				taxMap[taxTypeID].BaseAmount += itemSubtotal
+				taxMap[taxTypeID].TaxAmount += itemTax
+				taxMap[taxTypeID].Total += itemTotal
+				taxMap[taxTypeID].ItemCount += item.Quantity
+			}
+		}
+
+		// Process payment methods with proportional breakdown
+		saleTotal := sale.Total
+		for _, payment := range sale.PaymentDetails {
+			if payment.PaymentMethod == nil {
+				continue
+			}
+			methodID := payment.PaymentMethod.ID
+			if _, exists := paymentMap[methodID]; !exists {
+				paymentMap[methodID] = &PaymentMethodSummary{
+					MethodID:   methodID,
+					MethodName: payment.PaymentMethod.Name,
+					MethodType: payment.PaymentMethod.Type,
+				}
+			}
+			paymentMap[methodID].Transactions++
+
+			// Calculate proportional breakdown
+			proportion := 1.0
+			if saleTotal > 0 {
+				proportion = payment.Amount / saleTotal
+			}
+			paymentMap[methodID].Subtotal += sale.Subtotal * proportion
+			paymentMap[methodID].Tax += sale.Tax * proportion
+			paymentMap[methodID].Discount += sale.Discount * proportion
+			paymentMap[methodID].Total += payment.Amount
+		}
+	}
+
+	// Convert maps to slices
+	for _, tax := range taxMap {
+		report.SalesByTax = append(report.SalesByTax, *tax)
+	}
+	for _, cat := range categoryMap {
+		report.SalesByCategory = append(report.SalesByCategory, *cat)
+	}
+	for _, pm := range paymentMap {
+		report.PaymentMethods = append(report.PaymentMethods, *pm)
+	}
+
+	// Calculate invoice range
+	if report.TotalInvoices > 0 {
+		var minInvoiceNum, maxInvoiceNum int
+		var minPrefix, maxPrefix string
+		firstFound := false
+
+		for _, sale := range sales {
+			if sale.ElectronicInvoice != nil {
+				invoiceNum := 0
+				fmt.Sscanf(sale.ElectronicInvoice.InvoiceNumber, "%d", &invoiceNum)
+
+				if !firstFound {
+					minInvoiceNum = invoiceNum
+					maxInvoiceNum = invoiceNum
+					minPrefix = sale.ElectronicInvoice.Prefix
+					maxPrefix = sale.ElectronicInvoice.Prefix
+					firstFound = true
+				} else {
+					if invoiceNum < minInvoiceNum {
+						minInvoiceNum = invoiceNum
+						minPrefix = sale.ElectronicInvoice.Prefix
+					}
+					if invoiceNum > maxInvoiceNum {
+						maxInvoiceNum = invoiceNum
+						maxPrefix = sale.ElectronicInvoice.Prefix
+					}
+				}
+			}
+		}
+
+		if firstFound {
+			report.FirstInvoiceNumber = fmt.Sprintf("%s%d", minPrefix, minInvoiceNum)
+			report.LastInvoiceNumber = fmt.Sprintf("%s%d", maxPrefix, maxInvoiceNum)
+		}
+	}
+
+	// TODO: Add credit/debit notes if needed
+	report.TotalCreditNotes = 0
+	report.TotalDebitNotes = 0
+	report.TotalAdjustments = 0
+
+	report.GrandTotal = report.TotalSales + report.TotalAdjustments
+
+	return report, nil
+}
+
+// PrintDIANClosingReportCustomRange prints a DIAN closing report for a custom date range
+func (s *SalesService) PrintDIANClosingReportCustomRange(startDateStr string, endDateStr string) error {
+	report, err := s.GetDIANClosingReportCustomRange(startDateStr, endDateStr)
+	if err != nil {
+		return err
+	}
+
+	return s.printerSvc.PrintDIANClosingReport(report, "custom")
 }
 
 // syncToGoogleSheetsIfEnabled syncs to Google Sheets if sync_on_payment is enabled
