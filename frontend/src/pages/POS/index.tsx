@@ -145,6 +145,11 @@ const POS: React.FC = () => {
   // Company fiscal liability (for IVA calculation)
   const [companyLiabilityId, setCompanyLiabilityId] = useState<number | null>(null);
 
+  // Service charge state
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState(false); // From config
+  const [serviceChargePercent, setServiceChargePercent] = useState(10); // From config
+  const [includeServiceCharge, setIncludeServiceCharge] = useState(false); // User checkbox
+
   // Loading states
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -476,6 +481,9 @@ const POS: React.FC = () => {
         setCompanyLiabilityId(config.type_liability_id || null);
         // Set default consumer email: use configured default_consumer_email or fallback to company email
         setDefaultConsumerEmail(config.default_consumer_email || config.email || '');
+        // Load service charge settings
+        setServiceChargeEnabled((config as any).service_charge_enabled || false);
+        setServiceChargePercent((config as any).service_charge_percent || 10);
       }
     } catch (error) {
       // Don't show error toast to user, just log it
@@ -650,16 +658,23 @@ const POS: React.FC = () => {
     // Tax is calculated by the backend based on restaurant configuration
     // Frontend shows 0 for preview, actual tax will be calculated in backend
     const tax = 0; // Backend will calculate the correct tax based on configuration
-    const total = subtotal; // Total will be recalculated by backend with correct tax
+
+    // Calculate service charge if enabled and checked
+    const serviceCharge = (serviceChargeEnabled && includeServiceCharge)
+      ? Math.round(subtotal * (serviceChargePercent / 100))
+      : 0;
+
+    const total = subtotal + serviceCharge; // Total will be recalculated by backend with correct tax
 
     return {
       subtotal,
       tax,
+      serviceCharge,
       total,
       itemCount: orderItems.reduce((sum, item) => sum + item.quantity, 0),
       isIVAResponsible, // Include for UI display
     };
-  }, [orderItems, companyLiabilityId]);
+  }, [orderItems, companyLiabilityId, serviceChargeEnabled, includeServiceCharge, serviceChargePercent]);
 
   // Clear order (delete if exists and free table)
   const clearOrder = useCallback(async (skipDelete = false) => {
@@ -690,6 +705,7 @@ const POS: React.FC = () => {
     setSelectedTable(null);
     setSelectedCustomer(null);
     setNeedsElectronicInvoice(false);
+    setIncludeServiceCharge(false); // Reset service charge checkbox
     setDeliveryInfo({ customerName: '', address: '', phone: '' });
     loadedOrderIdRef.current = null; // Reset to allow loading new orders
   }, [currentOrder, selectedTable]);
@@ -719,6 +735,7 @@ const POS: React.FC = () => {
         items: orderItems,
         notes: '',
         source: 'pos',
+        service_charge: orderTotals.serviceCharge, // Cargo por servicio
         // Include delivery info if exists (check for actual data, not just order type)
         ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
           delivery_customer_name: deliveryInfo.customerName,
@@ -826,6 +843,7 @@ const POS: React.FC = () => {
             items: orderItems,
             notes: '',
             source: 'pos',
+            service_charge: orderTotals.serviceCharge, // Cargo por servicio
             ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
               delivery_customer_name: deliveryInfo.customerName,
               delivery_address: deliveryInfo.address,
@@ -852,6 +870,8 @@ const POS: React.FC = () => {
           notes: splitItems ? 'Cuenta dividida' : '',
           // Use 'split' source for split bills - this prevents sending to kitchen
           source: splitItems ? 'split' : 'pos',
+          // Service charge: apply to normal orders, not to split sub-orders
+          service_charge: splitItems ? 0 : orderTotals.serviceCharge,
           // Include delivery info if exists (check for actual data, not just order type)
           ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
             delivery_customer_name: deliveryInfo.customerName,
@@ -1259,12 +1279,41 @@ const POS: React.FC = () => {
             </Typography>
             <Typography>${orderTotals.tax.toLocaleString('es-CO')}</Typography>
           </Box>
+          {/* Service Charge - only show when enabled in config and checkbox is checked */}
+          {serviceChargeEnabled && includeServiceCharge && (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography color="success.main">
+                Servicio ({serviceChargePercent}%):
+              </Typography>
+              <Typography color="success.main">
+                ${orderTotals.serviceCharge.toLocaleString('es-CO')}
+              </Typography>
+            </Box>
+          )}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
             <Typography variant="h6">Total:</Typography>
             <Typography variant="h6" color="primary">
               ${orderTotals.total.toLocaleString('es-CO')}
             </Typography>
           </Box>
+
+          {/* Service Charge Checkbox - only visible when enabled in config */}
+          {serviceChargeEnabled && (
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeServiceCharge}
+                    onChange={(e) => setIncludeServiceCharge(e.target.checked)}
+                    color="success"
+                    size="small"
+                  />
+                }
+                label={`Incluir Servicio (${serviceChargePercent}%)`}
+                sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.875rem' } }}
+              />
+            </Box>
+          )}
 
           {/* Electronic Invoice Option - Hidden in DIAN Mode */}
           {!isDIANMode && (
@@ -1631,6 +1680,7 @@ const POS: React.FC = () => {
                 items: splitOrderItems,
                 notes: `${split.name} - Cuenta dividida`,
                 source: 'split',
+                service_charge: 0, // Split bills don't include service charge
                 ...((deliveryInfo.customerName || deliveryInfo.address || deliveryInfo.phone) && {
                   delivery_customer_name: deliveryInfo.customerName,
                   delivery_address: deliveryInfo.address,
@@ -1682,6 +1732,7 @@ const POS: React.FC = () => {
                   items: remainingItems,
                   notes: currentOrder.notes || '',
                   source: 'pos',
+                  service_charge: 0, // Reset service charge for remaining items after split
                 };
 
                 await wailsOrderService.updateOrder(currentOrder.id, updateData);

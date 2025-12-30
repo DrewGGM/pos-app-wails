@@ -154,6 +154,9 @@ const Settings: React.FC = () => {
     typeLiabilityId: null as number | null,
     typeDocumentId: null as number | null,
     typeOrganizationId: null as number | null,
+    // Service charge settings
+    serviceChargeEnabled: false,
+    serviceChargePercent: 10, // Default 10%
   });
 
   // Parametric data
@@ -352,6 +355,9 @@ const Settings: React.FC = () => {
           typeLiabilityId: (config as any).type_liability_id || null,
           typeDocumentId: (config as any).type_document_id || null,
           typeOrganizationId: (config as any).type_organization_id || null,
+          // Service charge settings
+          serviceChargeEnabled: (config as any).service_charge_enabled || false,
+          serviceChargePercent: (config as any).service_charge_percent || 10,
         });
       }
     } catch (e) {
@@ -591,6 +597,9 @@ const Settings: React.FC = () => {
         type_liability_id: businessSettings.typeLiabilityId,
         type_document_id: businessSettings.typeDocumentId,
         type_organization_id: businessSettings.typeOrganizationId,
+        // Service charge settings
+        service_charge_enabled: businessSettings.serviceChargeEnabled,
+        service_charge_percent: businessSettings.serviceChargePercent,
       };
 
       await wailsConfigService.updateRestaurantConfig(updatedConfig);
@@ -1815,6 +1824,63 @@ const Settings: React.FC = () => {
                       </ListItem>
                     ))}
                   </List>
+                </CardContent>
+              </Card>
+
+              {/* Service Charge Settings */}
+              <Card sx={{ mt: 2 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    💰 Cargo por Servicio
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Configura el cargo por servicio (propina sugerida) que se puede agregar a las cuentas.
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={businessSettings.serviceChargeEnabled}
+                            onChange={(e) => setBusinessSettings({
+                              ...businessSettings,
+                              serviceChargeEnabled: e.target.checked,
+                            })}
+                            disabled={!editMode}
+                            color="primary"
+                          />
+                        }
+                        label="Habilitar cargo por servicio"
+                      />
+                    </Grid>
+                    {businessSettings.serviceChargeEnabled && (
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          type="number"
+                          label="Porcentaje del servicio"
+                          value={businessSettings.serviceChargePercent}
+                          onChange={(e) => setBusinessSettings({
+                            ...businessSettings,
+                            serviceChargePercent: Math.max(0, Math.min(100, Number(e.target.value))),
+                          })}
+                          disabled={!editMode}
+                          InputProps={{
+                            endAdornment: <Typography color="text.secondary">%</Typography>,
+                          }}
+                          helperText="Porcentaje que se agregará al subtotal (típicamente 10%)"
+                        />
+                      </Grid>
+                    )}
+                    {businessSettings.serviceChargeEnabled && (
+                      <Grid item xs={12}>
+                        <Alert severity="info" sx={{ mt: 1 }}>
+                          El cargo por servicio aparecerá como un checkbox opcional en el carrito de compras.
+                          El cliente puede activarlo o desactivarlo antes de pagar.
+                        </Alert>
+                      </Grid>
+                    )}
+                  </Grid>
                 </CardContent>
               </Card>
             </Grid>

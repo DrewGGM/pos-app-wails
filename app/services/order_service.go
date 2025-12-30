@@ -859,12 +859,13 @@ func (s *OrderService) calculateOrderTotals(order *models.Order) error {
 	order.Subtotal = subtotal
 	order.Tax = totalTax
 
-	// Calculate total
+	// Calculate total (includes service charge if set)
+	// ServiceCharge is set by the frontend when user enables it in cart
 	if !taxIncludedInPrice {
-		order.Total = order.Subtotal + order.Tax - order.Discount
+		order.Total = order.Subtotal + order.Tax - order.Discount + order.ServiceCharge
 	} else {
 		// Tax already included in prices, so subtotal already contains tax
-		order.Total = order.Subtotal - order.Discount
+		order.Total = order.Subtotal - order.Discount + order.ServiceCharge
 	}
 
 	return nil

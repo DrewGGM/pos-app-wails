@@ -158,6 +158,7 @@ export interface Order extends BaseModel {
   subtotal: number;
   tax: number;
   discount: number;
+  service_charge?: number; // Cargo por servicio
   total: number;
   notes?: string;
   source: 'pos' | 'web' | 'mobile' | 'waiter_app' | 'split';
@@ -210,6 +211,7 @@ export interface Sale extends BaseModel {
   subtotal: number;
   tax: number;
   discount: number;
+  service_charge?: number; // Cargo por servicio
   total: number;
   amount_paid?: number; // Total amount received from customer
   change?: number; // Change returned to customer
@@ -386,6 +388,9 @@ export interface RestaurantConfig extends BaseModel {
   show_logo_on_invoice: boolean;
   default_tax_rate: number;
   tax_included_in_price: boolean;
+  // Service charge settings
+  service_charge_enabled?: boolean;
+  service_charge_percent?: number;
   currency: string;
   currency_symbol: string;
   decimal_places: number;
@@ -543,6 +548,7 @@ export interface CreateOrderData {
   delivery_customer_name?: string;
   delivery_address?: string;
   delivery_phone?: string;
+  service_charge?: number; // Cargo por servicio
 }
 
 // ProcessSaleData interface

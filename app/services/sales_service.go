@@ -64,6 +64,7 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		Subtotal:       order.Subtotal,
 		Tax:            order.Tax,
 		Discount:       order.Discount,
+		ServiceCharge:  order.ServiceCharge, // Cargo por servicio
 		Total:          order.Total,
 		Status:         "completed",
 		InvoiceType:    "none",

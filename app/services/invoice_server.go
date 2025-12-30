@@ -552,17 +552,28 @@ func (s *InvoiceService) prepareInvoiceData(sale *models.Sale, sendEmailToCustom
 	// Set invoice lines - calculate taxes per product based on their TaxTypeID
 	invoice.InvoiceLines = s.prepareInvoiceLines(sale.Order)
 
-	// Set discounts if any
+	// Set discounts and service charges
+	invoice.AllowanceCharges = []AllowanceCharge{}
+
+	// Add discount if any
 	if sale.Discount > 0 {
-		invoice.AllowanceCharges = []AllowanceCharge{
-			{
-				DiscountID:            1,
-				ChargeIndicator:       false,
-				AllowanceChargeReason: "DESCUENTO GENERAL",
-				Amount:                fmt.Sprintf("%.2f", sale.Discount),
-				BaseAmount:            fmt.Sprintf("%.2f", sale.Subtotal+sale.Discount),
-			},
-		}
+		invoice.AllowanceCharges = append(invoice.AllowanceCharges, AllowanceCharge{
+			DiscountID:            1,
+			ChargeIndicator:       false,
+			AllowanceChargeReason: "DESCUENTO GENERAL",
+			Amount:                fmt.Sprintf("%.2f", sale.Discount),
+			BaseAmount:            fmt.Sprintf("%.2f", sale.Subtotal+sale.Discount),
+		})
+	}
+
+	// Add service charge if any (cargo por servicio/propina)
+	if sale.ServiceCharge > 0 {
+		invoice.AllowanceCharges = append(invoice.AllowanceCharges, AllowanceCharge{
+			ChargeIndicator:       true, // true = cargo (charge), false = descuento (allowance)
+			AllowanceChargeReason: "CARGO POR SERVICIO",
+			Amount:                fmt.Sprintf("%.2f", sale.ServiceCharge),
+			BaseAmount:            fmt.Sprintf("%.2f", sale.Subtotal),
+		})
 	}
 
 	return invoice, nil

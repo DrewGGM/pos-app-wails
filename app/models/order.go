@@ -72,10 +72,11 @@ type Order struct {
 	DeliveryAddress      string `json:"delivery_address,omitempty"`
 	DeliveryPhone        string `json:"delivery_phone,omitempty"`
 	Items        []OrderItem    `gorm:"foreignKey:OrderID" json:"items"`
-	Subtotal     float64        `json:"subtotal"`
-	Tax          float64        `json:"tax"`
-	Discount     float64        `json:"discount"`
-	Total        float64        `json:"total"`
+	Subtotal      float64        `json:"subtotal"`
+	Tax           float64        `json:"tax"`
+	Discount      float64        `json:"discount"`
+	ServiceCharge float64        `json:"service_charge"` // Cargo por servicio (propina incluida)
+	Total         float64        `json:"total"`
 	Notes        string         `json:"notes"`
 	EmployeeID   uint           `gorm:"index" json:"employee_id"`
 	Employee     *Employee      `gorm:"foreignKey:EmployeeID" json:"employee,omitempty"`

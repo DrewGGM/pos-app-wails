@@ -59,6 +59,10 @@ type RestaurantConfig struct {
 	DefaultTaxRate     float64 `json:"default_tax_rate"`
 	TaxIncludedInPrice bool    `json:"tax_included_in_price"`
 
+	// Service Charge Settings (Propina/Servicio)
+	ServiceChargeEnabled bool    `json:"service_charge_enabled"` // Habilitar cargo por servicio
+	ServiceChargePercent float64 `json:"service_charge_percent"` // Porcentaje del cargo (ej: 10 = 10%)
+
 	// Currency
 	Currency       string `json:"currency"`        // "COP"
 	CurrencySymbol string `json:"currency_symbol"` // "$"

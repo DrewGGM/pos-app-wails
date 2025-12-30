@@ -17,6 +17,7 @@ type Sale struct {
 	Subtotal               float64            `json:"subtotal"`
 	Tax                    float64            `json:"tax"`
 	Discount               float64            `json:"discount"`
+	ServiceCharge          float64            `json:"service_charge"` // Cargo por servicio
 	Total                  float64            `json:"total"`
 	PaymentMethod          string             `json:"payment_method"`
 	PaymentDetails         []Payment          `gorm:"foreignKey:SaleID" json:"payment_details"`
