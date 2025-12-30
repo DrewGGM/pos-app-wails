@@ -52,6 +52,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth, useDIANMode } from '../../hooks';
 import { wailsAuthService } from '../../services/wailsAuthService';
 import { wailsSalesService, DIANClosingReport } from '../../services/wailsSalesService';
+import { wailsConfigService } from '../../services/wailsConfigService';
 import { toast } from 'react-toastify';
 
 interface CashRegisterStatus {
@@ -75,6 +76,8 @@ interface CashRegisterStatus {
     total: number;
     count: number;
   };
+  service_charge_by_payment?: { [key: string]: number }; // Service charge breakdown by payment method
+  total_service_charge?: number; // Total service charge collected
 }
 
 interface CashMovement {
@@ -123,9 +126,24 @@ const CashRegister: React.FC = () => {
   const [editMovementDialog, setEditMovementDialog] = useState(false);
   const [editingMovement, setEditingMovement] = useState<CashMovement | null>(null);
 
+  // Service charge config state
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState(false);
+
   useEffect(() => {
     loadRegisterStatus();
+    loadServiceChargeConfig();
   }, [cashRegisterId, isDIANMode]); // Reload when DIAN mode changes
+
+  const loadServiceChargeConfig = async () => {
+    try {
+      const config = await wailsConfigService.getRestaurantConfig();
+      if (config) {
+        setServiceChargeEnabled(config.service_charge_enabled || false);
+      }
+    } catch (error) {
+      // Silently fail - service charge display is optional
+    }
+  };
 
   const loadRegisterStatus = async () => {
     try {
@@ -197,7 +215,10 @@ const CashRegister: React.FC = () => {
               created_by: m.created_by || ''
             })),
             sales_summary: salesSummary,
-            sales_summary_for_display: salesSummaryForDisplay
+            sales_summary_for_display: salesSummaryForDisplay,
+            // Service charge data
+            service_charge_by_payment: summary.service_charge_by_payment || {},
+            total_service_charge: summary.total_service_charge || 0,
           });
 
           // Set default closing amount
@@ -598,6 +619,36 @@ const CashRegister: React.FC = () => {
                   </ListItem>
                 </List>
               </Paper>
+
+              {/* Service Charge Section - Only show when enabled and has data */}
+              {serviceChargeEnabled && registerStatus.total_service_charge && registerStatus.total_service_charge > 0 && (
+                <Paper sx={{ p: 2, mt: 2, bgcolor: 'success.50' }}>
+                  <Typography variant="h6" gutterBottom color="success.main">
+                    Cargo por Servicio Recaudado
+                  </Typography>
+                  <List dense>
+                    {Object.entries(registerStatus.service_charge_by_payment || {}).map(([methodName, amount]) => (
+                      <ListItem key={methodName}>
+                        <ListItemText primary={methodName} />
+                        <ListItemSecondaryAction>
+                          <Typography variant="body1" fontWeight="bold" color="success.main">
+                            ${(amount as number).toLocaleString('es-CO')}
+                          </Typography>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                    <Divider />
+                    <ListItem>
+                      <ListItemText primary={<strong>Total Servicio</strong>} />
+                      <ListItemSecondaryAction>
+                        <Typography variant="h6" color="success.main">
+                          ${registerStatus.total_service_charge.toLocaleString('es-CO')}
+                        </Typography>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  </List>
+                </Paper>
+              )}
             </Grid>
 
             <Grid item xs={12} md={6}>

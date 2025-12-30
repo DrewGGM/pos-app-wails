@@ -44,6 +44,7 @@ import {
   AccountCircle,
   Kitchen as KitchenIcon,
   VerifiedUser as DIANIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useAuth, useWebSocket, useDIANMode, useNotifications } from '../hooks';
 import { Warning as WarningIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, Info as InfoIcon } from '@mui/icons-material';
@@ -145,7 +146,7 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout, cashRegisterId } = useAuth();
   const { isConnected } = useWebSocket();
-  const { isDIANMode, toggleDIANMode } = useDIANMode();
+  const { isDIANMode, toggleDIANMode, isElectronicInvoicingEnabled, dianApiUrl } = useDIANMode();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -203,6 +204,12 @@ const MainLayout: React.FC = () => {
         ? prev.filter(item => item !== text)
         : [...prev, text]
     );
+  };
+
+  const handleOpenDIANPanel = () => {
+    if (dianApiUrl) {
+      window.open(dianApiUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const hasPermission = (item: MenuItem): boolean => {
@@ -389,24 +396,38 @@ const MainLayout: React.FC = () => {
             {menuItems.find(item => item.path === location.pathname)?.text || 'Restaurant POS'}
           </Typography>
 
-          {/* DIAN Mode Toggle */}
-          <Tooltip title={isDIANMode ? 'Desactivar' : 'Activar'}>
-            <IconButton
-              color="inherit"
-              onClick={toggleDIANMode}
-              disableRipple
-              sx={{
-                transition: 'none',   
-                bgcolor: isDIANMode ? 'rgba(255,255,0,0.15)' : 'transparent', // cambio suave
-                '&:hover': {
-                  bgcolor: isDIANMode ? 'rgba(255,255,0,0.20)' : 'transparent',
-                },
-              }}
-            >
-              <DIANIcon sx={{ color: isDIANMode ? '#ffeb3b' : 'inherit' }} />
-            </IconButton>
-          </Tooltip>
+          {/* Electronic Invoicing Panel - Only visible if DIAN is enabled */}
+          {isElectronicInvoicingEnabled && dianApiUrl && (
+            <Tooltip title="Panel Facturación Electrónica">
+              <IconButton
+                color="inherit"
+                onClick={handleOpenDIANPanel}
+                sx={{ mr: 1 }}
+              >
+                <OpenInNewIcon />
+              </IconButton>
+            </Tooltip>
+          )}
 
+          {/* DIAN Mode Toggle - Only visible if DIAN is enabled */}
+          {isElectronicInvoicingEnabled && (
+            <Tooltip title={isDIANMode ? 'Desactivar Modo DIAN' : 'Activar Modo DIAN'}>
+              <IconButton
+                color="inherit"
+                onClick={toggleDIANMode}
+                disableRipple
+                sx={{
+                  transition: 'none',
+                  bgcolor: isDIANMode ? 'rgba(255,255,0,0.15)' : 'transparent',
+                  '&:hover': {
+                    bgcolor: isDIANMode ? 'rgba(255,255,0,0.20)' : 'transparent',
+                  },
+                }}
+              >
+                <DIANIcon sx={{ color: isDIANMode ? '#ffeb3b' : 'inherit' }} />
+              </IconButton>
+            </Tooltip>
+          )}
 
           {/* Notifications */}
           <IconButton

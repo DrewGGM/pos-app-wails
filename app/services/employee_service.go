@@ -590,12 +590,14 @@ func (s *EmployeeService) GetCashRegisterHistory(limit, offset int) ([]models.Ca
 
 // CashRegisterSalesSummary represents an optimized sales summary for a cash register
 type CashRegisterSalesSummary struct {
-	ByPaymentMethod        map[string]float64 `json:"by_payment_method"`
-	ByPaymentMethodDisplay map[string]float64 `json:"by_payment_method_display"`
-	Total                  float64            `json:"total"`
-	TotalDisplay           float64            `json:"total_display"`
-	Count                  int                `json:"count"`
-	CountDisplay           int                `json:"count_display"`
+	ByPaymentMethod            map[string]float64 `json:"by_payment_method"`
+	ByPaymentMethodDisplay     map[string]float64 `json:"by_payment_method_display"`
+	Total                      float64            `json:"total"`
+	TotalDisplay               float64            `json:"total_display"`
+	Count                      int                `json:"count"`
+	CountDisplay               int                `json:"count_display"`
+	ServiceChargeByPayment     map[string]float64 `json:"service_charge_by_payment"`  // Service charge breakdown by payment method
+	TotalServiceCharge         float64            `json:"total_service_charge"`       // Total service charge collected
 }
 
 // GetCashRegisterSalesSummary returns an optimized sales summary for a cash register
@@ -614,6 +616,7 @@ func (s *EmployeeService) GetCashRegisterSalesSummary(registerID uint, onlyElect
 	summary := &CashRegisterSalesSummary{
 		ByPaymentMethod:        make(map[string]float64),
 		ByPaymentMethodDisplay: make(map[string]float64),
+		ServiceChargeByPayment: make(map[string]float64),
 	}
 
 	// Query for aggregated payment totals by payment method
@@ -667,6 +670,44 @@ func (s *EmployeeService) GetCashRegisterSalesSummary(registerID uint, onlyElect
 		if r.ShowInCashSummary {
 			summary.ByPaymentMethodDisplay[r.PaymentMethodName] = r.TotalAmount
 			summary.TotalDisplay += r.TotalAmount
+		}
+	}
+
+	// Query for service charge by payment method (for cash register display)
+	type ServiceChargeSummary struct {
+		PaymentMethodName string
+		TotalServiceCharge float64
+	}
+
+	var serviceChargeResults []ServiceChargeSummary
+
+	serviceChargeQuery := s.db.Table("payments").
+		Select(`
+			payment_methods.name as payment_method_name,
+			SUM(sales.service_charge * (payments.amount / sales.total)) as total_service_charge
+		`).
+		Joins("JOIN sales ON payments.sale_id = sales.id AND sales.deleted_at IS NULL").
+		Joins("JOIN payment_methods ON payments.payment_method_id = payment_methods.id").
+		Where("sales.cash_register_id = ?", registerID).
+		Where("sales.created_at >= ?", register.OpenedAt).
+		Where("sales.status NOT IN ?", []string{"refunded", "partial_refund"}).
+		Where("sales.service_charge > 0").
+		Where("payment_methods.show_in_cash_summary = ?", true).
+		Group("payment_methods.name")
+
+	if onlyElectronic {
+		serviceChargeQuery = serviceChargeQuery.Where("sales.needs_electronic_invoice = ?", true)
+	}
+
+	if err := serviceChargeQuery.Scan(&serviceChargeResults).Error; err != nil {
+		// Log error but don't fail - service charge is optional
+		log.Printf("Warning: error calculating service charge summary: %v", err)
+	} else {
+		for _, r := range serviceChargeResults {
+			if r.TotalServiceCharge > 0 {
+				summary.ServiceChargeByPayment[r.PaymentMethodName] = r.TotalServiceCharge
+				summary.TotalServiceCharge += r.TotalServiceCharge
+			}
 		}
 	}
 
