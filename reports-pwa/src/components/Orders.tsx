@@ -608,20 +608,6 @@ export function Orders() {
 
           {!salesLoading && sales.length > 0 && (
             <div className="sales-list">
-              {/* Sales Summary */}
-              <div className="sales-summary">
-                <div className="summary-item">
-                  <span className="summary-label">Total Ventas</span>
-                  <span className="summary-value">{sales.length}</span>
-                </div>
-                <div className="summary-item">
-                  <span className="summary-label">Ingresos</span>
-                  <span className="summary-value summary-money">
-                    {formatCurrency(sales.reduce((sum, s) => sum + s.total, 0))}
-                  </span>
-                </div>
-              </div>
-
               {/* Sales Cards */}
               {sales.map(sale => (
                 <div

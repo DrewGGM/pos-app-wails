@@ -253,7 +253,7 @@ function App() {
     const orderTypeMap: { [key: string]: OrderTypeDetail } = {}
 
     periodReports.forEach(report => {
-      if (report.detalle_tipos_pedido) {
+      if (report.detalle_tipos_pedido && Array.isArray(report.detalle_tipos_pedido)) {
         report.detalle_tipos_pedido.forEach(orderTypeDetail => {
           const orderType = orderTypeDetail.order_type
 
@@ -783,7 +783,7 @@ function App() {
                     Total
                   </button>
 
-                  {currentReport.detalle_tipos_pedido?.map((orderTypeDetail) => (
+                  {(Array.isArray(currentReport.detalle_tipos_pedido) ? currentReport.detalle_tipos_pedido : []).map((orderTypeDetail) => (
                     <button
                       key={orderTypeDetail.order_type}
                       onClick={() => setSelectedProductsTab(orderTypeDetail.order_type)}
@@ -820,7 +820,7 @@ function App() {
                   ) : (
                     <>
                       {(() => {
-                        const orderTypeDetail = currentReport.detalle_tipos_pedido?.find(
+                        const orderTypeDetail = (Array.isArray(currentReport.detalle_tipos_pedido) ? currentReport.detalle_tipos_pedido : []).find(
                           ot => ot.order_type === selectedProductsTab
                         )
 

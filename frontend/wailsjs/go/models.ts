@@ -214,8 +214,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    ClauseBuilders: Record<string, ClauseBuilder>;
-	    ConnPool: any;
+	    anys: Record<string, any>;
+	    ConnPool?: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -238,7 +238,6 @@ export namespace gorm {
 	    Preloads: Record<string, Array<any>>;
 	    // Go type: sync
 	    Settings: any;
-	    ConnPool: any;
 	    Schema?: schema.Schema;
 	    Context: any;
 	    RaiseErrorOnNotFound: boolean;
@@ -273,7 +272,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.ClauseBuilders = source["ClauseBuilders"];
+	        this.anys = source["anys"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -343,8 +342,8 @@ export namespace gorm {
 	    CreateBatchSize: number;
 	    TranslateError: boolean;
 	    PropagateUnscoped: boolean;
-	    ClauseBuilders: Record<string, ClauseBuilder>;
-	    ConnPool: any;
+	    anys: Record<string, any>;
+	    ConnPool?: any;
 	    Dialector: any;
 	    Plugins: Record<string, any>;
 	    Error: any;
@@ -375,7 +374,7 @@ export namespace gorm {
 	        this.CreateBatchSize = source["CreateBatchSize"];
 	        this.TranslateError = source["TranslateError"];
 	        this.PropagateUnscoped = source["PropagateUnscoped"];
-	        this.ClauseBuilders = source["ClauseBuilders"];
+	        this.anys = source["anys"];
 	        this.ConnPool = source["ConnPool"];
 	        this.Dialector = source["Dialector"];
 	        this.Plugins = source["Plugins"];
@@ -610,6 +609,8 @@ export namespace models {
 	    webhook_url: string;
 	    webhook_url_sandbox: string;
 	    webhook_secret: string;
+	    webhook_secret_sandbox: string;
+	    webhook_port: number;
 	    last_sync_at?: time.Time;
 	    last_sync_status: string;
 	    last_sync_error: string;
@@ -640,6 +641,8 @@ export namespace models {
 	        this.webhook_url = source["webhook_url"];
 	        this.webhook_url_sandbox = source["webhook_url_sandbox"];
 	        this.webhook_secret = source["webhook_secret"];
+	        this.webhook_secret_sandbox = source["webhook_secret_sandbox"];
+	        this.webhook_port = source["webhook_port"];
 	        this.last_sync_at = this.convertValues(source["last_sync_at"], time.Time);
 	        this.last_sync_status = source["last_sync_status"];
 	        this.last_sync_error = source["last_sync_error"];
@@ -817,6 +820,74 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class BoldPendingPayment {
+	    id: number;
+	    integration_id: string;
+	    reference: string;
+	    amount: number;
+	    status: string;
+	    payment_method_id: number;
+	    payment_method_name: string;
+	    order_id?: number;
+	    customer_id?: number;
+	    employee_id?: number;
+	    cash_register_id?: number;
+	    payment_id: string;
+	    bold_code: string;
+	    approval_number: string;
+	    card_brand: string;
+	    card_masked_pan: string;
+	    webhook_data: string;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPendingPayment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.integration_id = source["integration_id"];
+	        this.reference = source["reference"];
+	        this.amount = source["amount"];
+	        this.status = source["status"];
+	        this.payment_method_id = source["payment_method_id"];
+	        this.payment_method_name = source["payment_method_name"];
+	        this.order_id = source["order_id"];
+	        this.customer_id = source["customer_id"];
+	        this.employee_id = source["employee_id"];
+	        this.cash_register_id = source["cash_register_id"];
+	        this.payment_id = source["payment_id"];
+	        this.bold_code = source["bold_code"];
+	        this.approval_number = source["approval_number"];
+	        this.card_brand = source["card_brand"];
+	        this.card_masked_pan = source["card_masked_pan"];
+	        this.webhook_data = source["webhook_data"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class BoldTerminal {
 	    id: number;
@@ -887,6 +958,60 @@ export namespace models {
 	        this.status = source["status"];
 	        this.name = source["name"];
 	    }
+	}
+	export class BoldWebhookLog {
+	    id: number;
+	    method: string;
+	    remote_addr: string;
+	    headers: string;
+	    raw_body: string;
+	    signature: string;
+	    content_type: string;
+	    process_status: string;
+	    error_message: string;
+	    matched_payment: boolean;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldWebhookLog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.method = source["method"];
+	        this.remote_addr = source["remote_addr"];
+	        this.headers = source["headers"];
+	        this.raw_body = source["raw_body"];
+	        this.signature = source["signature"];
+	        this.content_type = source["content_type"];
+	        this.process_status = source["process_status"];
+	        this.error_message = source["error_message"];
+	        this.matched_payment = source["matched_payment"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CashMovement {
 	    id: number;
@@ -1174,6 +1299,8 @@ export namespace models {
 	    is_system_default: boolean;
 	    is_active: boolean;
 	    display_order: number;
+	    use_bold_terminal: boolean;
+	    bold_payment_method: string;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -1196,6 +1323,8 @@ export namespace models {
 	        this.is_system_default = source["is_system_default"];
 	        this.is_active = source["is_active"];
 	        this.display_order = source["display_order"];
+	        this.use_bold_terminal = source["use_bold_terminal"];
+	        this.bold_payment_method = source["bold_payment_method"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }

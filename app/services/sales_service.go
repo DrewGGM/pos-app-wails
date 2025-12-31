@@ -1150,7 +1150,23 @@ func (s *SalesService) CreatePaymentMethod(method *models.PaymentMethod) error {
 
 // UpdatePaymentMethod updates a payment method
 func (s *SalesService) UpdatePaymentMethod(method *models.PaymentMethod) error {
-	return s.db.Save(method).Error
+	fmt.Printf("\n🔍 [UpdatePaymentMethod] Actualizando método de pago:\n")
+	fmt.Printf("   ID=%d, Name=%s\n", method.ID, method.Name)
+	fmt.Printf("   UseBoldTerminal=%v, BoldPaymentMethod=%s\n", method.UseBoldTerminal, method.BoldPaymentMethod)
+
+	err := s.db.Save(method).Error
+	if err != nil {
+		fmt.Printf("   ❌ Error al guardar: %v\n", err)
+		return err
+	}
+
+	// Verificar qué se guardó
+	var saved models.PaymentMethod
+	s.db.First(&saved, method.ID)
+	fmt.Printf("   💾 Después de guardar: UseBoldTerminal=%v, BoldPaymentMethod=%s\n\n",
+		saved.UseBoldTerminal, saved.BoldPaymentMethod)
+
+	return nil
 }
 
 // GetPaymentMethodSalesCount returns the number of sales associated with a payment method
@@ -1288,8 +1304,9 @@ type DIANClosingReport struct {
 	ResolutionDateTo   string `json:"resolution_date_to"`
 
 	// Report Info
-	ReportDate  string    `json:"report_date"`
-	GeneratedAt time.Time `json:"generated_at"`
+	ReportDate    string    `json:"report_date"`
+	ReportEndDate string    `json:"report_end_date"` // For custom range reports
+	GeneratedAt   time.Time `json:"generated_at"`
 
 	// Invoice Range
 	FirstInvoiceNumber string `json:"first_invoice_number"`
@@ -1472,6 +1489,14 @@ func (s *SalesService) GetDIANClosingReportWithPeriod(dateStr string, period str
 	default:
 		startDate = time.Date(reportDate.Year(), reportDate.Month(), reportDate.Day(), 0, 0, 0, 0, time.Local)
 		endDate = startDate.Add(24 * time.Hour)
+	}
+
+	// For non-daily periods, set the end date in the report
+	if period != "daily" {
+		// endDate is exclusive (next day at 00:00), so we show the day before
+		actualEndDate := endDate.Add(-1 * time.Second)
+		report.ReportEndDate = actualEndDate.Format("2006-01-02")
+		report.ReportDate = startDate.Format("2006-01-02")
 	}
 
 	// Get all DIAN sales for the period (only sales with electronic invoices)
@@ -1742,8 +1767,9 @@ func (s *SalesService) GetDIANClosingReportCustomRange(startDateStr string, endD
 
 	// Initialize report
 	report := &DIANClosingReport{
-		ReportDate:  startDateStr + " a " + endDateStr,
-		GeneratedAt: time.Now(),
+		ReportDate:    startDateStr,
+		ReportEndDate: endDateStr,
+		GeneratedAt:   time.Now(),
 	}
 
 	// Fill business info (same as GetDIANClosingReportWithPeriod)

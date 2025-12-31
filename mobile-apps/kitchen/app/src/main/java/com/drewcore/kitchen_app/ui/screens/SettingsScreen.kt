@@ -43,6 +43,7 @@ sealed class TunnelTestStatus {
 fun SettingsScreen(
     preferences: KitchenPreferences,
     serverDiscovery: ServerDiscovery? = null,
+    orderTypes: List<com.drewcore.kitchen_app.data.models.OrderType> = emptyList(),
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -63,19 +64,16 @@ fun SettingsScreen(
     var customSoundUri by remember { mutableStateOf(preferences.notificationSoundUri) }
     var showSoundPicker by remember { mutableStateOf(false) }
 
-    // Color settings for order types
-    var dineInColor by remember {
-        mutableStateOf(preferences.getColorForOrderType("dine-in")?.let { parseColor(it) } ?: Color(0xFFE3F2FD))
+    // Dynamic color settings for all order types
+    val orderTypeColors = remember(orderTypes) {
+        mutableStateMapOf<String, Color>().apply {
+            orderTypes.forEach { orderType ->
+                val savedColor = preferences.getColorForOrderType(orderType.code)
+                this[orderType.code] = savedColor?.let { parseColor(it) } ?: Color(0xFFE3F2FD)
+            }
+        }
     }
-    var takeoutColor by remember {
-        mutableStateOf(preferences.getColorForOrderType("takeout")?.let { parseColor(it) } ?: Color(0xFFFFF3E0))
-    }
-    var deliveryColor by remember {
-        mutableStateOf(preferences.getColorForOrderType("delivery")?.let { parseColor(it) } ?: Color(0xFFE8F5E9))
-    }
-    var showDineInColorPicker by remember { mutableStateOf(false) }
-    var showTakeoutColorPicker by remember { mutableStateOf(false) }
-    var showDeliveryColorPicker by remember { mutableStateOf(false) }
+    var showColorPickerFor by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -263,26 +261,23 @@ fun SettingsScreen(
 
                     HorizontalDivider()
 
-                    // Dine-in color
-                    OrderTypeColorSetting(
-                        label = "Para Comer Aquí (Dine-in)",
-                        color = dineInColor,
-                        onClick = { showDineInColorPicker = true }
-                    )
-
-                    // Takeout color
-                    OrderTypeColorSetting(
-                        label = "Para Llevar (Takeout)",
-                        color = takeoutColor,
-                        onClick = { showTakeoutColorPicker = true }
-                    )
-
-                    // Delivery color
-                    OrderTypeColorSetting(
-                        label = "Domicilio (Delivery)",
-                        color = deliveryColor,
-                        onClick = { showDeliveryColorPicker = true }
-                    )
+                    // Dynamic color settings for all discovered order types
+                    if (orderTypes.isEmpty()) {
+                        Text(
+                            text = "No se han detectado tipos de pedido aún. Los tipos aparecerán aquí después de recibir pedidos.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        orderTypes.forEach { orderType ->
+                            OrderTypeColorSetting(
+                                label = "${orderType.name} (${orderType.code})",
+                                color = orderTypeColors[orderType.code] ?: Color(0xFFE3F2FD),
+                                onClick = { showColorPickerFor = orderType.code }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -463,10 +458,10 @@ fun SettingsScreen(
                         maxItemsPerCard = KitchenPreferences.DEFAULT_MAX_ITEMS_PER_CARD.toFloat()
                         // Reset sound settings
                         customSoundUri = null
-                        // Reset color settings to defaults
-                        dineInColor = Color(0xFFE3F2FD)
-                        takeoutColor = Color(0xFFFFF3E0)
-                        deliveryColor = Color(0xFFE8F5E9)
+                        // Reset color settings to defaults for all order types
+                        orderTypes.forEach { orderType ->
+                            orderTypeColors[orderType.code] = Color(0xFFE3F2FD)
+                        }
                         // Reset tunnel settings
                         tunnelEnabled = false
                         tunnelUrl = ""
@@ -492,10 +487,10 @@ fun SettingsScreen(
                         preferences.maxItemsPerCard = maxItemsPerCard.toInt()
                         // Save sound settings
                         preferences.notificationSoundUri = customSoundUri
-                        // Save color settings
-                        preferences.setColorForOrderType("dine-in", toHexColor(dineInColor))
-                        preferences.setColorForOrderType("takeout", toHexColor(takeoutColor))
-                        preferences.setColorForOrderType("delivery", toHexColor(deliveryColor))
+                        // Save color settings for all order types
+                        orderTypeColors.forEach { (code, color) ->
+                            preferences.setColorForOrderType(code, toHexColor(color))
+                        }
                         // Save tunnel settings
                         preferences.tunnelEnabled = tunnelEnabled
                         preferences.tunnelUrl = tunnelUrl.ifBlank { null }
@@ -533,28 +528,15 @@ fun SettingsScreen(
         }
     }
 
-    // Color picker dialogs
-    if (showDineInColorPicker) {
+    // Dynamic color picker dialog for any order type
+    showColorPickerFor?.let { orderTypeCode ->
+        val currentColor = orderTypeColors[orderTypeCode] ?: Color(0xFFE3F2FD)
         ColorPickerDialog(
-            currentColor = dineInColor,
-            onColorSelected = { dineInColor = it },
-            onDismiss = { showDineInColorPicker = false }
-        )
-    }
-
-    if (showTakeoutColorPicker) {
-        ColorPickerDialog(
-            currentColor = takeoutColor,
-            onColorSelected = { takeoutColor = it },
-            onDismiss = { showTakeoutColorPicker = false }
-        )
-    }
-
-    if (showDeliveryColorPicker) {
-        ColorPickerDialog(
-            currentColor = deliveryColor,
-            onColorSelected = { deliveryColor = it },
-            onDismiss = { showDeliveryColorPicker = false }
+            currentColor = currentColor,
+            onColorSelected = { newColor ->
+                orderTypeColors[orderTypeCode] = newColor
+            },
+            onDismiss = { showColorPickerFor = null }
         )
     }
 

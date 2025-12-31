@@ -52,9 +52,15 @@ fun getOrderTitle(order: Order): String {
                 // For table-based orders (dine-in), show table number
                 order.orderType.code == "dine-in" && order.table != null ->
                     "Mesa ${order.table.number}"
-                // For orders with sequential numbering, show prefix + number
-                order.orderType.requiresSequentialNumber && order.sequenceNumber != null ->
-                    "${order.orderType.sequencePrefix ?: ""}${order.sequenceNumber}"
+                // For orders with sequential numbering, show prefix + number OR name + number
+                order.orderType.requiresSequentialNumber && order.sequenceNumber != null -> {
+                    val prefix = order.orderType.sequencePrefix
+                    if (!prefix.isNullOrBlank()) {
+                        "$prefix${order.sequenceNumber}"
+                    } else {
+                        "${order.orderType.name} #${order.sequenceNumber}"
+                    }
+                }
                 // Otherwise show order type name
                 else -> order.orderType.name
             }
@@ -230,9 +236,8 @@ fun OrderCardDisplay(
     // Determine card background color based on state and custom colors
     val cardBackgroundColor = when {
         isCancelled -> Color(0xFFFFEBEE) // Light red for cancelled
-        isUpdated -> Color(0xFFFFF3E0)   // Light orange for updated
         else -> {
-            // Try to get custom color for this order type
+            // Always try to get custom color for this order type (even if updated)
             val orderTypeCode = order.orderType?.code
             val customColorHex = preferences.getColorForOrderType(orderTypeCode)
             if (customColorHex != null) {
@@ -248,11 +253,11 @@ fun OrderCardDisplay(
         }
     }
 
-    // Border for cancelled orders
-    val cardBorder = if (isCancelled) {
-        androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFE53935))
-    } else {
-        null
+    // Border for cancelled or updated orders
+    val cardBorder = when {
+        isCancelled -> androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFE53935)) // Red border for cancelled
+        isUpdated -> androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFFF6F00)) // Orange border for updated
+        else -> null
     }
 
     Card(
@@ -468,34 +473,11 @@ fun OrderCardDisplay(
 
                     val textDecoration = if (isRemoved) TextDecoration.LineThrough else TextDecoration.None
 
-                    // Parse combo color if item is from a combo
-                    val comboColor = if (item.isFromCombo && !item.comboColor.isNullOrBlank()) {
-                        try {
-                            Color(android.graphics.Color.parseColor(item.comboColor))
-                        } catch (e: Exception) {
-                            null
-                        }
-                    } else null
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
                                 if (isRemoved) Modifier.padding(vertical = 2.dp) else Modifier
-                            )
-                            // Add left border for combo items
-                            .then(
-                                if (comboColor != null) {
-                                    Modifier.drawWithContent {
-                                        // Draw left border for combo indicator
-                                        drawRect(
-                                            color = comboColor,
-                                            topLeft = Offset(0f, 0f),
-                                            size = Size(4.dp.toPx(), size.height)
-                                        )
-                                        drawContent()
-                                    }.padding(start = 8.dp)
-                                } else Modifier
                             ),
                         verticalAlignment = Alignment.Top
                     ) {
@@ -540,28 +522,6 @@ fun OrderCardDisplay(
                                 color = textColor,
                                 textDecoration = textDecoration
                             )
-                            // Combo indicator - show combo name below product
-                            if (item.isFromCombo && !item.comboName.isNullOrBlank()) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(top = 1.dp)
-                                ) {
-                                    Surface(
-                                        color = comboColor?.copy(alpha = 0.3f) ?: Color(0xFFFF9800).copy(alpha = 0.3f),
-                                        shape = MaterialTheme.shapes.extraSmall
-                                    ) {
-                                        Text(
-                                            text = "📦 ${item.comboName}",
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                            fontSize = (preferences.itemFontSize - 3).sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = comboColor ?: Color(0xFFFF9800),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
                             // Modifiers
                             if (!item.modifiers.isNullOrEmpty()) {
                                 item.modifiers.forEach { modifier ->

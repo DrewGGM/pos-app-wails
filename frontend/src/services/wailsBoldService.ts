@@ -154,6 +154,87 @@ class WailsBoldService {
       return false;
     }
   }
+
+  /**
+   * Create a pending payment record
+   */
+  async createPendingPayment(pendingPayment: models.BoldPendingPayment): Promise<void> {
+    try {
+      await BoldServiceBindings.CreatePendingPayment(pendingPayment);
+    } catch (error) {
+      console.error('Error creating pending payment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending payment by integration ID
+   */
+  async getPendingPayment(integrationId: string): Promise<models.BoldPendingPayment> {
+    try {
+      const payment = await BoldServiceBindings.GetPendingPayment(integrationId);
+      return payment;
+    } catch (error) {
+      console.error('Error getting pending payment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending payment status
+   */
+  async getPendingPaymentStatus(integrationId: string): Promise<{ status: string; payment: models.BoldPendingPayment }> {
+    try {
+      // GetPendingPaymentStatus returns [status, payment, error] tuple in Go
+      const result = await (BoldServiceBindings as any).GetPendingPaymentStatus(integrationId);
+
+      // The Go function returns (string, *BoldPendingPayment, error)
+      // Wails bindings will give us the payment directly or throw error
+      const payment = await this.getPendingPayment(integrationId);
+      return { status: payment.status || 'pending', payment };
+    } catch (error) {
+      console.error('Error getting pending payment status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel a pending payment (e.g., due to timeout)
+   */
+  async cancelPendingPayment(integrationId: string): Promise<void> {
+    try {
+      await BoldServiceBindings.CancelPendingPayment(integrationId);
+    } catch (error) {
+      console.error('Error cancelling pending payment:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get recent webhook notifications
+   */
+  async getRecentWebhooks(limit: number = 50): Promise<models.BoldPendingPayment[]> {
+    try {
+      const webhooks = await BoldServiceBindings.GetRecentWebhooks(limit);
+      return webhooks || [];
+    } catch (error) {
+      console.error('Error getting recent webhooks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get webhook debug logs (raw webhook attempts)
+   */
+  async getWebhookLogs(limit: number = 50): Promise<models.BoldWebhookLog[]> {
+    try {
+      const logs = await BoldServiceBindings.GetWebhookLogs(limit);
+      return logs || [];
+    } catch (error) {
+      console.error('Error getting webhook logs:', error);
+      return [];
+    }
+  }
 }
 
 // Export singleton instance

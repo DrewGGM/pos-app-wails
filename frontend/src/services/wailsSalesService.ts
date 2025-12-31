@@ -280,6 +280,9 @@ function mapPaymentMethod(w: models.PaymentMethod): PaymentMethod {
     code: (w as any).code || '',
     is_active: w.is_active || false,
     display_order: w.display_order || 0,
+    // Bold integration fields
+    use_bold_terminal: (w as any).use_bold_terminal || false,
+    bold_payment_method: (w as any).bold_payment_method || '',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as PaymentMethod;

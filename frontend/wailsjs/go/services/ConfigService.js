@@ -186,6 +186,10 @@ export function UpdateRestaurantConfig(arg1) {
   return window['go']['services']['ConfigService']['UpdateRestaurantConfig'](arg1);
 }
 
+export function UpdateRestaurantConfigPartial(arg1) {
+  return window['go']['services']['ConfigService']['UpdateRestaurantConfigPartial'](arg1);
+}
+
 export function UpdateUITheme(arg1) {
   return window['go']['services']['ConfigService']['UpdateUITheme'](arg1);
 }

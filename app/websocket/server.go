@@ -599,6 +599,23 @@ func (s *Server) BroadcastMessage(message Message) {
 	s.broadcast <- data
 }
 
+// BroadcastJSON broadcasts a JSON message to all connected clients with a custom event type
+func (s *Server) BroadcastJSON(event string, data interface{}) {
+	messageData, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Error marshaling data: %v", err)
+		return
+	}
+
+	message := Message{
+		Type:      MessageType(event),
+		Timestamp: time.Now(),
+		Data:      messageData,
+	}
+
+	s.BroadcastMessage(message)
+}
+
 // broadcastToAll broadcasts a message to all clients
 func (s *Server) broadcastToAll(message *Message) {
 	data, err := json.Marshal(message)

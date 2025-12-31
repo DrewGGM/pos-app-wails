@@ -6,10 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.NavigateBefore
-import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,7 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drewcore.kitchen_app.data.models.Order
-import kotlin.math.ceil
 
 @Composable
 fun HistoryScreen(
@@ -25,28 +22,6 @@ fun HistoryScreen(
     onRemove: (Order) -> Unit,
     onUndo: (Order) -> Unit
 ) {
-    // Pagination state
-    var currentPage by remember { mutableStateOf(1) }
-    val itemsPerPage = 10
-    val totalItems = completedOrders.size
-    val totalPages = if (totalItems > 0) ceil(totalItems.toDouble() / itemsPerPage).toInt() else 1
-
-    // Reset to page 1 if current page exceeds total pages (happens when deleting items)
-    LaunchedEffect(totalPages) {
-        if (currentPage > totalPages && totalPages > 0) {
-            currentPage = totalPages
-        }
-    }
-
-    // Calculate the items for the current page
-    val startIndex = (currentPage - 1) * itemsPerPage
-    val endIndex = minOf(startIndex + itemsPerPage, totalItems)
-    val currentPageOrders = if (completedOrders.isNotEmpty()) {
-        completedOrders.subList(startIndex, endIndex)
-    } else {
-        emptyList()
-    }
-
     if (completedOrders.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -66,38 +41,17 @@ fun HistoryScreen(
             }
         }
     } else {
-        Column(
-            modifier = Modifier.fillMaxSize()
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Orders list
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(currentPageOrders, key = { it.id }) { order ->
-                    CompletedOrderCard(
-                        order = order,
-                        onRemove = onRemove,
-                        onUndo = onUndo
-                    )
-                }
-            }
-
-            // Pagination controls
-            if (totalPages > 1) {
-                PaginationControls(
-                    currentPage = currentPage,
-                    totalPages = totalPages,
-                    totalItems = totalItems,
-                    onPreviousPage = {
-                        if (currentPage > 1) currentPage--
-                    },
-                    onNextPage = {
-                        if (currentPage < totalPages) currentPage++
-                    }
+            items(completedOrders, key = { it.id }) { order ->
+                CompletedOrderCard(
+                    order = order,
+                    onRemove = onRemove,
+                    onUndo = onUndo
                 )
             }
         }
@@ -183,75 +137,6 @@ fun CompletedOrderCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Eliminar")
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun PaginationControls(
-    currentPage: Int,
-    totalPages: Int,
-    totalItems: Int,
-    onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 8.dp,
-        shadowElevation = 4.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Previous button
-            IconButton(
-                onClick = onPreviousPage,
-                enabled = currentPage > 1
-            ) {
-                Icon(
-                    Icons.Default.NavigateBefore,
-                    contentDescription = "Página anterior",
-                    tint = if (currentPage > 1)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                )
-            }
-
-            // Page indicator
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Página $currentPage de $totalPages",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "$totalItems órdenes totales",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Next button
-            IconButton(
-                onClick = onNextPage,
-                enabled = currentPage < totalPages
-            ) {
-                Icon(
-                    Icons.Default.NavigateNext,
-                    contentDescription = "Página siguiente",
-                    tint = if (currentPage < totalPages)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                )
             }
         }
     }

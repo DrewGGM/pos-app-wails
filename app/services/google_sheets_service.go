@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"PosApp/app/models"
@@ -772,6 +774,8 @@ func (s *GoogleSheetsService) SyncAllDays() (*FullSyncResult, error) {
 	result.TotalDays = days
 
 	// Iterate through each day and sync
+	// IMPORTANT: Add rate limiting to respect Google Sheets API quota (60 read requests/minute)
+	// We use 1.2 second delay between requests to be safe (50 requests/minute)
 	currentDate := startDate
 	for currentDate.Before(endDate) || currentDate.Equal(endDate) {
 		// Generate report for this day
@@ -780,8 +784,8 @@ func (s *GoogleSheetsService) SyncAllDays() (*FullSyncResult, error) {
 			result.FailedDays++
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", currentDate.Format("2006-01-02"), err))
 		} else {
-			// Send to Google Sheets
-			if err := s.SendReport(config, report); err != nil {
+			// Send to Google Sheets with retry logic for rate limiting
+			if err := s.sendReportWithRetry(config, report, 3); err != nil {
 				result.FailedDays++
 				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", currentDate.Format("2006-01-02"), err))
 			} else {
@@ -791,6 +795,10 @@ func (s *GoogleSheetsService) SyncAllDays() (*FullSyncResult, error) {
 
 		// Move to next day
 		currentDate = currentDate.Add(24 * time.Hour)
+
+		// Rate limiting: Wait 1.2 seconds between requests to avoid hitting quota
+		// Google Sheets allows 60 read requests/minute, so we do ~50/minute to be safe
+		time.Sleep(1200 * time.Millisecond)
 	}
 
 	// Determine overall status
@@ -817,4 +825,48 @@ func (s *GoogleSheetsService) SyncAllDays() (*FullSyncResult, error) {
 	s.db.Save(config)
 
 	return result, nil
+}
+
+// sendReportWithRetry sends a report to Google Sheets with retry logic for rate limiting (429 errors)
+// It implements exponential backoff when encountering rate limit errors
+func (s *GoogleSheetsService) sendReportWithRetry(config *models.GoogleSheetsConfig, report *ReportData, maxRetries int) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		err := s.SendReport(config, report)
+
+		// If no error, success!
+		if err == nil {
+			return nil
+		}
+
+		// Check if it's a rate limit error (429)
+		if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RATE_LIMIT_EXCEEDED") || strings.Contains(err.Error(), "rateLimitExceeded") {
+			lastErr = err
+
+			// Don't retry on last attempt
+			if attempt == maxRetries {
+				break
+			}
+
+			// Calculate exponential backoff delay: 2^attempt seconds
+			// attempt 0: 1 second
+			// attempt 1: 2 seconds
+			// attempt 2: 4 seconds
+			backoffSeconds := 1 << uint(attempt) // 2^attempt
+			waitDuration := time.Duration(backoffSeconds) * time.Second
+
+			log.Printf("⚠️  Rate limit hit for date %s (attempt %d/%d). Waiting %v before retry...",
+				report.Fecha, attempt+1, maxRetries+1, waitDuration)
+
+			time.Sleep(waitDuration)
+			continue
+		}
+
+		// If it's a different error (not rate limit), fail immediately
+		return err
+	}
+
+	// All retries exhausted
+	return fmt.Errorf("failed after %d retries due to rate limiting: %w", maxRetries, lastErr)
 }

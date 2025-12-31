@@ -346,23 +346,35 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     setSavingModule(moduleId);
     const newEnabled = !module.enabled;
 
+    console.log(`\n🔄 [handleToggleAppModule] Cambiando módulo "${module.name}"`);
+    console.log(`   Estado actual:`, appModules.map(m => `${m.id}=${m.enabled}`).join(', '));
+    console.log(`   Enviando al backend: ${module.backendKey}=${newEnabled}`);
+
     try {
       // Update backend
-      await wailsConfigService.updateRestaurantConfig({
+      const updateData = {
         [module.backendKey]: newEnabled,
-      });
+      };
+      console.log(`   📤 Objeto completo enviado:`, updateData);
+
+      await wailsConfigService.updateRestaurantConfig(updateData);
+
+      console.log(`   ✅ Backend actualizado exitosamente`);
 
       // Update local state
-      setAppModules(prev =>
-        prev.map(m => m.id === moduleId ? { ...m, enabled: newEnabled } : m)
-      );
+      setAppModules(prev => {
+        const updated = prev.map(m => m.id === moduleId ? { ...m, enabled: newEnabled } : m);
+        console.log(`   🔄 Estado local actualizado:`, updated.map(m => `${m.id}=${m.enabled}`).join(', '));
+        return updated;
+      });
 
       // Notify other components (like MainLayout) that module config changed
+      console.log(`   📢 Disparando evento 'moduleConfigChanged'`);
       window.dispatchEvent(new CustomEvent('moduleConfigChanged'));
 
       toast.success(`Módulo "${module.name}" ${newEnabled ? 'activado' : 'desactivado'}`);
     } catch (error) {
-      console.error('Error toggling app module:', error);
+      console.error('❌ Error toggling app module:', error);
       toast.error('Error al cambiar el módulo');
     } finally {
       setSavingModule(null);

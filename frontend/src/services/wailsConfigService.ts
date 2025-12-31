@@ -21,7 +21,7 @@ export const wailsConfigService = {
   async updateRestaurantConfig(config: AnyObject): Promise<void> {
     const svc = getConfigService();
     if (!svc) throw new Error('Service not ready');
-    await svc.UpdateRestaurantConfig(config);
+    await svc.UpdateRestaurantConfigPartial(config);
   },
 
   // DIAN Config

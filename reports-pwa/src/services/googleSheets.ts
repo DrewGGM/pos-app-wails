@@ -144,8 +144,15 @@ class GoogleSheetsService {
         // Parse JSON fields (detalle_productos, detalle_tipos_pedido, detalle_tipos_pago, detalle_movimientos)
         if (header === 'detalle_productos' || header === 'detalle_tipos_pedido' || header === 'detalle_tipos_pago' || header === 'detalle_movimientos') {
           try {
-            report[header] = value ? JSON.parse(value) : []
-          } catch {
+            if (!value || value.trim() === '') {
+              report[header] = []
+            } else {
+              const parsed = JSON.parse(value)
+              // Ensure it's always an array
+              report[header] = Array.isArray(parsed) ? parsed : []
+            }
+          } catch (e) {
+            console.error(`Error parsing ${header}:`, e, 'Value:', value)
             report[header] = []
           }
         }

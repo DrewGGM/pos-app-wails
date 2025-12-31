@@ -96,6 +96,8 @@ export function UpdateDIANConfig(arg1:models.DIANConfig):Promise<void>;
 
 export function UpdateRestaurantConfig(arg1:models.RestaurantConfig):Promise<void>;
 
+export function UpdateRestaurantConfigPartial(arg1:Record<string, any>):Promise<void>;
+
 export function UpdateUITheme(arg1:models.UITheme):Promise<void>;
 
 export function ValidateConfiguration():Promise<boolean|Array<string>>;

@@ -76,6 +76,9 @@ type PaymentMethod struct {
 	IsSystemDefault      bool      `gorm:"default:false" json:"is_system_default"` // System default payment methods cannot be deleted
 	IsActive             bool      `gorm:"default:true" json:"is_active"`
 	DisplayOrder         int       `json:"display_order"`
+	// Bold integration
+	UseBoldTerminal      bool      `gorm:"default:false" json:"use_bold_terminal"` // Whether to process this payment through Bold datáfono
+	BoldPaymentMethod    string    `json:"bold_payment_method"`   // Bold payment method type: "POS", "NEQUI", "DAVIPLATA", "PAY_BY_LINK"
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }

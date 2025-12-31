@@ -2158,10 +2158,16 @@ func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport, perio
 	s.lineFeed()
 	s.setAlign("left")
 
-	// Print report date
+	// Print report date (show range if applicable)
 	s.write(s.printSeparator())
 	s.setEmphasize(true)
-	s.write(fmt.Sprintf("FECHA DEL REPORTE: %s\n", report.ReportDate))
+	if report.ReportEndDate != "" && report.ReportEndDate != report.ReportDate {
+		// Show date range for weekly, monthly, yearly, and custom reports
+		s.write(fmt.Sprintf("PERIODO: %s - %s\n", report.ReportDate, report.ReportEndDate))
+	} else {
+		// Show single date for daily reports
+		s.write(fmt.Sprintf("FECHA DEL REPORTE: %s\n", report.ReportDate))
+	}
 	s.setEmphasize(false)
 	s.write(fmt.Sprintf("Generado: %s\n", report.GeneratedAt.Format("2006-01-02 15:04:05")))
 
