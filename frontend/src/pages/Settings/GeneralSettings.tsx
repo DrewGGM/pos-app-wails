@@ -171,6 +171,15 @@ export const defaultModuleConfig: ModuleConfig[] = [
     category: 'development',
     status: 'development',
   },
+  {
+    id: 'bold',
+    name: 'Bold (Datáfonos)',
+    description: 'Integración con datáfonos Bold',
+    icon: <PaymentIcon />,
+    enabled: false,
+    category: 'development',
+    status: 'development',
+  },
   // Experimental modules
   {
     id: 'ia_mcp',
@@ -347,6 +356,9 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       setAppModules(prev =>
         prev.map(m => m.id === moduleId ? { ...m, enabled: newEnabled } : m)
       );
+
+      // Notify other components (like MainLayout) that module config changed
+      window.dispatchEvent(new CustomEvent('moduleConfigChanged'));
 
       toast.success(`Módulo "${module.name}" ${newEnabled ? 'activado' : 'desactivado'}`);
     } catch (error) {

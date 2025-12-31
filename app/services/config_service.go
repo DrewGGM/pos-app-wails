@@ -174,15 +174,28 @@ func (s *ConfigService) GetRestaurantConfig() (*models.RestaurantConfig, error) 
 }
 
 // UpdateRestaurantConfig updates restaurant configuration
+// Supports partial updates - only updates the fields that are provided
 func (s *ConfigService) UpdateRestaurantConfig(config *models.RestaurantConfig) error {
 	if err := s.EnsureDB(); err != nil {
 		return err
 	}
-	// If no ID, create new
-	if config.ID == 0 {
+
+	// Get existing config to determine ID
+	var existing models.RestaurantConfig
+	err := s.db.First(&existing).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// No existing config, create new one
 		return s.db.Create(config).Error
 	}
-	return s.db.Save(config).Error
+
+	if err != nil {
+		return err
+	}
+
+	// Use Updates() for partial updates - only updates non-zero fields
+	// This allows sending just {enable_inventory_module: true} without overwriting other fields
+	return s.db.Model(&existing).Updates(config).Error
 }
 
 // GetDIANConfig gets DIAN configuration

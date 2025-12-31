@@ -92,6 +92,7 @@ import RappiSettings from './RappiSettings';
 import DIANDatabaseSettings from './DIANDatabaseSettings';
 import MCPSettings from './MCPSettings';
 import NetworkSettings from './NetworkSettings';
+import BoldSettings from './BoldSettings';
 import GeneralSettings, {
   ModuleConfig,
   loadModuleConfig,
@@ -1459,6 +1460,7 @@ const Settings: React.FC = () => {
           {isModuleEnabled('impresion', moduleConfig) && <Tab icon={<PrintIcon />} label="Impresión" />}
           {isModuleEnabled('google_sheets', moduleConfig) && <Tab icon={<CloudSyncIcon />} label="Google Sheets" />}
           {isModuleEnabled('rappi', moduleConfig) && <Tab icon={<SmartphoneIcon />} label="Rappi POS" />}
+          {isModuleEnabled('bold', moduleConfig) && <Tab icon={<PaymentIcon />} label="Bold" />}
           {isModuleEnabled('notificaciones', moduleConfig) && <Tab icon={<NotificationsIcon />} label="Notificaciones" />}
           {isModuleEnabled('sistema', moduleConfig) && <Tab icon={<SecurityIcon />} label="Sistema" />}
           {isModuleEnabled('websocket', moduleConfig) && <Tab icon={<WifiIcon />} label="WebSocket" />}
@@ -1480,10 +1482,10 @@ const Settings: React.FC = () => {
         </TabPanel>
 
         {/* Tab indices are computed dynamically based on enabled modules */}
-        {/* The order is: General(0), Empresa, Facturacion, MetodosPago, TiposPedido, PaginasPOS, Impresion, GoogleSheets, Rappi, Notificaciones, Sistema, WebSocket, BDDIAN, IAMCP */}
+        {/* The order is: General(0), Empresa, Facturacion, MetodosPago, TiposPedido, PaginasPOS, Impresion, GoogleSheets, Rappi, Bold, Notificaciones, Sistema, WebSocket, BDDIAN, IAMCP */}
         {(() => {
           // Calculate tab indices for each module based on what's enabled
-          const moduleOrder = ['empresa', 'facturacion', 'metodos_pago', 'tipos_pedido', 'paginas_pos', 'impresion', 'google_sheets', 'rappi', 'notificaciones', 'sistema', 'websocket', 'bd_dian', 'ia_mcp', 'red_puertos'];
+          const moduleOrder = ['empresa', 'facturacion', 'metodos_pago', 'tipos_pedido', 'paginas_pos', 'impresion', 'google_sheets', 'rappi', 'bold', 'notificaciones', 'sistema', 'websocket', 'bd_dian', 'ia_mcp', 'red_puertos'];
           const tabIndices: Record<string, number> = {};
           let currentIndex = 1; // Start at 1 since General is 0
           moduleOrder.forEach(moduleId => {
@@ -3212,6 +3214,13 @@ const Settings: React.FC = () => {
               {isModuleEnabled('rappi', moduleConfig) && (
                 <TabPanel value={selectedTab} index={tabIndices['rappi']}>
                   <RappiSettings />
+                </TabPanel>
+              )}
+
+              {/* Bold Settings */}
+              {isModuleEnabled('bold', moduleConfig) && (
+                <TabPanel value={selectedTab} index={tabIndices['bold']}>
+                  <BoldSettings />
                 </TabPanel>
               )}
 

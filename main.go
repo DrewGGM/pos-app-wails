@@ -48,6 +48,7 @@ type App struct {
 	InvoiceLimitService     *services.InvoiceLimitService
 	ConfigAPIServer         *services.ConfigAPIServer
 	MCPService              *services.MCPService
+	BoldService             *services.BoldService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -209,6 +210,7 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.ConfigService = services.NewConfigService()
 	a.ParametricService = services.NewParametricService()
 	a.DashboardService = services.NewDashboardService()
+	a.BoldService = services.NewBoldService(database.GetDB())
 
 	// Set WebSocket server on OrderService if available
 	if a.WSServer != nil && a.OrderService != nil {
@@ -404,6 +406,7 @@ func main() {
 	app.ConfigService = services.NewConfigService()
 	app.ParametricService = services.NewParametricService()
 	app.DashboardService = services.NewDashboardService()
+	app.BoldService = services.NewBoldService(nil)
 	app.WSManagementService = services.NewWebSocketManagementService(nil)
 	app.GoogleSheetsService = services.NewGoogleSheetsService(nil)
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
@@ -444,6 +447,7 @@ func main() {
 			app.ConfigService = services.NewConfigService()
 			app.ParametricService = services.NewParametricService()
 			app.DashboardService = services.NewDashboardService()
+			app.BoldService = services.NewBoldService(database.GetDB())
 
 			// Initialize Google Sheets services
 			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
@@ -540,6 +544,7 @@ func main() {
 		app.InvoiceLimitService,
 		app.WSManagementService,
 		app.MCPService,
+		app.BoldService,
 	}
 
 	err = wails.Run(&options.App{

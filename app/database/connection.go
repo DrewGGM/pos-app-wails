@@ -221,6 +221,10 @@ func RunMigrations() error {
 		&models.RappiOrder{},
 		&models.RappiMenuSync{},
 		&models.RappiWebhook{},
+
+		// Bold integration models
+		&models.BoldConfig{},
+		&models.BoldTerminal{},
 	)
 
 	if err != nil {
@@ -309,6 +313,19 @@ func runAdditionalMigrations() error {
 		ADD COLUMN IF NOT EXISTS voucher_image TEXT
 	`).Error; err != nil {
 		return fmt.Errorf("failed to add voucher_image column: %w", err)
+	}
+
+	// Add UI module settings columns to restaurant_configs if they don't exist
+	if err := db.Exec(`
+		ALTER TABLE restaurant_configs
+		ADD COLUMN IF NOT EXISTS enable_inventory_module BOOLEAN DEFAULT true,
+		ADD COLUMN IF NOT EXISTS enable_ingredients_module BOOLEAN DEFAULT false,
+		ADD COLUMN IF NOT EXISTS enable_combos_module BOOLEAN DEFAULT false,
+		ADD COLUMN IF NOT EXISTS enable_customers_module BOOLEAN DEFAULT true,
+		ADD COLUMN IF NOT EXISTS enable_reports_module BOOLEAN DEFAULT true,
+		ADD COLUMN IF NOT EXISTS enable_discounts_module BOOLEAN DEFAULT true
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add UI module settings columns: %w", err)
 	}
 
 	log.Println("✅ Additional migrations completed successfully")

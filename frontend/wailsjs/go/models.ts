@@ -541,6 +541,353 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class BoldTax {
+	    type: string;
+	    base?: number;
+	    value?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldTax(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.base = source["base"];
+	        this.value = source["value"];
+	    }
+	}
+	export class BoldAmount {
+	    currency: string;
+	    taxes: BoldTax[];
+	    tip_amount: number;
+	    total_amount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldAmount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currency = source["currency"];
+	        this.taxes = this.convertValues(source["taxes"], BoldTax);
+	        this.tip_amount = source["tip_amount"];
+	        this.total_amount = source["total_amount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoldConfig {
+	    id: number;
+	    enabled: boolean;
+	    environment: string;
+	    api_key_production: string;
+	    api_key_test: string;
+	    base_url: string;
+	    user_email: string;
+	    enable_pos: boolean;
+	    enable_nequi: boolean;
+	    enable_daviplata: boolean;
+	    enable_pay_by_link: boolean;
+	    default_terminal_model: string;
+	    default_terminal_serial: string;
+	    webhook_url: string;
+	    webhook_url_sandbox: string;
+	    webhook_secret: string;
+	    last_sync_at?: time.Time;
+	    last_sync_status: string;
+	    last_sync_error: string;
+	    total_payments: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.enabled = source["enabled"];
+	        this.environment = source["environment"];
+	        this.api_key_production = source["api_key_production"];
+	        this.api_key_test = source["api_key_test"];
+	        this.base_url = source["base_url"];
+	        this.user_email = source["user_email"];
+	        this.enable_pos = source["enable_pos"];
+	        this.enable_nequi = source["enable_nequi"];
+	        this.enable_daviplata = source["enable_daviplata"];
+	        this.enable_pay_by_link = source["enable_pay_by_link"];
+	        this.default_terminal_model = source["default_terminal_model"];
+	        this.default_terminal_serial = source["default_terminal_serial"];
+	        this.webhook_url = source["webhook_url"];
+	        this.webhook_url_sandbox = source["webhook_url_sandbox"];
+	        this.webhook_secret = source["webhook_secret"];
+	        this.last_sync_at = this.convertValues(source["last_sync_at"], time.Time);
+	        this.last_sync_status = source["last_sync_status"];
+	        this.last_sync_error = source["last_sync_error"];
+	        this.total_payments = source["total_payments"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoldDocument {
+	    document_type: string;
+	    document_number: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldDocument(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.document_type = source["document_type"];
+	        this.document_number = source["document_number"];
+	    }
+	}
+	export class BoldPayer {
+	    email?: string;
+	    phone_number?: string;
+	    document?: BoldDocument;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPayer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.email = source["email"];
+	        this.phone_number = source["phone_number"];
+	        this.document = this.convertValues(source["document"], BoldDocument);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoldPaymentMethod {
+	    name: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPaymentMethod(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class BoldPaymentPayload {
+	    integration_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPaymentPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.integration_id = source["integration_id"];
+	    }
+	}
+	export class BoldPaymentRequest {
+	    amount: BoldAmount;
+	    payment_method: string;
+	    terminal_model: string;
+	    terminal_serial: string;
+	    reference: string;
+	    user_email: string;
+	    description?: string;
+	    payer?: BoldPayer;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPaymentRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.amount = this.convertValues(source["amount"], BoldAmount);
+	        this.payment_method = source["payment_method"];
+	        this.terminal_model = source["terminal_model"];
+	        this.terminal_serial = source["terminal_serial"];
+	        this.reference = source["reference"];
+	        this.user_email = source["user_email"];
+	        this.description = source["description"];
+	        this.payer = this.convertValues(source["payer"], BoldPayer);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoldPaymentResponse {
+	    payload: BoldPaymentPayload;
+	    errors: any[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldPaymentResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.payload = this.convertValues(source["payload"], BoldPaymentPayload);
+	        this.errors = source["errors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class BoldTerminal {
+	    id: number;
+	    terminal_model: string;
+	    terminal_serial: string;
+	    name: string;
+	    status: string;
+	    is_active: boolean;
+	    is_default: boolean;
+	    last_used_at?: time.Time;
+	    usage_count: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldTerminal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.terminal_model = source["terminal_model"];
+	        this.terminal_serial = source["terminal_serial"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.is_active = source["is_active"];
+	        this.is_default = source["is_default"];
+	        this.last_used_at = this.convertValues(source["last_used_at"], time.Time);
+	        this.usage_count = source["usage_count"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoldTerminalResponse {
+	    terminal_model: string;
+	    terminal_serial: string;
+	    status: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoldTerminalResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.terminal_model = source["terminal_model"];
+	        this.terminal_serial = source["terminal_serial"];
+	        this.status = source["status"];
+	        this.name = source["name"];
+	    }
+	}
 	export class CashMovement {
 	    id: number;
 	    cash_register_id: number;

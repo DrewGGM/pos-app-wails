@@ -614,3 +614,102 @@ export interface ExpandedComboItem {
   is_from_combo: boolean;
   notes?: string;
 }
+
+// Bold Integration Models
+
+// Bold Config - main configuration for Bold API Integrations
+export interface BoldConfig extends BaseModel {
+  enabled: boolean;
+  environment: 'test' | 'production';
+  api_key_production: string;
+  api_key_test: string;
+  base_url: string;
+  user_email: string;
+  enable_pos: boolean;
+  enable_nequi: boolean;
+  enable_daviplata: boolean;
+  enable_pay_by_link: boolean;
+  default_terminal_model: string;
+  default_terminal_serial: string;
+  webhook_url?: string;
+  webhook_url_sandbox?: string;
+  webhook_secret?: string;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  last_sync_error?: string;
+  total_payments: number;
+}
+
+// Bold Terminal - represents a payment terminal (datáfono)
+export interface BoldTerminal extends BaseModel {
+  terminal_model: string;
+  terminal_serial: string;
+  name: string;
+  status: string; // "BINDED", "UNBINDED"
+  is_active: boolean;
+  is_default: boolean;
+  last_used_at?: string;
+  usage_count: number;
+}
+
+// Bold Payment Method
+export interface BoldPaymentMethod {
+  name: string; // "POS", "NEQUI", "DAVIPLATA", "PAY_BY_LINK"
+  enabled: boolean;
+}
+
+// Bold Terminal Response from API
+export interface BoldTerminalResponse {
+  terminal_model: string;
+  terminal_serial: string;
+  status: string;
+  name: string;
+}
+
+// Bold Tax information
+export interface BoldTax {
+  type: string; // "VAT", "CONSUMPTION", "IVA_19", "IVA_5", "IAC_8"
+  base?: number;
+  value?: number;
+}
+
+// Bold Amount details
+export interface BoldAmount {
+  currency: string; // "COP"
+  taxes: BoldTax[];
+  tip_amount: number;
+  total_amount: number;
+}
+
+// Bold Document information
+export interface BoldDocument {
+  document_type: string; // "CEDULA", "NIT", etc.
+  document_number: string;
+}
+
+// Bold Payer information
+export interface BoldPayer {
+  email?: string;
+  phone_number?: string;
+  document?: BoldDocument;
+}
+
+// Bold Payment Request
+export interface BoldPaymentRequest {
+  amount: BoldAmount;
+  payment_method: string;
+  terminal_model: string;
+  terminal_serial: string;
+  reference: string;
+  user_email: string;
+  description?: string;
+  payer?: BoldPayer;
+}
+
+// Bold Payment Response
+export interface BoldPaymentResponse {
+  payload: {
+    integration_id: string;
+  };
+  errors: any[];
+}

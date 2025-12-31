@@ -206,6 +206,17 @@ const MainLayout: React.FC = () => {
       }
     };
     loadModuleVisibility();
+
+    // Listen for module config changes
+    const handleModuleConfigChange = () => {
+      loadModuleVisibility();
+    };
+    window.addEventListener('moduleConfigChanged', handleModuleConfigChange);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener('moduleConfigChanged', handleModuleConfigChange);
+    };
   }, []);
 
   const getNotificationIcon = (type: string) => {
