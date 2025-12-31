@@ -37,7 +37,7 @@ export interface Product extends BaseModel {
   description?: string;
   price: number;
   cost?: number;
-  category_id: number;
+  category_id?: number;
   category?: Category;
   barcode?: string;
   image?: string;
@@ -52,6 +52,7 @@ export interface Product extends BaseModel {
   track_inventory?: boolean; // Whether to track inventory for this product (default: true)
   tax_type_id?: number; // DIAN Tax Type (1=IVA 19%, 5=IVA 0%, 6=IVA 5%)
   unit_measure_id?: number; // DIAN Unit Measure (70=Unidad, 796=Porción, 797=Ración)
+  is_combo?: boolean; // Flag indicating this is a combo (for POS handling)
 }
 
 // Modifier group model
@@ -187,6 +188,12 @@ export interface OrderItem extends BaseModel {
   modifiers?: OrderItemModifier[];
   sent_to_kitchen?: boolean;
   sent_to_kitchen_at?: string;
+  // Combo tracking fields
+  is_combo?: boolean; // True if this item represents a combo (backend will expand it)
+  combo_id?: number; // If this item came from a combo expansion
+  combo_name?: string; // Name of the source combo for kitchen display
+  combo_color?: string; // Color indicator for grouping in kitchen
+  is_from_combo?: boolean; // True if this item is an expanded combo product
 }
 
 // Order item modifier model
@@ -570,4 +577,40 @@ export interface PaymentData {
   payment_method_id: number;
   amount: number;
   reference?: string;
+}
+
+// Combo model - represents a bundle of products sold as one
+export interface Combo extends BaseModel {
+  name: string;
+  description?: string;
+  price: number;
+  image?: string;
+  category_id?: number;
+  category?: Category;
+  is_active: boolean;
+  items?: ComboItem[];
+  tax_type_id?: number;
+  display_order?: number;
+}
+
+// ComboItem model - represents a product within a combo
+export interface ComboItem extends BaseModel {
+  combo_id: number;
+  product_id: number;
+  product?: Product;
+  quantity: number;
+  position: number;
+}
+
+// Expanded combo item for order creation (used when a combo is expanded into individual items)
+export interface ExpandedComboItem {
+  product_id: number;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+  combo_id?: number;
+  combo_name?: string;
+  combo_color?: string;
+  is_from_combo: boolean;
+  notes?: string;
 }

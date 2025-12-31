@@ -29,6 +29,7 @@ const (
 	TypeKitchenUpdate   MessageType = "kitchen_update"
 	TypeKitchenAck      MessageType = "kitchen_ack"      // Kitchen acknowledges order receipt
 	TypeKitchenAckResult MessageType = "kitchen_ack_result" // Result broadcast to source apps
+	TypePrintReceipt    MessageType = "print_receipt"    // Waiter App print request
 	TypeNotification    MessageType = "notification"
 	TypeHeartbeat       MessageType = "heartbeat"
 	TypeAuthenticate    MessageType = "authenticate"
@@ -43,6 +44,11 @@ const (
 	ClientKitchen ClientType = "kitchen"
 	ClientWaiter  ClientType = "waiter"
 )
+
+// PrinterService interface for printing operations
+type PrinterService interface {
+	PrintWaiterReceipt(orderData map[string]interface{}, printerID *uint) error
+}
 
 // Message represents a WebSocket message
 type Message struct {
@@ -65,18 +71,19 @@ type Client struct {
 
 // Server represents the WebSocket server
 type Server struct {
-	clients      map[string]*Client
-	broadcast    chan []byte
-	register     chan *Client
-	unregister   chan *Client
-	upgrader     websocket.Upgrader
-	mu           sync.RWMutex
-	port         string
-	db           *gorm.DB
-	orderService OrderCreator
-	restHandlers *RESTHandlers
-	mdnsServer   interface{} // zeroconf.Server
-	mdnsShutdown chan bool
+	clients        map[string]*Client
+	broadcast      chan []byte
+	register       chan *Client
+	unregister     chan *Client
+	upgrader       websocket.Upgrader
+	mu             sync.RWMutex
+	port           string
+	db             *gorm.DB
+	orderService   OrderCreator
+	printerService PrinterService
+	restHandlers   *RESTHandlers
+	mdnsServer     interface{} // zeroconf.Server
+	mdnsShutdown   chan bool
 }
 
 // NewServer creates a new WebSocket server
@@ -121,6 +128,12 @@ func (s *Server) SetOrderService(orderService OrderCreator) {
 	} else {
 		log.Println("WebSocket server: OrderService set, waiting for Database")
 	}
+}
+
+// SetPrinterService sets the printer service for handling print requests
+func (s *Server) SetPrinterService(printerService PrinterService) {
+	s.printerService = printerService
+	log.Println("WebSocket server: PrinterService set for handling print requests")
 }
 
 // Start starts the WebSocket server
@@ -431,6 +444,12 @@ func (c *Client) handleMessage(message *Message) {
 			c.handleKitchenAck(message)
 		}
 
+	case TypePrintReceipt:
+		// Handle print receipt request from waiter app
+		if c.Type == ClientWaiter {
+			c.handlePrintReceipt(message)
+		}
+
 	default:
 		log.Printf("Unknown message type: %s", message.Type)
 	}
@@ -491,6 +510,65 @@ func (c *Client) handleKitchenAck(message *Message) {
 	c.Server.broadcastToPOS(&resultMessage)
 	c.Server.broadcastToWaiters(&resultMessage)
 	log.Printf("Kitchen acknowledgment result broadcast to POS and waiters")
+}
+
+// handlePrintReceipt handles print receipt requests from waiter app
+func (c *Client) handlePrintReceipt(message *Message) {
+	log.Printf("Waiter client %s requesting receipt print", c.ID)
+
+	// Parse the print request data
+	var printData map[string]interface{}
+	if err := json.Unmarshal(message.Data, &printData); err != nil {
+		log.Printf("Error parsing print request data: %v", err)
+		return
+	}
+
+	// Extract order data from the message
+	orderDataRaw, ok := printData["order_data"]
+	if !ok {
+		log.Printf("Error: print request missing order_data field")
+		return
+	}
+
+	orderData, ok := orderDataRaw.(map[string]interface{})
+	if !ok {
+		log.Printf("Error: order_data is not a valid object")
+		return
+	}
+
+	// Get restaurant config to find which printer to use for waiter app
+	var printerID *uint
+	if c.Server.db != nil {
+		var config struct {
+			WaiterAppPrinterID *uint `gorm:"column:waiter_app_printer_id"`
+		}
+
+		result := c.Server.db.Table("restaurant_configs").
+			Select("waiter_app_printer_id").
+			First(&config)
+
+		if result.Error == nil {
+			printerID = config.WaiterAppPrinterID
+			if printerID != nil {
+				log.Printf("Using configured printer ID %d for waiter app", *printerID)
+			} else {
+				log.Printf("No specific printer configured for waiter app, using default")
+			}
+		} else {
+			log.Printf("Could not load restaurant config, using default printer: %v", result.Error)
+		}
+	}
+
+	// Call printer service if available
+	if c.Server.printerService != nil {
+		if err := c.Server.printerService.PrintWaiterReceipt(orderData, printerID); err != nil {
+			log.Printf("Error printing receipt: %v", err)
+		} else {
+			log.Printf("Receipt printed successfully for waiter app request")
+		}
+	} else {
+		log.Printf("Warning: PrinterService not available, cannot process print request")
+	}
 }
 
 // sendMessage sends a message to the client

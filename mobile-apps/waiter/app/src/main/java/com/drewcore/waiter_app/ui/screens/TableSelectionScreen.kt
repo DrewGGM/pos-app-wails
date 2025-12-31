@@ -39,6 +39,7 @@ fun TableSelectionScreen(
     tables: List<Table>,
     tableAreas: List<TableArea> = emptyList(),
     areaGridLayouts: Map<Int, TableGridLayout> = emptyMap(),
+    tableTotals: Map<Int, Double> = emptyMap(), // NEW: Map of table ID -> order total
     onTableSelected: (Table) -> Unit,
     onViewOrders: () -> Unit,
     onOpenSettings: () -> Unit = {},
@@ -211,6 +212,7 @@ fun TableSelectionScreen(
                                     if (table != null) {
                                         TableCard(
                                             table = table,
+                                            orderTotal = tableTotals[table.id],
                                             onClick = { onTableSelected(table) }
                                         )
                                     } else {
@@ -245,6 +247,7 @@ fun TableSelectionScreen(
                                     Box(modifier = Modifier.weight(1f)) {
                                         TableCard(
                                             table = table,
+                                            orderTotal = tableTotals[table.id],
                                             onClick = { onTableSelected(table) }
                                         )
                                     }
@@ -280,6 +283,7 @@ fun TableSelectionScreen(
                                 Box(modifier = Modifier.weight(1f)) {
                                     TableCard(
                                         table = table,
+                                        orderTotal = tableTotals[table.id],
                                         onClick = { onTableSelected(table) }
                                     )
                                 }
@@ -312,6 +316,7 @@ fun EmptyTableCell() {
 @Composable
 fun TableCard(
     table: Table,
+    orderTotal: Double? = null, // NEW: Total amount for this table's order
     onClick: (() -> Unit)?
 ) {
     // Colors and labels for each table status
@@ -381,8 +386,36 @@ fun TableCard(
                 )
             }
 
-            // Show status badge if not available
-            if (statusLabel != null) {
+            // Show order total badge for occupied tables
+            if (table.status == TableStatus.OCCUPIED && orderTotal != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = Color(0xFF4CAF50), // Green background for total
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "$${String.format("%.2f", orderTotal)}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Surface(
+                    color = contentColor,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = statusLabel ?: "",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            } else if (statusLabel != null) {
+                // Show status badge if not available
                 Spacer(modifier = Modifier.height(2.dp))
                 Surface(
                     color = contentColor,

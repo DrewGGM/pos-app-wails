@@ -78,12 +78,14 @@ import OrderList from '../../components/pos/OrderList';
 import DeliveryInfoDialog, { DeliveryInfo } from '../../components/pos/DeliveryInfoDialog';
 import SplitBillDialog, { BillSplit, UnallocatedItem } from '../../components/pos/SplitBillDialog';
 import { wailsInvoiceLimitService, InvoiceLimitStatus } from '../../services/wailsInvoiceLimitService';
+import { wailsComboService } from '../../services/wailsComboService';
+import { Combo } from '../../types/models';
 
 const POS: React.FC = () => {
   // Context hooks
   const { user, cashRegisterId } = useAuth();
   const { sendMessage, subscribe } = useWebSocket();
-  const { isDIANMode } = useDIANMode();
+  const { isDIANMode, isElectronicInvoicingEnabled } = useDIANMode();
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
@@ -99,6 +101,8 @@ const POS: React.FC = () => {
     const saved = localStorage.getItem('pos_selected_custom_page');
     return saved ? Number(saved) : null;
   });
+  const [combos, setCombos] = useState<Combo[]>([]);
+  const [showCombosTab, setShowCombosTab] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -166,6 +170,7 @@ const POS: React.FC = () => {
       loadCustomPages();
       loadPrinterSettings();
       loadInvoiceLimitStatus();
+      loadCombos();
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -498,6 +503,14 @@ const POS: React.FC = () => {
     }
   };
 
+  const loadCombos = async () => {
+    try {
+      const data = await wailsComboService.getAllCombos();
+      setCombos(data);
+    } catch (error) {
+    }
+  };
+
   const loadPrinterSettings = async () => {
     try {
       const autoPrintValue = await wailsConfigService.getSystemConfig('printer_auto_print');
@@ -553,6 +566,40 @@ const POS: React.FC = () => {
 
     return filtered;
   }, [products, selectedCategory, selectedCustomPage, searchQuery]);
+
+  // Remove item from order
+  const removeItem = useCallback((itemId: number) => {
+    setOrderItems(items => items.filter(item => {
+      const currentItemId = item.id ?? Date.now();
+      return currentItemId !== itemId;
+    }));
+  }, []);
+
+  // Update item quantity
+  const updateItemQuantity = useCallback((itemId: number, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeItem(itemId);
+      return;
+    }
+
+    setOrderItems(items =>
+      items.map(item => {
+        // Compare with both real ID and temporary ID
+        const currentItemId = item.id ?? Date.now();
+        if (currentItemId === itemId) {
+          // Calculate new subtotal including modifiers
+          // unit_price is base product price (no modifiers)
+          // Add modifiers separately
+          const basePrice = item.unit_price || 0;
+          const modifiersPrice = item.modifiers?.reduce((sum, mod) => sum + mod.price_change, 0) || 0;
+          const newSubtotal = (basePrice + modifiersPrice) * newQuantity;
+
+          return { ...item, quantity: newQuantity, subtotal: newSubtotal };
+        }
+        return item;
+      })
+    );
+  }, []);
 
   // Add product to order
   const addProductToOrder = useCallback((product: Product) => {
@@ -613,39 +660,57 @@ const POS: React.FC = () => {
     });
   }, [cashRegisterId, orderItems]);
 
-  // Update item quantity
-  const updateItemQuantity = useCallback((itemId: number, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeItem(itemId);
+  // Add combo to order (as a single item - expansion happens in backend)
+  const addComboToOrder = useCallback((combo: Combo) => {
+    // Check if cash register is open
+    if (!cashRegisterId) {
+      toast.error('Debe abrir la caja antes de realizar ventas');
       return;
     }
 
-    setOrderItems(items =>
-      items.map(item => {
-        // Compare with both real ID and temporary ID
-        const currentItemId = item.id ?? Date.now();
-        if (currentItemId === itemId) {
-          // Calculate new subtotal including modifiers
-          // unit_price is base product price (no modifiers)
-          // Add modifiers separately
-          const basePrice = item.unit_price || 0;
-          const modifiersPrice = item.modifiers?.reduce((sum, mod) => sum + mod.price_change, 0) || 0;
-          const newSubtotal = (basePrice + modifiersPrice) * newQuantity;
+    // Create a pseudo-product representation of the combo
+    const comboAsProduct: Product = {
+      id: combo.id,
+      name: combo.name,
+      description: combo.description || `Combo: ${combo.items?.map(i => i.product?.name).filter(Boolean).join(', ')}`,
+      price: combo.price,
+      image: combo.image || '',
+      category_id: combo.category_id,
+      stock: 999, // Combos don't track stock directly
+      is_active: combo.is_active,
+      track_inventory: false, // Combo items track inventory individually
+      is_combo: true, // Mark as combo for backend processing
+    };
 
-          return { ...item, quantity: newQuantity, subtotal: newSubtotal };
-        }
-        return item;
-      })
+    // Create new item
+    const newItem: OrderItem = {
+      id: Date.now(), // Temporary ID for frontend tracking
+      product_id: combo.id!, // This will be treated as combo_id in backend
+      product: comboAsProduct,
+      quantity: 1,
+      unit_price: combo.price,
+      subtotal: combo.price,
+      notes: '',
+      modifiers: [],
+      is_combo: true, // Flag for backend to expand this combo
+    };
+
+    // Check if same combo already in order (stack them)
+    const existingItem = orderItems.find(item =>
+      item.product_id === combo.id && item.is_combo === true
     );
-  }, []);
 
-  // Remove item from order
-  const removeItem = useCallback((itemId: number) => {
-    setOrderItems(items => items.filter(item => {
-      const currentItemId = item.id ?? Date.now();
-      return currentItemId !== itemId;
-    }));
-  }, []);
+    if (existingItem) {
+      updateItemQuantity(existingItem.id!, existingItem.quantity + 1);
+    } else {
+      setOrderItems([...orderItems, newItem]);
+    }
+
+    toast.success(`Combo "${combo.name}" añadido`, {
+      position: 'bottom-center',
+      autoClose: 1000,
+    });
+  }, [cashRegisterId, orderItems, updateItemQuantity]);
 
   // Calculate order totals
   const orderTotals = useMemo(() => {
@@ -1002,9 +1067,10 @@ const POS: React.FC = () => {
           sx={{ mb: 2 }}
         />
 
-        {/* Categories and Custom Pages Combined */}
+        {/* Categories, Custom Pages, and Combos */}
         <Tabs
           value={
+            showCombosTab ? 'combos' :
             selectedCustomPage !== null ? `page-${selectedCustomPage}` :
             selectedCategory !== null ? `cat-${selectedCategory}` :
             'all'
@@ -1013,16 +1079,23 @@ const POS: React.FC = () => {
             if (value === 'all') {
               setSelectedCategory(null);
               setSelectedCustomPage(null);
+              setShowCombosTab(false);
+            } else if (value === 'combos') {
+              setShowCombosTab(true);
+              setSelectedCategory(null);
+              setSelectedCustomPage(null);
             } else if (value.startsWith('page-')) {
               // It's a custom page
               const pageId = Number(value.replace('page-', ''));
               setSelectedCustomPage(pageId);
               setSelectedCategory(null);
+              setShowCombosTab(false);
             } else if (value.startsWith('cat-')) {
               // It's a category
               const categoryId = Number(value.replace('cat-', ''));
               setSelectedCategory(categoryId);
               setSelectedCustomPage(null);
+              setShowCombosTab(false);
             }
           }}
           variant="scrollable"
@@ -1034,7 +1107,24 @@ const POS: React.FC = () => {
             label="Todos"
             icon={<FastfoodIcon />}
           />
-          {/* Custom Pages First */}
+          {/* Combos Tab - Only show if there are active combos */}
+          {combos.length > 0 && (
+            <Tab
+              value="combos"
+              label={`Combos (${combos.length})`}
+              icon={<FastfoodIcon />}
+              sx={{
+                backgroundColor: showCombosTab ? '#FF9800' : 'transparent',
+                color: showCombosTab ? '#fff' : 'inherit',
+                '&:hover': {
+                  backgroundColor: '#FF9800',
+                  opacity: 0.8,
+                  color: '#fff',
+                },
+              }}
+            />
+          )}
+          {/* Custom Pages */}
           {customPages.map((page) => (
             <Tab
               key={`page-${page.id}`}
@@ -1072,50 +1162,122 @@ const POS: React.FC = () => {
           ))}
         </Tabs>
 
-        {/* Products Grid */}
+        {/* Products/Combos Grid */}
         <Box sx={{ flex: 1, overflow: 'auto' }}>
           <Grid container spacing={2}>
-            {filteredProducts.map((product) => (
-              <Grid item xs={6} sm={4} md={3} key={product.id}>
-                <Card
-                  sx={{
-                    height: '100%',
-                    // Only show red border/glow for products with inventory tracking enabled
-                    border: product.track_inventory !== false && product.stock <= 0 ? '3px solid #d32f2f' : 'none',
-                    boxShadow: product.track_inventory !== false && product.stock <= 0 ? '0 0 10px rgba(211, 47, 47, 0.5)' : undefined,
-                  }}
-                >
-                  <CardActionArea
-                    onClick={() => addProductToOrder(product)}
+            {showCombosTab ? (
+              // Show Combos Grid
+              combos.map((combo) => (
+                <Grid item xs={6} sm={4} md={3} key={`combo-${combo.id}`}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      border: '2px solid #FF9800',
+                      boxShadow: '0 0 8px rgba(255, 152, 0, 0.3)',
+                    }}
                   >
-                    {product.image && (
-                      <CardMedia
-                        component="img"
-                        height="120"
-                        image={product.image}
-                        alt={product.name}
-                      />
-                    )}
-                    <CardContent sx={{ p: 1 }}>
-                      <Typography variant="body2" noWrap>
-                        {product.name}
-                      </Typography>
-                      <Typography variant="h6" color="primary">
-                        ${product.price.toLocaleString('es-CO')}
-                      </Typography>
-                      {/* Only show stock warning for products with inventory tracking enabled */}
-                      {product.track_inventory !== false && product.stock <= 5 && (
-                        <Chip
-                          size="small"
-                          label={`Stock: ${product.stock}`}
-                          color={product.stock <= 0 ? 'error' : 'warning'}
+                    <CardActionArea onClick={() => addComboToOrder(combo)}>
+                      {combo.image ? (
+                        <CardMedia
+                          component="img"
+                          height="120"
+                          image={combo.image}
+                          alt={combo.name}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            height: 120,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#FFF3E0',
+                          }}
+                        >
+                          <FastfoodIcon sx={{ fontSize: 48, color: '#FF9800' }} />
+                        </Box>
+                      )}
+                      <CardContent sx={{ p: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                          <Chip
+                            label="COMBO"
+                            size="small"
+                            sx={{
+                              backgroundColor: '#FF9800',
+                              color: '#fff',
+                              fontSize: '0.65rem',
+                              height: 18,
+                            }}
+                          />
+                        </Box>
+                        <Typography variant="body2" noWrap fontWeight="bold">
+                          {combo.name}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            minHeight: '2.5em',
+                          }}
+                        >
+                          {combo.items?.map(i => i.product?.name).filter(Boolean).join(', ') || combo.description}
+                        </Typography>
+                        <Typography variant="h6" color="warning.main" fontWeight="bold">
+                          ${combo.price.toLocaleString('es-CO')}
+                        </Typography>
+                      </CardContent>
+                    </CardActionArea>
+                  </Card>
+                </Grid>
+              ))
+            ) : (
+              // Show Products Grid
+              filteredProducts.map((product) => (
+                <Grid item xs={6} sm={4} md={3} key={product.id}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      // Only show red border/glow for products with inventory tracking enabled
+                      border: product.track_inventory !== false && product.stock <= 0 ? '3px solid #d32f2f' : 'none',
+                      boxShadow: product.track_inventory !== false && product.stock <= 0 ? '0 0 10px rgba(211, 47, 47, 0.5)' : undefined,
+                    }}
+                  >
+                    <CardActionArea
+                      onClick={() => addProductToOrder(product)}
+                    >
+                      {product.image && (
+                        <CardMedia
+                          component="img"
+                          height="120"
+                          image={product.image}
+                          alt={product.name}
                         />
                       )}
-                    </CardContent>
-                  </CardActionArea>
-                </Card>
-              </Grid>
-            ))}
+                      <CardContent sx={{ p: 1 }}>
+                        <Typography variant="body2" noWrap>
+                          {product.name}
+                        </Typography>
+                        <Typography variant="h6" color="primary">
+                          ${product.price.toLocaleString('es-CO')}
+                        </Typography>
+                        {/* Only show stock warning for products with inventory tracking enabled */}
+                        {product.track_inventory !== false && product.stock <= 5 && (
+                          <Chip
+                            size="small"
+                            label={`Stock: ${product.stock}`}
+                            color={product.stock <= 0 ? 'error' : 'warning'}
+                          />
+                        )}
+                      </CardContent>
+                    </CardActionArea>
+                  </Card>
+                </Grid>
+              ))
+            )}
           </Grid>
         </Box>
       </Box>
@@ -1315,8 +1477,8 @@ const POS: React.FC = () => {
             </Box>
           )}
 
-          {/* Electronic Invoice Option - Hidden in DIAN Mode */}
-          {!isDIANMode && (
+          {/* Electronic Invoice Option - Hidden in DIAN Mode and when e-invoicing is disabled */}
+          {!isDIANMode && isElectronicInvoicingEnabled && (
             <Box sx={{ mb: 2 }}>
               <FormControlLabel
                 control={

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,7 +29,9 @@ fun CartScreen(
     onUpdateNotes: (CartItem, String) -> Unit,
     onRemoveItem: (CartItem) -> Unit,
     onSendOrder: () -> Unit,
-    onCancelOrder: (() -> Unit)? = null
+    onCancelOrder: (() -> Unit)? = null,
+    onSplitBill: (() -> Unit)? = null,
+    onPrintReceipt: (() -> Unit)? = null
 ) {
     var editingItem by remember { mutableStateOf<CartItem?>(null) }
     var showCancelDialog by remember { mutableStateOf(false) }
@@ -121,6 +124,24 @@ fun CartScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "CANCELAR PEDIDO Y DESOCUPAR MESA",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Split bill button (only for new orders with multiple items)
+                    if (!isEditingOrder && onSplitBill != null && cartItems.size >= 2) {
+                        OutlinedButton(
+                            onClick = { onSplitBill() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        ) {
+                            Text(
+                                text = "DIVIDIR CUENTA",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )

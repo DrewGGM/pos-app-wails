@@ -45,6 +45,8 @@ export function GetDB():Promise<gorm.DB>;
 
 export function GetDIANClosingReport(arg1:string):Promise<services.DIANClosingReport>;
 
+export function GetDIANClosingReportCustomRange(arg1:string,arg2:string):Promise<services.DIANClosingReport>;
+
 export function GetDIANClosingReportWithPeriod(arg1:string,arg2:string):Promise<services.DIANClosingReport>;
 
 export function GetPaymentMethodSalesCount(arg1:number):Promise<number>;
@@ -68,6 +70,10 @@ export function Model(arg1:any):Promise<gorm.DB>;
 export function Preload(arg1:string):Promise<gorm.DB>;
 
 export function PrintDIANClosingReport(arg1:string):Promise<void>;
+
+export function PrintDIANClosingReportCustomRange(arg1:string,arg2:string):Promise<void>;
+
+export function PrintDIANClosingReportWithPeriod(arg1:string,arg2:string):Promise<void>;
 
 export function PrintReceipt(arg1:number):Promise<void>;
 

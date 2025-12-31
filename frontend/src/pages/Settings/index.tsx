@@ -157,6 +157,8 @@ const Settings: React.FC = () => {
     // Service charge settings
     serviceChargeEnabled: false,
     serviceChargePercent: 10, // Default 10%
+    // Waiter App printer configuration
+    waiterAppPrinterID: null as number | null,
   });
 
   // Parametric data
@@ -358,6 +360,8 @@ const Settings: React.FC = () => {
           // Service charge settings
           serviceChargeEnabled: (config as any).service_charge_enabled || false,
           serviceChargePercent: (config as any).service_charge_percent || 10,
+          // Waiter App printer configuration
+          waiterAppPrinterID: (config as any).waiter_app_printer_id || null,
         });
       }
     } catch (e) {
@@ -600,6 +604,8 @@ const Settings: React.FC = () => {
         // Service charge settings
         service_charge_enabled: businessSettings.serviceChargeEnabled,
         service_charge_percent: businessSettings.serviceChargePercent,
+        // Waiter App printer configuration
+        waiter_app_printer_id: businessSettings.waiterAppPrinterID,
       };
 
       await wailsConfigService.updateRestaurantConfig(updatedConfig);
@@ -3137,6 +3143,55 @@ const Settings: React.FC = () => {
                           copies: Number(e.target.value),
                         })}
                       />
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Waiter App Printer Configuration */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SmartphoneIcon /> Impresora para App de Meseros
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Selecciona qué impresora usar para las solicitudes de impresión desde la App de Meseros.
+                    Si no se selecciona ninguna, se usará la impresora predeterminada.
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Impresora para App de Meseros</InputLabel>
+                        <Select
+                          value={businessSettings.waiterAppPrinterID || ''}
+                          onChange={(e) => setBusinessSettings({
+                            ...businessSettings,
+                            waiterAppPrinterID: e.target.value ? Number(e.target.value) : null,
+                          })}
+                          label="Impresora para App de Meseros"
+                        >
+                          <MenuItem value="">
+                            <em>Usar impresora predeterminada</em>
+                          </MenuItem>
+                          {printerConfigs.map((printer) => (
+                            <MenuItem key={printer.id} value={printer.id}>
+                              {printer.name} ({printer.connection_type === 'ethernet' ? 'Red' :
+                               printer.connection_type === 'usb' ? 'USB' :
+                               printer.connection_type === 'windows_share' ? 'Windows' : printer.connection_type})
+                              {printer.is_default && ' - Principal'}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Alert severity="info" sx={{ height: '100%', display: 'flex', alignItems: 'center' }}>
+                        {businessSettings.waiterAppPrinterID
+                          ? `La App de Meseros imprimirá pre-cuentas en la impresora seleccionada.`
+                          : `Se usará la impresora predeterminada del sistema.`}
+                      </Alert>
                     </Grid>
                   </Grid>
                 </CardContent>

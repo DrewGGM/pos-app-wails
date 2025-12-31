@@ -92,6 +92,11 @@ data class OrderItem(
     val subtotal: Double,
     val notes: String? = null,
     val modifiers: List<OrderItemModifier>? = null,
+    // Combo tracking fields - used when this item comes from an expanded combo
+    @SerializedName("combo_id") val comboId: Int? = null,
+    @SerializedName("combo_name") val comboName: String? = null,
+    @SerializedName("combo_color") val comboColor: String? = null,
+    @SerializedName("is_from_combo") val isFromCombo: Boolean = false,
     // Local metadata - in constructor for proper copy() behavior
     // Not marked @Transient to avoid Gson deserialization issues
     var changeStatus: ItemChangeStatus = ItemChangeStatus.UNCHANGED,

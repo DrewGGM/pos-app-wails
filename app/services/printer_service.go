@@ -1318,6 +1318,207 @@ func (s *PrinterService) PrintOrder(order *models.Order) error {
 	return s.print()
 }
 
+// PrintWaiterReceipt prints a receipt from order data (used by WebSocket print requests from Waiter App)
+func (s *PrinterService) PrintWaiterReceipt(orderData map[string]interface{}, printerID *uint) error {
+	// Get printer config
+	var config *models.PrinterConfig
+	var err error
+
+	if printerID != nil && *printerID > 0 {
+		// Get specific printer
+		var printerConfig models.PrinterConfig
+		if err := s.db.First(&printerConfig, *printerID).Error; err != nil {
+			log.Printf("Warning: Configured printer ID %d not found, using default: %v", *printerID, err)
+			// Fallback to default
+			config, err = s.getDefaultPrinterConfig()
+			if err != nil {
+				return fmt.Errorf("no default printer configured: %w", err)
+			}
+		} else {
+			config = &printerConfig
+		}
+	} else {
+		// Get default printer
+		config, err = s.getDefaultPrinterConfig()
+		if err != nil {
+			return fmt.Errorf("no default printer configured: %w", err)
+		}
+	}
+
+	// Connect to printer
+	if err := s.connectPrinter(config); err != nil {
+		return fmt.Errorf("failed to connect to printer: %w", err)
+	}
+	defer s.closePrinter()
+
+	// Initialize printer
+	s.init()
+	s.setAlign("center")
+
+	// Get restaurant config
+	var restaurant models.RestaurantConfig
+	s.db.First(&restaurant)
+
+	// Print logo if available
+	if restaurant.Logo != "" {
+		s.lineFeed()
+		if err := s.printLogoFromBase64(restaurant.Logo); err != nil {
+			// If logo fails, just continue without it
+			s.write("[LOGO]\n")
+		}
+		s.lineFeed()
+	}
+
+	// Print header
+	s.setEmphasize(true)
+	s.setSize(2, 2)
+	s.write(fmt.Sprintf("%s\n", restaurant.Name))
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("%s\n", restaurant.Address))
+	s.write(fmt.Sprintf("Tel: %s\n", restaurant.Phone))
+	s.lineFeed()
+
+	// Print order info
+	s.setAlign("left")
+	s.write(s.printSeparator())
+	s.setEmphasize(true)
+
+	// Extract data from orderData map
+	tableNumber := "Para Llevar"
+	if tn, ok := orderData["table_number"].(string); ok && tn != "" {
+		tableNumber = tn
+	}
+
+	orderType := "Para Llevar"
+	if ot, ok := orderData["order_type"].(string); ok && ot != "" {
+		orderType = ot
+	}
+
+	s.write(fmt.Sprintf("Orden: %s\n", tableNumber))
+	s.setEmphasize(false)
+	s.write(fmt.Sprintf("Tipo: %s\n", orderType))
+	s.write(fmt.Sprintf("Fecha: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+
+	// Print items
+	s.write(s.printSeparator())
+	if items, ok := orderData["items"].([]interface{}); ok {
+		for _, itemData := range items {
+			if item, ok := itemData.(map[string]interface{}); ok {
+				name := ""
+				if n, ok := item["name"].(string); ok {
+					name = n
+				}
+
+				quantity := 1
+				if q, ok := item["quantity"].(float64); ok {
+					quantity = int(q)
+				}
+
+				unitPrice := 0.0
+				if up, ok := item["unit_price"].(float64); ok {
+					unitPrice = up
+				}
+
+				subtotal := 0.0
+				if st, ok := item["subtotal"].(float64); ok {
+					subtotal = st
+				}
+
+				notes := ""
+				if n, ok := item["notes"].(string); ok {
+					notes = n
+				}
+
+				s.write(fmt.Sprintf("%d x %s\n", quantity, name))
+
+				// Print modifiers if any
+				if modifiers, ok := item["modifiers"].([]interface{}); ok && len(modifiers) > 0 {
+					for _, modData := range modifiers {
+						if mod, ok := modData.(map[string]interface{}); ok {
+							modName := ""
+							if mn, ok := mod["name"].(string); ok {
+								modName = mn
+							}
+							priceChange := 0.0
+							if pc, ok := mod["price_change"].(float64); ok {
+								priceChange = pc
+							}
+
+							if modName != "" {
+								if priceChange != 0 {
+									s.write(fmt.Sprintf("  + %s ($%s)\n", modName, s.formatMoney(priceChange)))
+								} else {
+									s.write(fmt.Sprintf("  + %s\n", modName))
+								}
+							}
+						}
+					}
+				}
+
+				s.write(fmt.Sprintf("  $%s c/u = $%s\n",
+					s.formatMoney(unitPrice),
+					s.formatMoney(subtotal)))
+
+				// Print notes if any
+				if notes != "" {
+					s.write(fmt.Sprintf("  Nota: %s\n", notes))
+				}
+			}
+		}
+	}
+
+	// Print totals
+	s.write(s.printSeparator())
+	s.setAlign("right")
+
+	subtotal := 0.0
+	if st, ok := orderData["subtotal"].(float64); ok {
+		subtotal = st
+	}
+
+	tax := 0.0
+	if t, ok := orderData["tax"].(float64); ok {
+		tax = t
+	}
+
+	total := 0.0
+	if t, ok := orderData["total"].(float64); ok {
+		total = t
+	}
+
+	s.write(fmt.Sprintf("Subtotal: $%s\n", s.formatMoney(subtotal)))
+	if tax > 0 {
+		s.write(fmt.Sprintf("IVA: $%s\n", s.formatMoney(tax)))
+	}
+	s.setEmphasize(true)
+	s.setSize(1, 2)
+	s.write(fmt.Sprintf("TOTAL: $%s\n", s.formatMoney(total)))
+	s.setSize(1, 1)
+	s.setEmphasize(false)
+	s.setAlign("left")
+
+	// Footer
+	s.lineFeed()
+	s.setAlign("center")
+	s.write("*** COMPROBANTE DE PRE-CUENTA ***\n")
+	s.write("¡Gracias por su preferencia!\n")
+	if restaurant.Website != "" {
+		s.write(restaurant.Website + "\n")
+	}
+
+	// Cut paper if enabled
+	if config.AutoCut {
+		s.cut()
+	} else {
+		s.lineFeed()
+		s.lineFeed()
+		s.lineFeed()
+	}
+
+	return s.print()
+}
+
 // PrintCashRegisterReport prints cash register report
 func (s *PrinterService) PrintCashRegisterReport(report *models.CashRegisterReport) error {
 	config, err := s.getDefaultPrinterConfig()

@@ -154,6 +154,8 @@ const CashRegister: React.FC = () => {
           // Get optimized sales summary using SQL aggregation (much faster than loading all sales)
           let salesSummary = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
           let salesSummaryForDisplay = { by_payment_method: {} as { [key: string]: number }, total: 0, count: 0 };
+          let serviceChargeByPayment: { [key: string]: number } = {};
+          let totalServiceCharge = 0;
 
           try {
             // Use optimized backend endpoint that uses SQL aggregation
@@ -170,6 +172,9 @@ const CashRegister: React.FC = () => {
               total: summary.total_display || 0,
               count: summary.count_display || 0,
             };
+            // Service charge data
+            serviceChargeByPayment = summary.service_charge_by_payment || {};
+            totalServiceCharge = summary.total_service_charge || 0;
           } catch (e) {
             // Error loading sales summary - use empty defaults
           }
@@ -217,8 +222,8 @@ const CashRegister: React.FC = () => {
             sales_summary: salesSummary,
             sales_summary_for_display: salesSummaryForDisplay,
             // Service charge data
-            service_charge_by_payment: summary.service_charge_by_payment || {},
-            total_service_charge: summary.total_service_charge || 0,
+            service_charge_by_payment: serviceChargeByPayment,
+            total_service_charge: totalServiceCharge,
           });
 
           // Set default closing amount

@@ -39,6 +39,7 @@ type App struct {
 	ConfigService           *services.ConfigService
 	ParametricService       *services.ParametricService
 	DashboardService        *services.DashboardService
+	ComboService            *services.ComboService
 	UpdateService           *services.UpdateService
 	GoogleSheetsService     *services.GoogleSheetsService
 	ReportSchedulerService  *services.ReportSchedulerService
@@ -85,6 +86,11 @@ func (a *App) startup(ctx context.Context) {
 			a.OrderService.SetWebSocketServer(a.WSServer)
 			a.WSServer.SetOrderService(a.OrderService)
 			a.LoggerService.LogInfo("OrderService configured for WebSocket REST API")
+		}
+		// Set PrinterService on WebSocket server for handling print requests from Waiter App
+		if a.PrinterService != nil {
+			a.WSServer.SetPrinterService(a.PrinterService)
+			a.LoggerService.LogInfo("PrinterService configured for WebSocket print requests")
 		}
 		// Now start the WebSocket server with all handlers properly configured
 		go func() {
@@ -192,6 +198,7 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.ProductService = services.NewProductService()
 	a.IngredientService = services.NewIngredientService()
 	a.CustomPageService = services.NewCustomPageService()
+	a.ComboService = services.NewComboService()
 	a.OrderService = services.NewOrderService()
 	a.OrderTypeService = services.NewOrderTypeService()
 	a.SalesService = services.NewSalesService()
@@ -320,6 +327,13 @@ func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
 	// Update the OrderService with the server instance
 	if a.OrderService != nil {
 		a.OrderService.SetWebSocketServer(a.WSServer)
+		a.WSServer.SetOrderService(a.OrderService)
+	}
+
+	// Set PrinterService on WebSocket server for handling print requests from Waiter App
+	if a.PrinterService != nil {
+		a.WSServer.SetPrinterService(a.PrinterService)
+		a.LoggerService.LogInfo("PrinterService configured for WebSocket print requests")
 	}
 
 	go func() {
@@ -379,6 +393,7 @@ func main() {
 	app.ProductService = services.NewProductService()
 	app.IngredientService = services.NewIngredientService()
 	app.CustomPageService = services.NewCustomPageService()
+	app.ComboService = services.NewComboService()
 	app.OrderService = services.NewOrderService()
 	app.OrderTypeService = services.NewOrderTypeService()
 	app.SalesService = services.NewSalesService()
@@ -418,6 +433,7 @@ func main() {
 			app.ProductService = services.NewProductService()
 			app.IngredientService = services.NewIngredientService()
 			app.CustomPageService = services.NewCustomPageService()
+			app.ComboService = services.NewComboService()
 			app.OrderService = services.NewOrderService()
 			app.OrderTypeService = services.NewOrderTypeService()
 			app.SalesService = services.NewSalesService()
@@ -506,6 +522,7 @@ func main() {
 		app.UpdateService,
 		app.ProductService,
 		app.IngredientService,
+		app.ComboService,
 		app.CustomPageService,
 		app.OrderService,
 		app.OrderTypeService,

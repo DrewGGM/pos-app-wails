@@ -408,10 +408,13 @@ fun WaiterApp(
                     android.util.Log.d("MainActivity", "Showing READY/ORDER SENT screen for state: ${uiState.javaClass.simpleName}, currentScreen: ${currentScreen.javaClass.simpleName}")
                     when (currentScreen) {
                         is WaiterViewModel.Screen.TableSelection -> {
+                            val tableTotals by viewModel.tableTotals.collectAsState()
+
                             TableSelectionScreen(
                                 tables = tables,
                                 tableAreas = tableAreas,
                                 areaGridLayouts = areaGridLayouts,
+                                tableTotals = tableTotals, // NEW: Pass table totals
                                 onTableSelected = { table ->
                                     viewModel.selectTable(table)
                                 },
@@ -459,6 +462,8 @@ fun WaiterApp(
                                 onRemoveItem = { viewModel.removeFromCart(it) },
                                 onSendOrder = { viewModel.sendOrder() },
                                 onCancelOrder = if (currentOrderId != null) { { viewModel.deleteCurrentOrder() } } else null,
+                                onSplitBill = if (currentOrderId == null) { { viewModel.navigateToScreen(WaiterViewModel.Screen.SplitBill) } } else null,
+                                onPrintReceipt = { viewModel.printCurrentReceipt() },
                                 onReleaseTable = { viewModel.releaseTable() },
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
@@ -510,6 +515,18 @@ fun WaiterApp(
                                 }
                             )
                         }
+                        is WaiterViewModel.Screen.SplitBill -> {
+                            com.drewcore.waiter_app.ui.screens.SplitBillScreen(
+                                cartItems = cart,
+                                selectedTable = selectedTable,
+                                onBack = {
+                                    viewModel.navigateToScreen(WaiterViewModel.Screen.ProductSelection)
+                                },
+                                onConfirmSplit = { splitOrders ->
+                                    viewModel.sendSplitBillOrders(splitOrders)
+                                }
+                            )
+                        }
                     }
                 }
                 is WaiterViewModel.UiState.Error -> {
@@ -556,6 +573,8 @@ fun ProductSelectionWithCart(
     onRemoveItem: (com.drewcore.waiter_app.data.models.CartItem) -> Unit,
     onSendOrder: () -> Unit,
     onCancelOrder: (() -> Unit)? = null,
+    onSplitBill: (() -> Unit)? = null,
+    onPrintReceipt: (() -> Unit)? = null,
     onReleaseTable: () -> Unit,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
@@ -595,6 +614,13 @@ fun ProductSelectionWithCart(
                     }
                 },
                 actions = {
+                    // Print receipt icon - only in cart tab when there are items
+                    if (selectedTab == 1 && cart.isNotEmpty() && onPrintReceipt != null) {
+                        IconButton(onClick = { onPrintReceipt() }) {
+                            Icon(Icons.Default.Print, "Imprimir pre-cuenta")
+                        }
+                    }
+                    // Change table icon - only when there's a table and cart has items
                     if (selectedTable != null && cart.isNotEmpty()) {
                         IconButton(onClick = { showChangeTableDialog = true }) {
                             Icon(Icons.Default.Edit, "Cambiar mesa")
@@ -660,7 +686,9 @@ fun ProductSelectionWithCart(
                     onUpdateNotes = onUpdateNotes,
                     onRemoveItem = onRemoveItem,
                     onSendOrder = onSendOrder,
-                    onCancelOrder = onCancelOrder
+                    onCancelOrder = onCancelOrder,
+                    onSplitBill = onSplitBill,
+                    onPrintReceipt = onPrintReceipt
                 )
             }
         }

@@ -39,6 +39,8 @@ export interface CashRegisterSalesSummary {
   total_display: number;
   count: number;
   count_display: number;
+  service_charge_by_payment?: { [key: string]: number }; // Service charge breakdown by payment method
+  total_service_charge?: number; // Total service charge collected
 }
 
 // Adapters: Map Wails models -> Frontend models (avoid Time type mismatches)
@@ -340,6 +342,8 @@ class WailsAuthService {
         total_display: (summary as any).total_display || 0,
         count: (summary as any).count || 0,
         count_display: (summary as any).count_display || 0,
+        service_charge_by_payment: (summary as any).service_charge_by_payment || {},
+        total_service_charge: (summary as any).total_service_charge || 0,
       };
     } catch (error) {
       // Return empty summary on error
@@ -350,6 +354,8 @@ class WailsAuthService {
         total_display: 0,
         count: 0,
         count_display: 0,
+        service_charge_by_payment: {},
+        total_service_charge: 0,
       };
     }
   }

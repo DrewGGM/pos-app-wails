@@ -22,6 +22,7 @@ import Customers from './pages/Customers';
 import Employees from './pages/Employees';
 import Inventory from './pages/Inventory';
 import Ingredients from './pages/Ingredients';
+import Combos from './pages/Combos';
 
 // Hooks
 import { useAuth,useWebSocket } from './hooks';
@@ -97,6 +98,7 @@ const App: React.FC = () => {
           <Route path="/employees" element={<Employees />} />
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/ingredients" element={<Ingredients />} />
+          <Route path="/combos" element={<Combos />} />
           <Route path="/settings/*" element={<Settings />} />
         </Route>
 

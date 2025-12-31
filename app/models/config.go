@@ -73,6 +73,17 @@ type RestaurantConfig struct {
 	ClosingTime string `json:"closing_time"` // "22:00"
 	WorkingDays string `json:"working_days"` // JSON array of days
 
+	// Waiter App Printer Configuration
+	WaiterAppPrinterID *uint `json:"waiter_app_printer_id,omitempty"` // ID of printer to use for Waiter App print requests (nil = use default)
+
+	// UI Module Settings - Control which features are visible in the application
+	EnableInventoryModule   bool `json:"enable_inventory_module" gorm:"default:true"`    // Módulo de inventario
+	EnableIngredientsModule bool `json:"enable_ingredients_module" gorm:"default:false"` // Módulo de ingredientes
+	EnableCombosModule      bool `json:"enable_combos_module" gorm:"default:false"`      // Módulo de combos
+	EnableCustomersModule   bool `json:"enable_customers_module" gorm:"default:true"`    // Módulo de clientes
+	EnableReportsModule     bool `json:"enable_reports_module" gorm:"default:true"`      // Módulo de reportes
+	EnableDiscountsModule   bool `json:"enable_discounts_module" gorm:"default:true"`    // Módulo de descuentos
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -227,11 +227,25 @@ fun OrderCardDisplay(
     val isContinuation = cardData.cardIndex > 0
     val isCancelled = cardData.isCancelled
 
-    // Determine card background color based on state
+    // Determine card background color based on state and custom colors
     val cardBackgroundColor = when {
         isCancelled -> Color(0xFFFFEBEE) // Light red for cancelled
         isUpdated -> Color(0xFFFFF3E0)   // Light orange for updated
-        else -> MaterialTheme.colorScheme.surface
+        else -> {
+            // Try to get custom color for this order type
+            val orderTypeCode = order.orderType?.code
+            val customColorHex = preferences.getColorForOrderType(orderTypeCode)
+            if (customColorHex != null) {
+                try {
+                    Color(android.graphics.Color.parseColor(customColorHex))
+                } catch (e: Exception) {
+                    // If color parsing fails, use default
+                    MaterialTheme.colorScheme.surface
+                }
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        }
     }
 
     // Border for cancelled orders
@@ -454,11 +468,34 @@ fun OrderCardDisplay(
 
                     val textDecoration = if (isRemoved) TextDecoration.LineThrough else TextDecoration.None
 
+                    // Parse combo color if item is from a combo
+                    val comboColor = if (item.isFromCombo && !item.comboColor.isNullOrBlank()) {
+                        try {
+                            Color(android.graphics.Color.parseColor(item.comboColor))
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
                                 if (isRemoved) Modifier.padding(vertical = 2.dp) else Modifier
+                            )
+                            // Add left border for combo items
+                            .then(
+                                if (comboColor != null) {
+                                    Modifier.drawWithContent {
+                                        // Draw left border for combo indicator
+                                        drawRect(
+                                            color = comboColor,
+                                            topLeft = Offset(0f, 0f),
+                                            size = Size(4.dp.toPx(), size.height)
+                                        )
+                                        drawContent()
+                                    }.padding(start = 8.dp)
+                                } else Modifier
                             ),
                         verticalAlignment = Alignment.Top
                     ) {
@@ -503,6 +540,28 @@ fun OrderCardDisplay(
                                 color = textColor,
                                 textDecoration = textDecoration
                             )
+                            // Combo indicator - show combo name below product
+                            if (item.isFromCombo && !item.comboName.isNullOrBlank()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 1.dp)
+                                ) {
+                                    Surface(
+                                        color = comboColor?.copy(alpha = 0.3f) ?: Color(0xFFFF9800).copy(alpha = 0.3f),
+                                        shape = MaterialTheme.shapes.extraSmall
+                                    ) {
+                                        Text(
+                                            text = "📦 ${item.comboName}",
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                            fontSize = (preferences.itemFontSize - 3).sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = comboColor ?: Color(0xFFFF9800),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
                             // Modifiers
                             if (!item.modifiers.isNullOrEmpty()) {
                                 item.modifiers.forEach { modifier ->

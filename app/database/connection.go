@@ -159,6 +159,10 @@ func RunMigrations() error {
 		&models.CustomPage{},
 		&models.CustomPageProduct{},
 
+		// Combo models
+		&models.Combo{},
+		&models.ComboItem{},
+
 		// Ingredient models
 		&models.Ingredient{},
 		&models.ProductIngredient{},

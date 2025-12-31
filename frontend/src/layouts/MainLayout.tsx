@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -43,11 +43,23 @@ import {
   Group as GroupIcon,
   AccountCircle,
   Kitchen as KitchenIcon,
+  Fastfood as FastfoodIcon,
   VerifiedUser as DIANIcon,
   OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useAuth, useWebSocket, useDIANMode, useNotifications } from '../hooks';
 import { Warning as WarningIcon, CheckCircle as CheckCircleIcon, Error as ErrorIcon, Info as InfoIcon } from '@mui/icons-material';
+import { wailsConfigService } from '../services/wailsConfigService';
+
+// Module visibility configuration from backend
+interface ModuleVisibility {
+  enable_inventory_module: boolean;
+  enable_ingredients_module: boolean;
+  enable_combos_module: boolean;
+  enable_customers_module: boolean;
+  enable_reports_module: boolean;
+  enable_discounts_module: boolean;
+}
 
 const drawerWidth = 240;
 
@@ -57,6 +69,7 @@ interface MenuItem {
   path: string;
   roles?: string[];
   children?: MenuItem[];
+  moduleKey?: keyof ModuleVisibility; // Key to check in module visibility config
 }
 
 const menuItems: MenuItem[] = [
@@ -109,17 +122,27 @@ const menuItems: MenuItem[] = [
     icon: <WarehouseIcon />,
     path: '/inventory',
     roles: ['admin', 'manager'],
+    moduleKey: 'enable_inventory_module',
   },
   {
     text: 'Ingredientes',
     icon: <KitchenIcon />,
     path: '/ingredients',
     roles: ['admin', 'manager'],
+    moduleKey: 'enable_ingredients_module',
+  },
+  {
+    text: 'Combos',
+    icon: <FastfoodIcon />,
+    path: '/combos',
+    roles: ['admin', 'manager'],
+    moduleKey: 'enable_combos_module',
   },
   {
     text: 'Clientes',
     icon: <PeopleIcon />,
     path: '/customers',
+    moduleKey: 'enable_customers_module',
   },
   {
     text: 'Empleados',
@@ -132,6 +155,7 @@ const menuItems: MenuItem[] = [
     icon: <ReportIcon />,
     path: '/reports',
     roles: ['admin', 'manager'],
+    moduleKey: 'enable_reports_module',
   },
   {
     text: 'Configuración',
@@ -153,6 +177,36 @@ const MainLayout: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
+  const [moduleVisibility, setModuleVisibility] = useState<ModuleVisibility>({
+    enable_inventory_module: true,
+    enable_ingredients_module: false,
+    enable_combos_module: false,
+    enable_customers_module: true,
+    enable_reports_module: true,
+    enable_discounts_module: true,
+  });
+
+  // Load module visibility from backend
+  useEffect(() => {
+    const loadModuleVisibility = async () => {
+      try {
+        const config = await wailsConfigService.getRestaurantConfig();
+        if (config) {
+          setModuleVisibility({
+            enable_inventory_module: config.enable_inventory_module ?? true,
+            enable_ingredients_module: config.enable_ingredients_module ?? false,
+            enable_combos_module: config.enable_combos_module ?? false,
+            enable_customers_module: config.enable_customers_module ?? true,
+            enable_reports_module: config.enable_reports_module ?? true,
+            enable_discounts_module: config.enable_discounts_module ?? true,
+          });
+        }
+      } catch (error) {
+        console.error('Error loading module visibility:', error);
+      }
+    };
+    loadModuleVisibility();
+  }, []);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -220,6 +274,9 @@ const MainLayout: React.FC = () => {
 
   const renderMenuItem = (item: MenuItem, level: number = 0) => {
     if (!hasPermission(item)) return null;
+
+    // Check module visibility - if moduleKey is defined, check if module is enabled
+    if (item.moduleKey && !moduleVisibility[item.moduleKey]) return null;
 
     const isSelected = location.pathname === item.path;
     const isExpanded = expandedItems.includes(item.text);

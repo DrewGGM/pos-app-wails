@@ -19,6 +19,7 @@ type OrderService struct {
 	printerSvc    *PrinterService
 	ingredientSvc *IngredientService
 	orderTypeSvc  *OrderTypeService
+	comboSvc      *ComboService
 	wsServer      *websocket.Server
 }
 
@@ -30,6 +31,7 @@ func NewOrderService() *OrderService {
 		printerSvc:    NewPrinterService(),
 		ingredientSvc: NewIngredientService(),
 		orderTypeSvc:  NewOrderTypeService(),
+		comboSvc:      NewComboService(),
 		wsServer:      nil, // Will be set later
 	}
 }
@@ -72,6 +74,10 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			}
 		}
 	}
+
+	// Expand combos into individual products
+	// This allows combos to be displayed as single items in POS but expanded for kitchen
+	order.Items = s.expandCombosInOrder(order.Items)
 
 	// Calculate totals
 	if err := s.calculateOrderTotals(order); err != nil {
@@ -1198,4 +1204,57 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 	}
 
 	return nil
+}
+
+// expandCombosInOrder expands combo items into individual products
+// This allows combos to be displayed as single items in POS/invoice but expanded for kitchen
+func (s *OrderService) expandCombosInOrder(items []models.OrderItem) []models.OrderItem {
+	var expandedItems []models.OrderItem
+
+	for _, item := range items {
+		// Check if this item is a combo (IsCombo flag set by frontend)
+		if item.IsCombo {
+			// The product_id in this case is actually the combo_id
+			comboID := item.ProductID
+			quantity := item.Quantity
+
+			log.Printf("OrderService: Expanding combo ID %d with quantity %d", comboID, quantity)
+
+			// Get expanded items from ComboService
+			expandedComboItems, comboPrice, err := s.comboSvc.ExpandComboToOrderItems(comboID, quantity)
+			if err != nil {
+				log.Printf("OrderService: Error expanding combo %d: %v - adding as regular item", comboID, err)
+				// If expansion fails, add as regular item (fallback)
+				expandedItems = append(expandedItems, item)
+				continue
+			}
+
+			// Convert ExpandedOrderItem to models.OrderItem
+			for _, expItem := range expandedComboItems {
+				orderItem := models.OrderItem{
+					ProductID:   expItem.ProductID,
+					Quantity:    expItem.Quantity,
+					UnitPrice:   expItem.UnitPrice,
+					Subtotal:    expItem.Subtotal,
+					ComboID:     expItem.ComboID,
+					ComboName:   expItem.ComboName,
+					ComboColor:  expItem.ComboColor,
+					IsFromCombo: expItem.IsFromCombo,
+					Notes:       expItem.Notes,
+					Status:      "pending",
+				}
+				expandedItems = append(expandedItems, orderItem)
+				log.Printf("OrderService: Added expanded item: ProductID=%d (qty: %d) from combo %s",
+					orderItem.ProductID, orderItem.Quantity, orderItem.ComboName)
+			}
+
+			log.Printf("OrderService: Combo %d expanded to %d items, total price: %.2f",
+				comboID, len(expandedComboItems), comboPrice)
+		} else {
+			// Regular product, add as-is
+			expandedItems = append(expandedItems, item)
+		}
+	}
+
+	return expandedItems
 }

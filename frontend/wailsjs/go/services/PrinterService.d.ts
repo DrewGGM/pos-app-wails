@@ -11,7 +11,7 @@ export function PrintCashRegisterReport(arg1:models.CashRegisterReport):Promise<
 
 export function PrintCustomerDataForm():Promise<void>;
 
-export function PrintDIANClosingReport(arg1:services.DIANClosingReport):Promise<void>;
+export function PrintDIANClosingReport(arg1:services.DIANClosingReport,arg2:string):Promise<void>;
 
 export function PrintKitchenOrder(arg1:models.Order):Promise<void>;
 
@@ -20,5 +20,7 @@ export function PrintOrder(arg1:models.Order):Promise<void>;
 export function PrintReceipt(arg1:models.Sale,arg2:boolean):Promise<void>;
 
 export function PrintReceiptWithPrinter(arg1:models.Sale,arg2:boolean,arg3:number):Promise<void>;
+
+export function PrintWaiterReceipt(arg1:Record<string, any>,arg2:any):Promise<void>;
 
 export function TestPrinter(arg1:number):Promise<void>;

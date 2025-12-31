@@ -107,8 +107,15 @@ type OrderItem struct {
 	SentToKitchen   bool                `gorm:"default:false" json:"sent_to_kitchen"`
 	SentToKitchenAt *time.Time          `json:"sent_to_kitchen_at,omitempty"`
 	PreparedAt      *time.Time          `json:"prepared_at,omitempty"`
-	CreatedAt       time.Time           `json:"created_at"`
-	UpdatedAt       time.Time           `json:"updated_at"`
+	// Combo tracking fields
+	IsCombo     bool   `gorm:"-" json:"is_combo,omitempty"`         // Flag temporal: este item ES un combo y debe expandirse (no se guarda en BD)
+	// Fields below are used when this item comes from an expanded combo
+	ComboID     *uint  `gorm:"index" json:"combo_id,omitempty"`     // ID del combo del que proviene
+	ComboName   string `json:"combo_name,omitempty"`                // Nombre del combo para agrupar en cocina
+	ComboColor  string `json:"combo_color,omitempty"`               // Color para indicador visual en cocina
+	IsFromCombo bool   `gorm:"default:false" json:"is_from_combo"`  // Si este item proviene de un combo
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // OrderItemModifier represents modifiers applied to an order item

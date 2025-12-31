@@ -1,5 +1,7 @@
 package com.drewcore.waiter_app.ui.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,14 +27,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.drewcore.waiter_app.data.models.Product
 import com.drewcore.waiter_app.data.models.Modifier as ProductModifier
-import com.drewcore.waiter_app.ui.util.ImageCache
 
 @Composable
 fun ProductsScreen(
@@ -255,6 +260,29 @@ fun CategoryFilter(
     }
 }
 
+// Helper function to decode base64 image
+fun decodeBase64ToBitmap(base64String: String): ImageBitmap? {
+    return try {
+        // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+        val cleanBase64 = base64String.substringAfter("base64,").ifBlank { base64String }
+
+        // Decode base64 to byte array
+        val decodedBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+
+        // Convert byte array to bitmap
+        val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+        bitmap?.asImageBitmap()
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Helper function to check if string is base64
+fun isBase64Image(imageUrl: String): Boolean {
+    return imageUrl.startsWith("data:image") ||
+           (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://") && imageUrl.length > 100)
+}
+
 @Composable
 fun ProductCard(
     product: Product,
@@ -270,7 +298,7 @@ fun ProductCard(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // Product image
+            // Product image with Coil lazy loading and automatic caching
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -278,46 +306,22 @@ fun ProductCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (!product.imageUrl.isNullOrBlank()) {
-                    // Use cached image loading to prevent memory leaks
-                    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-                    var isLoading by remember { mutableStateOf(true) }
+                    // Check if image is base64
+                    if (isBase64Image(product.imageUrl)) {
+                        // Decode and display base64 image
+                        val bitmap = remember(product.imageUrl) {
+                            decodeBase64ToBitmap(product.imageUrl)
+                        }
 
-                    LaunchedEffect(product.imageUrl) {
-                        isLoading = true
-                        // Use ImageCache singleton with LRU cache and memory-efficient decoding
-                        bitmap = ImageCache.getOrDecode(product.imageUrl!!)
-                        isLoading = false
-                    }
-
-                    when {
-                        bitmap != null -> {
-                            // Show image when loaded
+                        if (bitmap != null) {
                             Image(
-                                bitmap = bitmap!!,
+                                bitmap = bitmap,
                                 contentDescription = product.name,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
-                        }
-                        isLoading -> {
-                            // Show loading indicator while decoding
-                            Surface(
-                                modifier = Modifier.fillMaxSize(),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                }
-                            }
-                        }
-                        else -> {
-                            // Show placeholder if decoding failed or no image
+                        } else {
+                            // Show error placeholder if base64 decoding failed
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
                                 color = MaterialTheme.colorScheme.surfaceVariant
@@ -335,6 +339,53 @@ fun ProductCard(
                                 }
                             }
                         }
+                    } else {
+                        // Use Coil for URL images
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(product.imageUrl)
+                                .crossfade(200) // Smooth fade-in animation
+                                .build(),
+                            contentDescription = product.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                // Show loading indicator while loading
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+                            },
+                            error = {
+                                // Show placeholder if loading failed
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Restaurant,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(48.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        )
                     }
                 } else {
                     // Placeholder icon if no image

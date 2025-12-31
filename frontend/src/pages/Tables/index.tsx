@@ -101,6 +101,8 @@ const Tables: React.FC = () => {
     is_active: true,
   });
 
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     loadTables();
     loadAreas();
@@ -133,6 +135,17 @@ const Tables: React.FC = () => {
     };
   }, []);
 
+  // Silent refresh without toast errors (for auto-refresh)
+  const loadTablesSilent = useCallback(async () => {
+    try {
+      const data = await wailsOrderService.getTables();
+      setTables(data);
+    } catch (error) {
+      // Silent fail for auto-refresh
+      console.error('Auto-refresh failed:', error);
+    }
+  }, []);
+
   const loadTables = async () => {
     try {
       const data = await wailsOrderService.getTables();
@@ -161,6 +174,21 @@ const Tables: React.FC = () => {
       console.error('Error loading areas:', error);
     }
   };
+
+  // Auto-refresh tables every 5 seconds to keep table orders updated
+  // This ensures current_order totals and kitchen acknowledgments are reflected
+  useEffect(() => {
+    refreshIntervalRef.current = setInterval(() => {
+      loadTablesSilent();
+    }, 5000);
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [loadTablesSilent]);
 
   // Table dialog handlers
   const handleOpenTableDialog = (table?: Table) => {

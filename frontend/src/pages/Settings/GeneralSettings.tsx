@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -8,6 +8,7 @@ import {
   Chip,
   Divider,
   alpha,
+  CircularProgress,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -26,7 +27,16 @@ import {
   Settings as SettingsIcon,
   Lock as LockIcon,
   Router as RouterIcon,
+  Inventory as InventoryIcon,
+  Kitchen as KitchenIcon,
+  Fastfood as FastfoodIcon,
+  People as PeopleIcon,
+  Assessment as AssessmentIcon,
+  LocalOffer as LocalOfferIcon,
+  Apps as AppsIcon,
 } from '@mui/icons-material';
+import { wailsConfigService } from '../../services/wailsConfigService';
+import { toast } from 'react-toastify';
 
 // Module configuration interface
 export interface ModuleConfig {
@@ -176,6 +186,67 @@ export const defaultModuleConfig: ModuleConfig[] = [
 // Storage key for module configuration
 const STORAGE_KEY = 'pos_module_config';
 
+// Application modules configuration (synced with backend)
+export interface AppModuleConfig {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  enabled: boolean;
+  backendKey: string; // Key in RestaurantConfig
+}
+
+export const defaultAppModules: AppModuleConfig[] = [
+  {
+    id: 'inventory',
+    name: 'Inventario',
+    description: 'Gestión de stock y movimientos',
+    icon: <InventoryIcon />,
+    enabled: true,
+    backendKey: 'enable_inventory_module',
+  },
+  {
+    id: 'ingredients',
+    name: 'Ingredientes',
+    description: 'Control de ingredientes y recetas',
+    icon: <KitchenIcon />,
+    enabled: false,
+    backendKey: 'enable_ingredients_module',
+  },
+  {
+    id: 'combos',
+    name: 'Combos',
+    description: 'Paquetes de productos',
+    icon: <FastfoodIcon />,
+    enabled: false,
+    backendKey: 'enable_combos_module',
+  },
+  {
+    id: 'customers',
+    name: 'Clientes',
+    description: 'Registro y gestión de clientes',
+    icon: <PeopleIcon />,
+    enabled: true,
+    backendKey: 'enable_customers_module',
+  },
+  {
+    id: 'reports',
+    name: 'Reportes',
+    description: 'Informes y estadísticas',
+    icon: <AssessmentIcon />,
+    enabled: true,
+    backendKey: 'enable_reports_module',
+  },
+  {
+    id: 'discounts',
+    name: 'Descuentos',
+    description: 'Configuración de descuentos',
+    icon: <LocalOfferIcon />,
+    enabled: true,
+    backendKey: 'enable_discounts_module',
+  },
+];
+
 // Load module configuration from localStorage
 export const loadModuleConfig = (): ModuleConfig[] => {
   try {
@@ -213,6 +284,20 @@ export const isModuleEnabled = (moduleId: string, config: ModuleConfig[]): boole
   return module?.enabled ?? false;
 };
 
+// Check if an application module is enabled
+export const isAppModuleEnabled = (moduleId: string, modules: AppModuleConfig[]): boolean => {
+  const module = modules.find(m => m.id === moduleId);
+  return module?.enabled ?? false;
+};
+
+// Load application modules from backend config
+export const loadAppModulesFromConfig = (config: any): AppModuleConfig[] => {
+  return defaultAppModules.map(module => ({
+    ...module,
+    enabled: config?.[module.backendKey] ?? module.enabled,
+  }));
+};
+
 interface GeneralSettingsProps {
   moduleConfig: ModuleConfig[];
   onModuleConfigChange: (config: ModuleConfig[]) => void;
@@ -222,6 +307,56 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   moduleConfig,
   onModuleConfigChange,
 }) => {
+  // State for application modules (synced with backend)
+  const [appModules, setAppModules] = useState<AppModuleConfig[]>(defaultAppModules);
+  const [loadingAppModules, setLoadingAppModules] = useState(true);
+  const [savingModule, setSavingModule] = useState<string | null>(null);
+
+  // Load application modules from backend on mount
+  useEffect(() => {
+    const loadAppModules = async () => {
+      try {
+        const config = await wailsConfigService.getRestaurantConfig();
+        if (config) {
+          setAppModules(loadAppModulesFromConfig(config));
+        }
+      } catch (error) {
+        console.error('Error loading app modules:', error);
+      } finally {
+        setLoadingAppModules(false);
+      }
+    };
+    loadAppModules();
+  }, []);
+
+  // Toggle application module and save to backend
+  const handleToggleAppModule = async (moduleId: string) => {
+    const module = appModules.find(m => m.id === moduleId);
+    if (!module) return;
+
+    setSavingModule(moduleId);
+    const newEnabled = !module.enabled;
+
+    try {
+      // Update backend
+      await wailsConfigService.updateRestaurantConfig({
+        [module.backendKey]: newEnabled,
+      });
+
+      // Update local state
+      setAppModules(prev =>
+        prev.map(m => m.id === moduleId ? { ...m, enabled: newEnabled } : m)
+      );
+
+      toast.success(`Módulo "${module.name}" ${newEnabled ? 'activado' : 'desactivado'}`);
+    } catch (error) {
+      console.error('Error toggling app module:', error);
+      toast.error('Error al cambiar el módulo');
+    } finally {
+      setSavingModule(null);
+    }
+  };
+
   const handleToggleModule = (moduleId: string) => {
     const newConfig = moduleConfig.map(module => {
       if (module.id === moduleId && module.category !== 'essential') {
@@ -375,6 +510,104 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     );
   };
 
+  // Render application modules section
+  const renderAppModules = () => {
+    const color = '#FF9800'; // Orange for app modules
+
+    return (
+      <Card
+        sx={{
+          mb: 3,
+          border: `1px solid ${alpha(color, 0.3)}`,
+          '& .MuiCardContent-root': { pb: 2 }
+        }}
+      >
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Box
+              sx={{
+                width: 4,
+                height: 24,
+                bgcolor: color,
+                borderRadius: 1,
+                mr: 1.5,
+              }}
+            />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle1" fontWeight="600">
+                Módulos de la Aplicación
+                <AppsIcon sx={{ ml: 1, fontSize: 16, color: 'text.secondary', verticalAlign: 'middle' }} />
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Controla las secciones visibles en el menú lateral
+              </Typography>
+            </Box>
+            {loadingAppModules && <CircularProgress size={20} />}
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {appModules.map((module) => (
+              <Box
+                key={module.id}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: module.enabled ? alpha(color, 0.05) : 'transparent',
+                  border: `1px solid ${module.enabled ? alpha(color, 0.2) : 'transparent'}`,
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: alpha(color, 0.08),
+                  },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 40,
+                      height: 40,
+                      borderRadius: 1,
+                      bgcolor: module.enabled ? alpha(color, 0.15) : 'action.hover',
+                      color: module.enabled ? color : 'text.secondary',
+                      mr: 2,
+                    }}
+                  >
+                    {module.icon}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body1" fontWeight={module.enabled ? 600 : 400}>
+                      {module.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {module.description}
+                    </Typography>
+                  </Box>
+                </Box>
+                {savingModule === module.id ? (
+                  <CircularProgress size={24} />
+                ) : (
+                  <Switch
+                    checked={module.enabled}
+                    onChange={() => handleToggleAppModule(module.id)}
+                    disabled={loadingAppModules}
+                    color="warning"
+                  />
+                )}
+              </Box>
+            ))}
+          </Box>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <Box>
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -389,6 +622,9 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
         </Box>
       </Box>
 
+      {/* Application Modules - First section */}
+      {renderAppModules()}
+
       {renderModuleCategory('essential')}
       {renderModuleCategory('optional')}
       {renderModuleCategory('development')}
@@ -399,8 +635,8 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({
           <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <span>💡</span>
             <span>
-              Los módulos desactivados no aparecerán en las pestañas de configuración.
-              Puedes activarlos en cualquier momento desde esta sección.
+              Los módulos de la aplicación controlan la visibilidad en el menú lateral.
+              Los módulos de configuración controlan las pestañas de ajustes.
             </span>
           </Typography>
         </CardContent>

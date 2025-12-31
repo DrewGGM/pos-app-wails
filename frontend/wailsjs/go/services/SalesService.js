@@ -82,6 +82,10 @@ export function GetDIANClosingReport(arg1) {
   return window['go']['services']['SalesService']['GetDIANClosingReport'](arg1);
 }
 
+export function GetDIANClosingReportCustomRange(arg1, arg2) {
+  return window['go']['services']['SalesService']['GetDIANClosingReportCustomRange'](arg1, arg2);
+}
+
 export function GetDIANClosingReportWithPeriod(arg1, arg2) {
   return window['go']['services']['SalesService']['GetDIANClosingReportWithPeriod'](arg1, arg2);
 }
@@ -128,6 +132,14 @@ export function Preload(arg1) {
 
 export function PrintDIANClosingReport(arg1) {
   return window['go']['services']['SalesService']['PrintDIANClosingReport'](arg1);
+}
+
+export function PrintDIANClosingReportCustomRange(arg1, arg2) {
+  return window['go']['services']['SalesService']['PrintDIANClosingReportCustomRange'](arg1, arg2);
+}
+
+export function PrintDIANClosingReportWithPeriod(arg1, arg2) {
+  return window['go']['services']['SalesService']['PrintDIANClosingReportWithPeriod'](arg1, arg2);
 }
 
 export function PrintReceipt(arg1) {

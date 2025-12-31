@@ -18,8 +18,8 @@ export function PrintCustomerDataForm() {
   return window['go']['services']['PrinterService']['PrintCustomerDataForm']();
 }
 
-export function PrintDIANClosingReport(arg1) {
-  return window['go']['services']['PrinterService']['PrintDIANClosingReport'](arg1);
+export function PrintDIANClosingReport(arg1, arg2) {
+  return window['go']['services']['PrinterService']['PrintDIANClosingReport'](arg1, arg2);
 }
 
 export function PrintKitchenOrder(arg1) {
@@ -36,6 +36,10 @@ export function PrintReceipt(arg1, arg2) {
 
 export function PrintReceiptWithPrinter(arg1, arg2, arg3) {
   return window['go']['services']['PrinterService']['PrintReceiptWithPrinter'](arg1, arg2, arg3);
+}
+
+export function PrintWaiterReceipt(arg1, arg2) {
+  return window['go']['services']['PrinterService']['PrintWaiterReceipt'](arg1, arg2);
 }
 
 export function TestPrinter(arg1) {

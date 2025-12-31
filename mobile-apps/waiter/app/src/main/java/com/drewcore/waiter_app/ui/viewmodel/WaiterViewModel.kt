@@ -31,6 +31,10 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     private val _tables = MutableStateFlow<List<Table>>(emptyList())
     val tables: StateFlow<List<Table>> = _tables
 
+    // NEW: Map of table ID -> order total for occupied tables
+    private val _tableTotals = MutableStateFlow<Map<Int, Double>>(emptyMap())
+    val tableTotals: StateFlow<Map<Int, Double>> = _tableTotals
+
     private val _tableAreas = MutableStateFlow<List<TableArea>>(emptyList())
     val tableAreas: StateFlow<List<TableArea>> = _tableAreas
 
@@ -119,6 +123,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         object ProductSelection : Screen()
         object OrdersList : Screen()
         object Settings : Screen()
+        object SplitBill : Screen()
     }
 
     val cartTotal: Double
@@ -202,18 +207,21 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                             // Reload tables when there's a table update
                             android.util.Log.d("WaiterViewModel", "Reloading tables due to table_update")
                             refreshTables()
+                            updateTableTotals() // NEW: Update totals when tables update
                         }
                         "order_new", "order_update", "order_ready", "order_cancelled" -> {
                             // Reload orders and tables for any order change
                             android.util.Log.d("WaiterViewModel", "Reloading data due to ${it.type}")
                             refreshTables()
                             refreshOrders()
+                            updateTableTotals() // NEW: Update totals when orders change
                         }
                         "kitchen_order" -> {
                             // Reload both tables and orders when order goes to kitchen
                             android.util.Log.d("WaiterViewModel", "Reloading data due to kitchen_order")
                             refreshTables()
                             refreshOrders()
+                            updateTableTotals() // NEW: Update totals
                         }
                         "product_update", "product_new", "product_deleted" -> {
                             // Reload products when there's a product change
@@ -478,6 +486,29 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
             // Reload all data
             loadInitialData()
+            updateTableTotals() // NEW: Update table totals
+        }
+    }
+
+    /**
+     * NEW: Calculate totals for all occupied tables
+     * Called when orders are refreshed via WebSocket or manually
+     */
+    private fun updateTableTotals() {
+        viewModelScope.launch {
+            apiService?.getOrders(status = "pending")?.onSuccess { orders ->
+                // Group orders by table and sum totals
+                val totalsMap = orders
+                    .filter { it.tableId != null } // Only table orders
+                    .groupBy { it.tableId!! }
+                    .mapValues { (_, ordersForTable) ->
+                        ordersForTable.sumOf { it.total }
+                    }
+                _tableTotals.value = totalsMap
+                android.util.Log.d("WaiterViewModel", "Updated table totals: $totalsMap")
+            }?.onFailure { error ->
+                android.util.Log.e("WaiterViewModel", "Error updating table totals: ${error.message}")
+            }
         }
     }
 
@@ -897,6 +928,110 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Send split bill orders - creates multiple separate orders from one cart
+     * Each map entry represents one bill with its assigned items
+     */
+    fun sendSplitBillOrders(splitOrders: Map<Int, List<CartItem>>) {
+        if (splitOrders.isEmpty() || splitOrders.values.all { it.isEmpty() }) {
+            _uiState.value = UiState.Error("No hay items asignados a las cuentas")
+            return
+        }
+
+        val table = _selectedTable.value
+        val selectedType = _selectedOrderType.value
+        val orderType = selectedType?.code?.replace("-", "_") ?: (if (table != null) "dine_in" else "takeout")
+
+        viewModelScope.launch {
+            _uiState.value = UiState.SendingOrder
+
+            var allSuccess = true
+            var lastOrderNumber = ""
+            val sentOrderNumbers = mutableListOf<String>()
+
+            // Create one order for each bill
+            splitOrders.entries.sortedBy { it.key }.forEach { (billNum, cartItems) ->
+                if (cartItems.isEmpty()) return@forEach
+
+                // Generate unique order number for each split
+                val baseOrderNumber = generateOrderNumber()
+                val orderNumber = "$baseOrderNumber-${billNum}"
+                lastOrderNumber = orderNumber
+
+                val items = cartItems.map { cartItem ->
+                    OrderItemRequest(
+                        productId = cartItem.product.id,
+                        quantity = cartItem.quantity,
+                        unitPrice = cartItem.unitPrice,
+                        subtotal = cartItem.subtotal,
+                        notes = cartItem.notes.takeIf { it.isNotBlank() },
+                        modifiers = cartItem.modifiers.takeIf { it.isNotEmpty() }?.map { modifier ->
+                            OrderItemModifierRequest(
+                                modifierId = modifier.id,
+                                priceChange = modifier.priceChange
+                            )
+                        }
+                    )
+                }
+
+                val billTotal = cartItems.sumOf { it.subtotal }
+                val deliveryData = _deliveryInfo.value
+
+                val order = OrderRequest(
+                    orderNumber = orderNumber,
+                    orderTypeId = selectedType?.id,
+                    type = orderType,
+                    tableId = table?.id,
+                    items = items,
+                    subtotal = billTotal,
+                    tax = 0.0,
+                    total = billTotal,
+                    notes = "Cuenta dividida ${billNum}/${splitOrders.size}",
+                    source = "waiter_app",
+                    deliveryCustomerName = deliveryData?.customerName,
+                    deliveryAddress = deliveryData?.address,
+                    deliveryPhone = deliveryData?.phone
+                )
+
+                android.util.Log.d("WaiterViewModel", "sendSplitBill: Sending bill $billNum with total $billTotal")
+
+                val result = apiService?.createOrder(order)
+                result?.onSuccess { orderResponse ->
+                    sentOrderNumbers.add(orderNumber)
+                    android.util.Log.d("WaiterViewModel", "sendSplitBill: Bill $billNum sent successfully")
+                }?.onFailure { error ->
+                    android.util.Log.e("WaiterViewModel", "sendSplitBill: Failed to send bill $billNum", error)
+                    allSuccess = false
+                    _uiState.value = UiState.Error("Error enviando cuenta $billNum: ${error.message}")
+                    return@launch // Stop sending remaining bills if one fails
+                }
+            }
+
+            if (allSuccess && sentOrderNumbers.isNotEmpty()) {
+                // Navigate first
+                navigateToScreen(Screen.TableSelection)
+
+                // Clear cart and order state
+                _cart.value = emptyList()
+                _currentOrderId.value = null
+                _selectedTable.value = null
+
+                // Show success state
+                _uiState.value = UiState.OrderSent("Cuentas divididas enviadas (${sentOrderNumbers.size})")
+
+                // Refresh tables and orders
+                apiService?.getTables()?.onSuccess { tableList ->
+                    _tables.value = tableList
+                }
+                loadOrders()
+
+                // Reset to Ready after delay
+                delay(1500)
+                _uiState.value = UiState.Ready
+            }
+        }
+    }
+
     fun deleteCurrentOrder() {
         val orderId = _currentOrderId.value ?: return
 
@@ -920,6 +1055,54 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.value = UiState.Error(error.message ?: "Error eliminando pedido")
             }
         }
+    }
+
+    /**
+     * Request print receipt via main app's configured printer
+     * Sends current cart data to main app via WebSocket
+     */
+    fun printCurrentReceipt() {
+        if (_cart.value.isEmpty()) {
+            _uiState.value = UiState.Error("No hay items para imprimir")
+            return
+        }
+
+        val table = _selectedTable.value
+        val selectedType = _selectedOrderType.value
+
+        // Prepare order data for printing
+        val orderData = mapOf(
+            "table_number" to (table?.number ?: "Para Llevar"),
+            "order_type" to (selectedType?.name ?: "Para Llevar"),
+            "items" to _cart.value.map { cartItem ->
+                mapOf(
+                    "name" to cartItem.product.name,
+                    "quantity" to cartItem.quantity,
+                    "unit_price" to cartItem.unitPrice,
+                    "subtotal" to cartItem.subtotal,
+                    "notes" to cartItem.notes,
+                    "modifiers" to cartItem.modifiers.map { modifier ->
+                        mapOf(
+                            "name" to modifier.name,
+                            "price_change" to modifier.priceChange
+                        )
+                    }
+                )
+            },
+            "subtotal" to cartTotal,
+            "tax" to 0.0,
+            "total" to cartTotal,
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        // Generate temporary order number for printing
+        val tempOrderNumber = "PREVIEW-${System.currentTimeMillis()}"
+
+        // Send print request via WebSocket
+        webSocketManager.sendPrintRequest(tempOrderNumber, orderData)
+
+        android.util.Log.d("WaiterViewModel", "Print request sent for preview receipt")
+        _uiState.value = UiState.Ready
     }
 
     fun clearError() {

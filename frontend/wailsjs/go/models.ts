@@ -1177,6 +1177,11 @@ export namespace models {
 	    sent_to_kitchen: boolean;
 	    sent_to_kitchen_at?: time.Time;
 	    prepared_at?: time.Time;
+	    is_combo?: boolean;
+	    combo_id?: number;
+	    combo_name?: string;
+	    combo_color?: string;
+	    is_from_combo: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -1199,6 +1204,11 @@ export namespace models {
 	        this.sent_to_kitchen = source["sent_to_kitchen"];
 	        this.sent_to_kitchen_at = this.convertValues(source["sent_to_kitchen_at"], time.Time);
 	        this.prepared_at = this.convertValues(source["prepared_at"], time.Time);
+	        this.is_combo = source["is_combo"];
+	        this.combo_id = source["combo_id"];
+	        this.combo_name = source["combo_name"];
+	        this.combo_color = source["combo_color"];
+	        this.is_from_combo = source["is_from_combo"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
@@ -1471,6 +1481,7 @@ export namespace models {
 	    subtotal: number;
 	    tax: number;
 	    discount: number;
+	    service_charge: number;
 	    total: number;
 	    notes: string;
 	    employee_id: number;
@@ -1509,6 +1520,7 @@ export namespace models {
 	        this.subtotal = source["subtotal"];
 	        this.tax = source["tax"];
 	        this.discount = source["discount"];
+	        this.service_charge = source["service_charge"];
 	        this.total = source["total"];
 	        this.notes = source["notes"];
 	        this.employee_id = source["employee_id"];
@@ -1551,6 +1563,7 @@ export namespace models {
 	    subtotal: number;
 	    tax: number;
 	    discount: number;
+	    service_charge: number;
 	    total: number;
 	    payment_method: string;
 	    payment_details: Payment[];
@@ -1583,6 +1596,7 @@ export namespace models {
 	        this.subtotal = source["subtotal"];
 	        this.tax = source["tax"];
 	        this.discount = source["discount"];
+	        this.service_charge = source["service_charge"];
 	        this.total = source["total"];
 	        this.payment_method = source["payment_method"];
 	        this.payment_details = this.convertValues(source["payment_details"], Payment);
@@ -1731,6 +1745,107 @@ export namespace models {
 	        this.generated_by = source["generated_by"];
 	        this.employee = this.convertValues(source["employee"], Employee);
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ComboItem {
+	    id: number;
+	    combo_id: number;
+	    product_id: number;
+	    product?: Product;
+	    quantity: number;
+	    position: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	
+	    static createFrom(source: any = {}) {
+	        return new ComboItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.combo_id = source["combo_id"];
+	        this.product_id = source["product_id"];
+	        this.product = this.convertValues(source["product"], Product);
+	        this.quantity = source["quantity"];
+	        this.position = source["position"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Combo {
+	    id: number;
+	    name: string;
+	    description: string;
+	    price: number;
+	    image: string;
+	    category_id?: number;
+	    category?: Category;
+	    is_active: boolean;
+	    items?: ComboItem[];
+	    tax_type_id: number;
+	    display_order: number;
+	    created_at: time.Time;
+	    updated_at: time.Time;
+	    deleted_at?: gorm.DeletedAt;
+	
+	    static createFrom(source: any = {}) {
+	        return new Combo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.price = source["price"];
+	        this.image = source["image"];
+	        this.category_id = source["category_id"];
+	        this.category = this.convertValues(source["category"], Category);
+	        this.is_active = source["is_active"];
+	        this.items = this.convertValues(source["items"], ComboItem);
+	        this.tax_type_id = source["tax_type_id"];
+	        this.display_order = source["display_order"];
+	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
+	        this.deleted_at = this.convertValues(source["deleted_at"], gorm.DeletedAt);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2775,12 +2890,21 @@ export namespace models {
 	    default_consumer_email: string;
 	    default_tax_rate: number;
 	    tax_included_in_price: boolean;
+	    service_charge_enabled: boolean;
+	    service_charge_percent: number;
 	    currency: string;
 	    currency_symbol: string;
 	    decimal_places: number;
 	    opening_time: string;
 	    closing_time: string;
 	    working_days: string;
+	    waiter_app_printer_id?: number;
+	    enable_inventory_module: boolean;
+	    enable_ingredients_module: boolean;
+	    enable_combos_module: boolean;
+	    enable_customers_module: boolean;
+	    enable_reports_module: boolean;
+	    enable_discounts_module: boolean;
 	    created_at: time.Time;
 	    updated_at: time.Time;
 	
@@ -2817,12 +2941,21 @@ export namespace models {
 	        this.default_consumer_email = source["default_consumer_email"];
 	        this.default_tax_rate = source["default_tax_rate"];
 	        this.tax_included_in_price = source["tax_included_in_price"];
+	        this.service_charge_enabled = source["service_charge_enabled"];
+	        this.service_charge_percent = source["service_charge_percent"];
 	        this.currency = source["currency"];
 	        this.currency_symbol = source["currency_symbol"];
 	        this.decimal_places = source["decimal_places"];
 	        this.opening_time = source["opening_time"];
 	        this.closing_time = source["closing_time"];
 	        this.working_days = source["working_days"];
+	        this.waiter_app_printer_id = source["waiter_app_printer_id"];
+	        this.enable_inventory_module = source["enable_inventory_module"];
+	        this.enable_ingredients_module = source["enable_ingredients_module"];
+	        this.enable_combos_module = source["enable_combos_module"];
+	        this.enable_customers_module = source["enable_customers_module"];
+	        this.enable_reports_module = source["enable_reports_module"];
+	        this.enable_discounts_module = source["enable_discounts_module"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
 	        this.updated_at = this.convertValues(source["updated_at"], time.Time);
 	    }
@@ -3497,6 +3630,8 @@ export namespace services {
 	    total_display: number;
 	    count: number;
 	    count_display: number;
+	    service_charge_by_payment: Record<string, number>;
+	    total_service_charge: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CashRegisterSalesSummary(source);
@@ -3510,6 +3645,8 @@ export namespace services {
 	        this.total_display = source["total_display"];
 	        this.count = source["count"];
 	        this.count_display = source["count_display"];
+	        this.service_charge_by_payment = source["service_charge_by_payment"];
+	        this.total_service_charge = source["total_service_charge"];
 	    }
 	}
 	export class CategoryInventoryData {
@@ -4329,6 +4466,34 @@ export namespace services {
 	        this.phone = source["phone"];
 	        this.email = source["email"];
 	        this.has_system_config = source["has_system_config"];
+	    }
+	}
+	export class ExpandedOrderItem {
+	    product_id: number;
+	    quantity: number;
+	    unit_price: number;
+	    subtotal: number;
+	    combo_id?: number;
+	    combo_name?: string;
+	    combo_color?: string;
+	    is_from_combo: boolean;
+	    notes?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExpandedOrderItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product_id = source["product_id"];
+	        this.quantity = source["quantity"];
+	        this.unit_price = source["unit_price"];
+	        this.subtotal = source["subtotal"];
+	        this.combo_id = source["combo_id"];
+	        this.combo_name = source["combo_name"];
+	        this.combo_color = source["combo_color"];
+	        this.is_from_combo = source["is_from_combo"];
+	        this.notes = source["notes"];
 	    }
 	}
 	export class FullSyncResult {

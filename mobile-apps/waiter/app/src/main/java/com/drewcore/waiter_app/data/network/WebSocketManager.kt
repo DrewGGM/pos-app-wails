@@ -236,6 +236,26 @@ class WebSocketManager {
     }
 
     /**
+     * Send print request to main app (via WebSocket)
+     * The main app will handle the actual printing using its configured printer
+     */
+    fun sendPrintRequest(orderNumber: String, orderData: Map<String, Any>) {
+        val timestamp = java.time.Instant.now().toString()
+        val message = mapOf(
+            "type" to "print_receipt",
+            "timestamp" to timestamp,
+            "data" to mapOf(
+                "order_number" to orderNumber,
+                "order_data" to orderData
+            )
+        )
+
+        val json = gson.toJson(message)
+        webSocket?.send(json)
+        Log.d(TAG, "Sent print request for order: $orderNumber")
+    }
+
+    /**
      * Start auth timeout - if no auth_response received within AUTH_TIMEOUT_MS, fail connection
      */
     private fun startAuthTimeout() {
