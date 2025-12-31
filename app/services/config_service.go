@@ -180,12 +180,16 @@ func (s *ConfigService) UpdateRestaurantConfig(config *models.RestaurantConfig) 
 		return err
 	}
 
+	fmt.Printf("\n🔍 [UpdateRestaurantConfig] Recibiendo actualización:\n")
+	configJSON, _ := json.MarshalIndent(config, "", "  ")
+	fmt.Printf("   Datos recibidos: %s\n", string(configJSON))
+
 	// Get existing config to determine ID
 	var existing models.RestaurantConfig
 	err := s.db.First(&existing).Error
 
 	if err == gorm.ErrRecordNotFound {
-		// No existing config, create new one
+		fmt.Println("   ℹ️  No existe config, creando nueva...")
 		return s.db.Create(config).Error
 	}
 
@@ -193,9 +197,134 @@ func (s *ConfigService) UpdateRestaurantConfig(config *models.RestaurantConfig) 
 		return err
 	}
 
-	// Use Updates() for partial updates - only updates non-zero fields
-	// This allows sending just {enable_inventory_module: true} without overwriting other fields
-	return s.db.Model(&existing).Updates(config).Error
+	fmt.Printf("   📋 Config existente (campos de módulos): inventory=%v, ingredients=%v, combos=%v, customers=%v, reports=%v, discounts=%v\n",
+		existing.EnableInventoryModule, existing.EnableIngredientsModule, existing.EnableCombosModule,
+		existing.EnableCustomersModule, existing.EnableReportsModule, existing.EnableDiscountsModule)
+
+	// Convert struct to map to handle false/zero values correctly
+	// GORM's Updates() ignores zero values when using structs, but not when using maps
+	configMap := make(map[string]interface{})
+	configJSON, err = json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(configJSON, &configMap); err != nil {
+		return err
+	}
+
+	fmt.Printf("   🗺️  Map después de JSON (primeras claves): ")
+	count := 0
+	for key := range configMap {
+		if count < 10 {
+			fmt.Printf("%s, ", key)
+			count++
+		}
+	}
+	fmt.Println()
+
+	// Remove nil values and metadata fields that shouldn't be updated
+	delete(configMap, "id")
+	delete(configMap, "created_at")
+	delete(configMap, "updated_at")
+	delete(configMap, "deleted_at")
+
+	// Remove nil values from map
+	for key, value := range configMap {
+		if value == nil {
+			delete(configMap, key)
+		}
+	}
+
+	fmt.Printf("   ✅ Campos a actualizar (%d): ", len(configMap))
+	for key, value := range configMap {
+		fmt.Printf("%s=%v, ", key, value)
+	}
+	fmt.Println()
+
+	// Use Updates() with map - this will update false values correctly
+	err = s.db.Model(&existing).Updates(configMap).Error
+	if err != nil {
+		fmt.Printf("   ❌ Error al actualizar: %v\n", err)
+		return err
+	}
+
+	// Reload to show what was saved
+	var updated models.RestaurantConfig
+	s.db.First(&updated)
+	fmt.Printf("   💾 Config después de actualizar (campos de módulos): inventory=%v, ingredients=%v, combos=%v, customers=%v, reports=%v, discounts=%v\n\n",
+		updated.EnableInventoryModule, updated.EnableIngredientsModule, updated.EnableCombosModule,
+		updated.EnableCustomersModule, updated.EnableReportsModule, updated.EnableDiscountsModule)
+
+	return nil
+}
+
+// UpdateRestaurantConfigPartial updates restaurant configuration with a map of fields
+// This properly handles partial updates including false/zero values
+func (s *ConfigService) UpdateRestaurantConfigPartial(updates map[string]interface{}) error {
+	if err := s.EnsureDB(); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n🔍 [UpdateRestaurantConfigPartial] Actualización parcial:\n")
+	fmt.Printf("   Campos recibidos (%d): ", len(updates))
+	for key, value := range updates {
+		fmt.Printf("%s=%v, ", key, value)
+	}
+	fmt.Println()
+
+	// Get existing config
+	var existing models.RestaurantConfig
+	err := s.db.First(&existing).Error
+
+	if err == gorm.ErrRecordNotFound {
+		fmt.Println("   ℹ️  No existe config, creando nueva...")
+		newConfig := &models.RestaurantConfig{}
+		if err := s.db.Create(newConfig).Error; err != nil {
+			return err
+		}
+		existing = *newConfig
+	} else if err != nil {
+		return err
+	}
+
+	fmt.Printf("   📋 Antes: inventory=%v, ingredients=%v, combos=%v, customers=%v, reports=%v, discounts=%v\n",
+		existing.EnableInventoryModule, existing.EnableIngredientsModule, existing.EnableCombosModule,
+		existing.EnableCustomersModule, existing.EnableReportsModule, existing.EnableDiscountsModule)
+
+	// Remove metadata fields
+	delete(updates, "id")
+	delete(updates, "created_at")
+	delete(updates, "updated_at")
+	delete(updates, "deleted_at")
+
+	// Remove nil values from map
+	for key, value := range updates {
+		if value == nil {
+			delete(updates, key)
+		}
+	}
+
+	fmt.Printf("   ✅ Campos a actualizar después de filtrar (%d): ", len(updates))
+	for key, value := range updates {
+		fmt.Printf("%s=%v, ", key, value)
+	}
+	fmt.Println()
+
+	// Update with map
+	err = s.db.Model(&existing).Updates(updates).Error
+	if err != nil {
+		fmt.Printf("   ❌ Error: %v\n", err)
+		return err
+	}
+
+	// Reload
+	var updated models.RestaurantConfig
+	s.db.First(&updated)
+	fmt.Printf("   💾 Después: inventory=%v, ingredients=%v, combos=%v, customers=%v, reports=%v, discounts=%v\n\n",
+		updated.EnableInventoryModule, updated.EnableIngredientsModule, updated.EnableCombosModule,
+		updated.EnableCustomersModule, updated.EnableReportsModule, updated.EnableDiscountsModule)
+
+	return nil
 }
 
 // GetDIANConfig gets DIAN configuration

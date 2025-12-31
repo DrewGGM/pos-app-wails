@@ -207,7 +207,38 @@ func (s *BoldService) GetTerminals() ([]models.BoldTerminalResponse, error) {
 	return result.Payload.AvailableTerminals, nil
 }
 
-// CreatePayment creates a payment through Bold API
+// CreatePaymentWithContext creates a payment through Bold API and tracks it as pending
+// This version accepts payment context for tracking
+func (s *BoldService) CreatePaymentWithContext(paymentReq *models.BoldPaymentRequest, paymentMethodID uint, paymentMethodName string, orderID, customerID, employeeID, cashRegisterID uint) (*models.BoldPaymentResponse, error) {
+	// First create the payment via Bold API
+	response, err := s.CreatePayment(paymentReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create pending payment record for webhook tracking
+	pendingPayment := &models.BoldPendingPayment{
+		IntegrationID:     response.Payload.IntegrationID,
+		Reference:         paymentReq.Reference,
+		Amount:            paymentReq.Amount.TotalAmount,
+		Status:            "pending",
+		PaymentMethodID:   paymentMethodID,
+		PaymentMethodName: paymentMethodName,
+		OrderID:           orderID,
+		CustomerID:        customerID,
+		EmployeeID:        employeeID,
+		CashRegisterID:    cashRegisterID,
+	}
+
+	if err := s.CreatePendingPayment(pendingPayment); err != nil {
+		// Log error but don't fail the payment creation
+		fmt.Printf("Warning: Failed to create pending payment record: %v\n", err)
+	}
+
+	return response, nil
+}
+
+// CreatePayment creates a payment through Bold API and tracks it as pending
 func (s *BoldService) CreatePayment(paymentReq *models.BoldPaymentRequest) (*models.BoldPaymentResponse, error) {
 	config, err := s.GetBoldConfig()
 	if err != nil {
@@ -277,6 +308,60 @@ func (s *BoldService) CreatePayment(paymentReq *models.BoldPaymentRequest) (*mod
 	s.db.Save(config)
 
 	return &result, nil
+}
+
+// CreatePendingPayment creates a pending payment record for webhook tracking
+func (s *BoldService) CreatePendingPayment(pendingPayment *models.BoldPendingPayment) error {
+	return s.db.Create(pendingPayment).Error
+}
+
+// GetPendingPayment retrieves a pending payment by integration ID
+func (s *BoldService) GetPendingPayment(integrationID string) (*models.BoldPendingPayment, error) {
+	var payment models.BoldPendingPayment
+	err := s.db.Where("integration_id = ?", integrationID).First(&payment).Error
+	if err != nil {
+		return nil, err
+	}
+	return &payment, nil
+}
+
+// GetPendingPaymentStatus retrieves the status of a pending payment
+// Returns: status string and the full payment object
+func (s *BoldService) GetPendingPaymentStatus(integrationID string) (string, *models.BoldPendingPayment, error) {
+	payment, err := s.GetPendingPayment(integrationID)
+	if err != nil {
+		return "", nil, err
+	}
+	return payment.Status, payment, nil
+}
+
+// CancelPendingPayment cancels a pending payment (e.g., due to timeout)
+func (s *BoldService) CancelPendingPayment(integrationID string) error {
+	return s.db.Model(&models.BoldPendingPayment{}).
+		Where("integration_id = ? AND status = ?", integrationID, "pending").
+		Update("status", "cancelled").Error
+}
+
+// GetRecentWebhooks returns the most recent webhook notifications received
+func (s *BoldService) GetRecentWebhooks(limit int) ([]models.BoldPendingPayment, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var webhooks []models.BoldPendingPayment
+	err := s.db.Order("created_at DESC").Limit(limit).Find(&webhooks).Error
+	return webhooks, err
+}
+
+// GetWebhookLogs returns the raw webhook logs for debugging
+func (s *BoldService) GetWebhookLogs(limit int) ([]models.BoldWebhookLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var logs []models.BoldWebhookLog
+	err := s.db.Order("created_at DESC").Limit(limit).Find(&logs).Error
+	return logs, err
 }
 
 // GetAllTerminals retrieves all terminals from database

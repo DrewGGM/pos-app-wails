@@ -225,6 +225,8 @@ func RunMigrations() error {
 		// Bold integration models
 		&models.BoldConfig{},
 		&models.BoldTerminal{},
+		&models.BoldPendingPayment{},
+		&models.BoldWebhookLog{},
 	)
 
 	if err != nil {
@@ -326,6 +328,31 @@ func runAdditionalMigrations() error {
 		ADD COLUMN IF NOT EXISTS enable_discounts_module BOOLEAN DEFAULT true
 	`).Error; err != nil {
 		return fmt.Errorf("failed to add UI module settings columns: %w", err)
+	}
+
+	// Add Bold integration columns to payment_methods if they don't exist
+	if err := db.Exec(`
+		ALTER TABLE payment_methods
+		ADD COLUMN IF NOT EXISTS use_bold_terminal BOOLEAN DEFAULT false,
+		ADD COLUMN IF NOT EXISTS bold_payment_method VARCHAR(50) DEFAULT ''
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add Bold integration columns to payment_methods: %w", err)
+	}
+
+	// Add webhook_port column to bold_configs if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE bold_configs
+		ADD COLUMN IF NOT EXISTS webhook_port INTEGER DEFAULT 8083
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add webhook_port column to bold_configs: %w", err)
+	}
+
+	// Add type_organization_id column to restaurant_configs if it doesn't exist
+	if err := db.Exec(`
+		ALTER TABLE restaurant_configs
+		ADD COLUMN IF NOT EXISTS type_organization_id INTEGER
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add type_organization_id column to restaurant_configs: %w", err)
 	}
 
 	log.Println("✅ Additional migrations completed successfully")

@@ -13,12 +13,10 @@ import com.drewcore.kitchen_app.data.models.OrderItem
 import com.drewcore.kitchen_app.data.network.ServerConnection
 import com.drewcore.kitchen_app.data.network.ServerDiscovery
 import com.drewcore.kitchen_app.data.network.WebSocketManager
-import com.drewcore.kitchen_app.data.preferences.KitchenPreferences
 import com.drewcore.kitchen_app.data.repository.OrderRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
@@ -27,27 +25,27 @@ import kotlin.math.pow
 class KitchenViewModel(application: Application) : AndroidViewModel(application) {
     private val serverDiscovery = ServerDiscovery(application.applicationContext)
     private val webSocketManager = WebSocketManager()
-    private val preferences = KitchenPreferences(application.applicationContext)
-    private val repository = OrderRepository(application.applicationContext)
+    private val orderRepository = OrderRepository(application.applicationContext)
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState
 
-    // Load active orders from database
-    private val dbActiveOrders = repository.activeOrders
     private val _activeOrders = MutableStateFlow<List<OrderDisplayState>>(emptyList())
     val activeOrders: StateFlow<List<OrderDisplayState>> = _activeOrders
 
-    // Load completed orders from database
     private val _completedOrders = MutableStateFlow<List<Order>>(emptyList())
     val completedOrders: StateFlow<List<Order>> = _completedOrders
 
-    private val _soundEnabled = MutableStateFlow(preferences.soundEnabled)
+    private val _soundEnabled = MutableStateFlow(true)
     val soundEnabled: StateFlow<Boolean> = _soundEnabled
 
     // Track recently updated orders (for visual indication)
     private val _updatedOrderIds = MutableStateFlow<Set<String>>(emptySet())
     val updatedOrderIds: StateFlow<Set<String>> = _updatedOrderIds
+
+    // Track discovered order types from incoming orders
+    private val _discoveredOrderTypes = MutableStateFlow<List<com.drewcore.kitchen_app.data.models.OrderType>>(emptyList())
+    val discoveredOrderTypes: StateFlow<List<com.drewcore.kitchen_app.data.models.OrderType>> = _discoveredOrderTypes
 
     // Track orders marked as ready and their items with ACCUMULATED quantities
     // Map: orderId -> Map of item keys ("productId-notes") to total accumulated ready quantity
@@ -91,27 +89,6 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     init {
-        // Perform daily cleanup on startup
-        viewModelScope.launch {
-            val deletedCount = repository.performDailyCleanup()
-            if (deletedCount > 0) {
-                Log.d(TAG, "Daily cleanup: Deleted $deletedCount old completed orders")
-            }
-        }
-
-        // Observe database flows and convert to display states
-        viewModelScope.launch {
-            dbActiveOrders.collect { orders ->
-                _activeOrders.value = orders.map { OrderDisplayState(order = it, isCancelled = false) }
-            }
-        }
-
-        viewModelScope.launch {
-            repository.completedOrders.collect { orders ->
-                _completedOrders.value = orders
-            }
-        }
-
         // Observe WebSocket connection state
         viewModelScope.launch {
             webSocketManager.connectionState.collect { state ->
@@ -287,26 +264,49 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         reconnectAttempts = 0
     }
 
-    private fun addNewOrder(order: Order) {
-        viewModelScope.launch {
-            // Save to database
-            repository.insertActiveOrder(order)
+    // Update discovered order types list
+    private fun updateDiscoveredOrderTypes(orderType: com.drewcore.kitchen_app.data.models.OrderType) {
+        val current = _discoveredOrderTypes.value.toMutableList()
+        // Only add if not already present (check by code)
+        if (current.none { it.code == orderType.code }) {
+            current.add(orderType)
+            _discoveredOrderTypes.value = current.sortedBy { it.name }
         }
+    }
+
+    private fun addNewOrder(order: Order) {
+        val current = _activeOrders.value.toMutableList()
 
         // Save full order quantities for accurate tracking
         fullOrderQuantities[order.id] = order.items.associate {
             "${it.productId}-${it.notes}" to it.quantity
         }
 
-        // Check if order already exists in current display (prevent duplicate visual updates)
-        val current = _activeOrders.value.toMutableList()
-        val existingIndex = current.indexOfFirst { it.order.id == order.id }
+        // Track order type if present
+        order.orderType?.let { updateDiscoveredOrderTypes(it) }
 
+        // Persist order to database
+        viewModelScope.launch {
+            try {
+                orderRepository.insertActiveOrder(order)
+                Log.d(TAG, "Persisted order to database: ${order.orderNumber}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to persist order to database", e)
+            }
+        }
+
+        // Check if order already exists (prevent duplicates)
+        val existingIndex = current.indexOfFirst { it.order.id == order.id }
         if (existingIndex != -1) {
             val existingOrder = current[existingIndex].order
 
             // Only mark as updated if items actually changed
             if (order.hasChangedItemsFrom(existingOrder)) {
+                // Calculate item changes
+                val orderWithChanges = calculateItemChanges(existingOrder, order)
+                current[existingIndex] = OrderDisplayState(order = orderWithChanges, isCancelled = false)
+                _activeOrders.value = current
+
                 // Mark as updated for visual indication
                 val updated = _updatedOrderIds.value.toMutableSet()
                 updated.add(order.id)
@@ -314,10 +314,64 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
                 Log.d(TAG, "Updated existing order with changes: ${order.orderNumber}")
             } else {
+                // No changes, just replace quietly without marking as updated
+                current[existingIndex] = OrderDisplayState(order = order, isCancelled = false)
+                _activeOrders.value = current
                 Log.d(TAG, "Received duplicate order without changes: ${order.orderNumber}")
             }
         } else {
-            Log.d(TAG, "Added new order: ${order.orderNumber}")
+            // Check if this order was previously marked as ready
+            val readyItems = readyOrderItems[order.id]
+            if (readyItems != null && readyItems.isNotEmpty()) {
+                // Order was marked ready before, filter out ready items and show only additional quantities
+                val newItems = order.items.mapNotNull { item ->
+                    val key = "${item.productId}-${item.notes}"
+                    val readyQuantity = readyItems[key]
+
+                    when {
+                        readyQuantity == null -> {
+                            // Item wasn't in the ready order - it's completely new
+                            item.copy(changeStatus = ItemChangeStatus.ADDED)
+                        }
+                        item.quantity > readyQuantity -> {
+                            // Item quantity increased - show only additional units
+                            val additionalQuantity = item.quantity - readyQuantity
+                            val newSubtotal = (item.subtotal / item.quantity) * additionalQuantity
+                            item.copy(
+                                quantity = additionalQuantity,
+                                subtotal = newSubtotal,
+                                changeStatus = ItemChangeStatus.ADDED,
+                                previousQuantity = 0
+                            )
+                        }
+                        else -> {
+                            // Item quantity is same or less - don't show
+                            null
+                        }
+                    }
+                }
+
+                if (newItems.isNotEmpty()) {
+                    // Only show new items that weren't ready
+                    val filteredOrder = order.copy(items = newItems)
+                    current.add(OrderDisplayState(order = filteredOrder, isCancelled = false))
+                    _activeOrders.value = current
+
+                    // Mark as updated for visual indication
+                    val updated = _updatedOrderIds.value.toMutableSet()
+                    updated.add(order.id)
+                    _updatedOrderIds.value = updated
+
+                    Log.d(TAG, "Previously ready order received new items: ${order.orderNumber}, showing ${newItems.size} new items")
+                } else {
+                    Log.d(TAG, "Previously ready order received update but no new items to show: ${order.orderNumber}")
+                }
+            } else {
+                // Truly new order, add to end of list (oldest first)
+                current.add(OrderDisplayState(order = order, isCancelled = false))
+                _activeOrders.value = current
+                Log.d(TAG, "Added new order: ${order.orderNumber}")
+            }
         }
     }
 
@@ -433,11 +487,6 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markOrderAsReady(order: Order) {
-        viewModelScope.launch {
-            // Mark as completed in database
-            repository.markOrderAsCompleted(order.id)
-        }
-
         // Get or create the ready items map for this order (thread-safe)
         val currentReadyItems = readyOrderItems.getOrPut(order.id) { ConcurrentHashMap() }
 
@@ -454,43 +503,67 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
         Log.d(TAG, "Saved accumulated ready items for order ${order.id}: $currentReadyItems")
 
+        // Remove from active orders
+        val active = _activeOrders.value.toMutableList()
+        active.removeAll { it.order.id == order.id }
+        _activeOrders.value = active
+
+        // Add to completed orders
+        val completed = _completedOrders.value.toMutableList()
+        completed.add(0, order)
+        _completedOrders.value = completed
+
+        // Persist to database as completed
+        viewModelScope.launch {
+            try {
+                orderRepository.markOrderAsCompleted(order.id)
+                Log.d(TAG, "Marked order as completed in database: ${order.orderNumber}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to mark order as completed in database", e)
+            }
+        }
+
         // Send update to server
         webSocketManager.sendOrderStatusUpdate(order.id, "ready")
     }
 
     fun removeFromHistory(order: Order) {
+        val completed = _completedOrders.value.toMutableList()
+        completed.remove(order)
+        _completedOrders.value = completed
+
+        // Delete from database
         viewModelScope.launch {
-            // Delete from database
-            repository.deleteOrder(order.id)
+            try {
+                orderRepository.deleteOrder(order.id)
+                Log.d(TAG, "Deleted order from database: ${order.orderNumber}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete order from database", e)
+            }
         }
     }
 
     fun undoCompletion(order: Order) {
-        viewModelScope.launch {
-            // Mark as active in database
-            repository.undoOrderCompletion(order.id)
-        }
+        // Remove from completed
+        val completed = _completedOrders.value.toMutableList()
+        completed.remove(order)
+        _completedOrders.value = completed
 
         // DON'T clear ready items tracking - keep the accumulated ready quantities
         // This allows us to show only new additions if the order is updated again
         Log.d(TAG, "Undo completion for order ${order.id}, keeping ready items: ${readyOrderItems[order.id]}")
+
+        // Add back to active
+        val active = _activeOrders.value.toMutableList()
+        active.add(OrderDisplayState(order = order, isCancelled = false))
+        _activeOrders.value = active
 
         // Send update to server
         webSocketManager.sendOrderStatusUpdate(order.id, "preparing")
     }
 
     fun toggleSound() {
-        val newValue = !_soundEnabled.value
-        _soundEnabled.value = newValue
-        preferences.soundEnabled = newValue
-    }
-
-    fun setNotificationSound(uri: String?) {
-        preferences.notificationSoundUri = uri
-    }
-
-    fun getNotificationSoundUri(): String? {
-        return preferences.notificationSoundUri
+        _soundEnabled.value = !_soundEnabled.value
     }
 
     private fun updateOrderStatus(orderId: String, status: String) {
@@ -520,28 +593,34 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun removeCancelledOrder(orderId: String, cancelledAtMs: Long) {
-        viewModelScope.launch {
-            // Delete from database
-            repository.deleteOrder(orderId)
+        val active = _activeOrders.value.toMutableList()
+        val index = active.indexOfFirst {
+            it.order.id == orderId &&
+            it.isCancelled &&
+            it.cancelledAtMs == cancelledAtMs
         }
 
-        // Clean up tracking maps
-        readyOrderItems.remove(orderId)
-        fullOrderQuantities.remove(orderId)
+        if (index != -1) {
+            active.removeAt(index)
+            _activeOrders.value = active
+            Log.d(TAG, "Auto-removed cancelled order: $orderId")
 
-        Log.d(TAG, "Auto-removed cancelled order: $orderId")
+            // Delete from database
+            viewModelScope.launch {
+                try {
+                    orderRepository.deleteOrder(orderId)
+                    Log.d(TAG, "Deleted cancelled order from database: $orderId")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete cancelled order from database", e)
+                }
+            }
+        }
     }
 
     fun manuallyRemoveCancelledOrder(orderId: String) {
-        viewModelScope.launch {
-            // Delete from database
-            repository.deleteOrder(orderId)
-        }
-
-        // Clean up tracking maps
-        readyOrderItems.remove(orderId)
-        fullOrderQuantities.remove(orderId)
-
+        val active = _activeOrders.value.toMutableList()
+        active.removeAll { it.order.id == orderId && it.isCancelled }
+        _activeOrders.value = active
         Log.d(TAG, "Manually removed cancelled order: $orderId")
     }
 
@@ -581,26 +660,11 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
     private fun playNotificationSound() {
         try {
-            // Use custom sound if configured, otherwise use default notification sound
-            val soundUriString = preferences.notificationSoundUri
-            val soundUri: Uri = if (soundUriString != null) {
-                Uri.parse(soundUriString)
-            } else {
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            }
-
-            val ringtone = RingtoneManager.getRingtone(getApplication(), soundUri)
+            val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val ringtone = RingtoneManager.getRingtone(getApplication(), notification)
             ringtone.play()
         } catch (e: Exception) {
-            Log.e(TAG, "Error playing notification sound", e)
-            // Fallback to default notification sound if custom sound fails
-            try {
-                val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                val ringtone = RingtoneManager.getRingtone(getApplication(), defaultUri)
-                ringtone.play()
-            } catch (fallbackE: Exception) {
-                Log.e(TAG, "Error playing fallback sound", fallbackE)
-            }
+            e.printStackTrace()
         }
     }
 

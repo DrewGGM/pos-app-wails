@@ -266,6 +266,9 @@ export interface PaymentMethod extends BaseModel {
   is_active: boolean;
   display_order: number;
   icon?: string;
+  // Bold integration
+  use_bold_terminal?: boolean; // Whether to process this payment through Bold datáfono
+  bold_payment_method?: string; // Bold payment method type: "POS", "NEQUI", "DAVIPLATA", "PAY_BY_LINK"
 }
 
 // Electronic invoice model

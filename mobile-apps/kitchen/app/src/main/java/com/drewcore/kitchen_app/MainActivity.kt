@@ -97,6 +97,7 @@ fun KitchenApp(
     val completedOrders by viewModel.completedOrders.collectAsState()
     val soundEnabled by viewModel.soundEnabled.collectAsState()
     val updatedOrderIds by viewModel.updatedOrderIds.collectAsState()
+    val discoveredOrderTypes by viewModel.discoveredOrderTypes.collectAsState()
 
     var showHistory by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -115,6 +116,7 @@ fun KitchenApp(
         SettingsScreen(
             preferences = preferences,
             serverDiscovery = serverDiscovery,
+            orderTypes = discoveredOrderTypes,
             onBack = { showSettings = false }
         )
         return

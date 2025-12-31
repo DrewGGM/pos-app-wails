@@ -1150,7 +1150,23 @@ func (s *SalesService) CreatePaymentMethod(method *models.PaymentMethod) error {
 
 // UpdatePaymentMethod updates a payment method
 func (s *SalesService) UpdatePaymentMethod(method *models.PaymentMethod) error {
-	return s.db.Save(method).Error
+	fmt.Printf("\n🔍 [UpdatePaymentMethod] Actualizando método de pago:\n")
+	fmt.Printf("   ID=%d, Name=%s\n", method.ID, method.Name)
+	fmt.Printf("   UseBoldTerminal=%v, BoldPaymentMethod=%s\n", method.UseBoldTerminal, method.BoldPaymentMethod)
+
+	err := s.db.Save(method).Error
+	if err != nil {
+		fmt.Printf("   ❌ Error al guardar: %v\n", err)
+		return err
+	}
+
+	// Verificar qué se guardó
+	var saved models.PaymentMethod
+	s.db.First(&saved, method.ID)
+	fmt.Printf("   💾 Después de guardar: UseBoldTerminal=%v, BoldPaymentMethod=%s\n\n",
+		saved.UseBoldTerminal, saved.BoldPaymentMethod)
+
+	return nil
 }
 
 // GetPaymentMethodSalesCount returns the number of sales associated with a payment method

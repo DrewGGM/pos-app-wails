@@ -49,6 +49,7 @@ type App struct {
 	ConfigAPIServer         *services.ConfigAPIServer
 	MCPService              *services.MCPService
 	BoldService             *services.BoldService
+	BoldWebhookService      *services.BoldWebhookService
 	WSServer                *websocket.Server
 	WSManagementService     *services.WebSocketManagementService
 	isFirstRun              bool
@@ -211,6 +212,29 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.ParametricService = services.NewParametricService()
 	a.DashboardService = services.NewDashboardService()
 	a.BoldService = services.NewBoldService(database.GetDB())
+
+	// Initialize Bold webhook service
+	a.BoldWebhookService = services.NewBoldWebhookService(database.GetDB(), a.BoldService)
+
+	// Set WebSocket server for real-time notifications
+	if a.WSServer != nil {
+		a.BoldWebhookService.SetWebSocketServer(a.WSServer)
+		a.LoggerService.LogInfo("WebSocket server configured for Bold notifications")
+	}
+
+	// Start Bold webhook server
+	a.LoggerService.LogInfo("Starting Bold webhook server")
+	go func() {
+		defer a.LoggerService.RecoverPanic()
+		boldConfig, err := a.BoldService.GetBoldConfig()
+		if err == nil && boldConfig.Enabled && boldConfig.WebhookPort > 0 {
+			if err := a.BoldWebhookService.StartWebhookServer(boldConfig.WebhookPort); err != nil {
+				a.LoggerService.LogWarning("Bold webhook server start error", err.Error())
+			}
+		} else {
+			a.LoggerService.LogInfo("Bold webhook server not started - integration disabled or port not configured")
+		}
+	}()
 
 	// Set WebSocket server on OrderService if available
 	if a.WSServer != nil && a.OrderService != nil {
@@ -448,6 +472,23 @@ func main() {
 			app.ParametricService = services.NewParametricService()
 			app.DashboardService = services.NewDashboardService()
 			app.BoldService = services.NewBoldService(database.GetDB())
+
+			// Initialize Bold webhook service
+			app.BoldWebhookService = services.NewBoldWebhookService(database.GetDB(), app.BoldService)
+
+			// Start Bold webhook server
+			loggerService.LogInfo("Starting Bold webhook server")
+			go func() {
+				defer loggerService.RecoverPanic()
+				boldConfig, err := app.BoldService.GetBoldConfig()
+				if err == nil && boldConfig.Enabled && boldConfig.WebhookPort > 0 {
+					if err := app.BoldWebhookService.StartWebhookServer(boldConfig.WebhookPort); err != nil {
+						loggerService.LogWarning("Bold webhook server start error", err.Error())
+					}
+				} else {
+					loggerService.LogInfo("Bold webhook server not started - integration disabled or port not configured")
+				}
+			}()
 
 			// Initialize Google Sheets services
 			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())

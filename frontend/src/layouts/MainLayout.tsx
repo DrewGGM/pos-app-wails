@@ -190,25 +190,37 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     const loadModuleVisibility = async () => {
       try {
+        console.log('\n📥 [MainLayout] Cargando visibilidad de módulos desde backend...');
         const config = await wailsConfigService.getRestaurantConfig();
+        console.log('   📋 Config recibida del backend:', {
+          inventory: config?.enable_inventory_module,
+          ingredients: config?.enable_ingredients_module,
+          combos: config?.enable_combos_module,
+          customers: config?.enable_customers_module,
+          reports: config?.enable_reports_module,
+          discounts: config?.enable_discounts_module,
+        });
         if (config) {
-          setModuleVisibility({
+          const newVisibility = {
             enable_inventory_module: config.enable_inventory_module ?? true,
             enable_ingredients_module: config.enable_ingredients_module ?? false,
             enable_combos_module: config.enable_combos_module ?? false,
             enable_customers_module: config.enable_customers_module ?? true,
             enable_reports_module: config.enable_reports_module ?? true,
             enable_discounts_module: config.enable_discounts_module ?? true,
-          });
+          };
+          console.log('   ✅ Actualizando visibilidad local:', newVisibility);
+          setModuleVisibility(newVisibility);
         }
       } catch (error) {
-        console.error('Error loading module visibility:', error);
+        console.error('❌ Error loading module visibility:', error);
       }
     };
     loadModuleVisibility();
 
     // Listen for module config changes
     const handleModuleConfigChange = () => {
+      console.log('📢 [MainLayout] Evento "moduleConfigChanged" recibido, recargando...');
       loadModuleVisibility();
     };
     window.addEventListener('moduleConfigChanged', handleModuleConfigChange);

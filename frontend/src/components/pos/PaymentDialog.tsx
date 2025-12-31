@@ -39,6 +39,10 @@ import {
   Image as ImageIcon,
 } from '@mui/icons-material';
 import { PaymentMethod, Customer } from '../../types/models';
+import BoldPaymentWaiting from './BoldPaymentWaiting';
+import { wailsBoldService } from '../../services/wailsBoldService';
+import { models } from '../../../wailsjs/go/models';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface PaymentDialogProps {
   open: boolean;
@@ -89,6 +93,15 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Bold payment states
+  const [boldPaymentWaiting, setBoldPaymentWaiting] = useState(false);
+  const [boldIntegrationId, setBoldIntegrationId] = useState<string>('');
+  const [boldConfig, setBoldConfig] = useState<models.BoldConfig | null>(null);
+  const [boldCurrentMethod, setBoldCurrentMethod] = useState<PaymentMethod | null>(null);
+  const [boldCurrentAmount, setBoldCurrentAmount] = useState<number>(0);
+
+  // WebSocket for real-time Bold payment updates
+  const { subscribe } = useWebSocket();
 
   // Reset all state when dialog opens or total changes (for split payments)
   useEffect(() => {
@@ -106,8 +119,94 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
       setVoucherImage('');
       setCameraDialogOpen(false);
       stopCamera();
+      setBoldPaymentWaiting(false);
+      setBoldIntegrationId('');
     }
   }, [open, total, customer?.email, defaultPrintReceipt, defaultConsumerEmail]);
+
+  // Load Bold configuration when dialog opens
+  useEffect(() => {
+    const loadBoldConfig = async () => {
+      try {
+        const config = await wailsBoldService.getBoldConfig();
+        setBoldConfig(config);
+      } catch (error) {
+        console.error('Error loading Bold config:', error);
+      }
+    };
+
+    if (open) {
+      loadBoldConfig();
+    }
+  }, [open]);
+
+  // Subscribe to WebSocket events for Bold payment updates
+  useEffect(() => {
+    if (!boldIntegrationId) {
+      return; // No active Bold payment, nothing to listen for
+    }
+
+    console.log(`🔌 Subscribing to WebSocket events for Bold payment: ${boldIntegrationId}`);
+
+    // Subscribe to "bold_payment_update" events from server
+    const unsubscribe = subscribe('bold_payment_update', async (data: any) => {
+      console.log('📡 WebSocket event received:', data);
+
+      // Check if this event is for our current payment
+      if (data.integration_id === boldIntegrationId) {
+        console.log(`✅ WebSocket: Payment update matched! Status: ${data.status}`);
+
+        if (data.status === 'approved') {
+          // Payment approved via WebSocket - clear polling and process
+          console.log('🎉 WebSocket: Payment approved! Processing immediately...');
+
+          // Clear polling interval
+          if ((window as any)._boldPollingInterval) {
+            clearInterval((window as any)._boldPollingInterval);
+            (window as any)._boldPollingInterval = null;
+          }
+
+          // Fetch full payment details and complete
+          try {
+            const pendingPayment = await wailsBoldService.getPendingPayment(boldIntegrationId);
+            await handleBoldPaymentSuccess(boldIntegrationId, pendingPayment);
+          } catch (error) {
+            console.error('Error fetching pending payment after WebSocket event:', error);
+            // Fallback: call without payment details
+            await handleBoldPaymentSuccess(boldIntegrationId);
+          }
+        } else if (data.status === 'rejected') {
+          console.log('❌ WebSocket: Payment rejected');
+
+          // Clear polling interval
+          if ((window as any)._boldPollingInterval) {
+            clearInterval((window as any)._boldPollingInterval);
+            (window as any)._boldPollingInterval = null;
+          }
+
+          handleBoldPaymentError('Pago rechazado por Bold');
+        } else if (data.status === 'voided') {
+          console.log('↩️  WebSocket: Payment voided');
+
+          // Clear polling interval
+          if ((window as any)._boldPollingInterval) {
+            clearInterval((window as any)._boldPollingInterval);
+            (window as any)._boldPollingInterval = null;
+          }
+
+          handleBoldPaymentError('Pago anulado');
+        }
+      } else {
+        console.log(`ℹ️  WebSocket: Event is for different payment (${data.integration_id}), ignoring`);
+      }
+    });
+
+    // Cleanup subscription when component unmounts or boldIntegrationId changes
+    return () => {
+      console.log(`🔌 Unsubscribing from WebSocket events for: ${boldIntegrationId}`);
+      unsubscribe();
+    };
+  }, [boldIntegrationId, subscribe]);
 
   // Cleanup camera stream when dialog closes
   useEffect(() => {
@@ -216,7 +315,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
     setChange(totalPaid > total ? totalPaid - total : 0);
   }, [paymentLines, total]);
 
-  const addPaymentLine = () => {
+  const addPaymentLine = async () => {
     if (!selectedMethod) {
       setError('Seleccione un método de pago');
       return;
@@ -238,7 +337,6 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
     }
 
     // IMPORTANT: Automatically cap payment at remaining balance
-    // The change is calculated and displayed, but NEVER recorded in the database
     const totalPaidSoFar = paymentLines.reduce((sum, line) => sum + line.amount, 0);
     const remainingBalance = total - totalPaidSoFar;
 
@@ -246,22 +344,24 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
     let cashChange = 0;
     if (paymentAmount > remainingBalance && method.type === 'cash') {
       cashChange = paymentAmount - remainingBalance;
-      // Store the cash received for display purposes only
       const cashReceived = paymentAmount;
-      // Cap the actual payment amount to remaining balance
       paymentAmount = remainingBalance;
-
-      // Show info message about change (non-blocking)
       setError(`Efectivo recibido: $${cashReceived.toLocaleString('es-CO')} → Cambio a dar: $${cashChange.toLocaleString('es-CO')}`);
     } else if (paymentAmount > remainingBalance) {
-      // For non-cash payments, just cap at remaining balance
       paymentAmount = remainingBalance;
     }
 
+    // Check if this payment method uses Bold terminal
+    if (method.use_bold_terminal) {
+      await processBoldPayment(method, paymentAmount);
+      return;
+    }
+
+    // Normal payment processing (non-Bold)
     const newLine: PaymentLine = {
       payment_method_id: selectedMethod,
       payment_method_name: method.name,
-      amount: paymentAmount, // Always the exact amount, never more
+      amount: paymentAmount,
       reference: reference.trim() || undefined,
       voucher_image: voucherImage || undefined,
     };
@@ -269,14 +369,239 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
     setPaymentLines([...paymentLines, newLine]);
     setAmount('');
     setReference('');
-    setVoucherImage(''); // Clear voucher image after adding payment
+    setVoucherImage('');
 
-    // Clear error after 3 seconds if it's a change message
     if (cashChange > 0) {
       setTimeout(() => setError(''), 3000);
     } else {
       setError('');
     }
+  };
+
+  const processBoldPayment = async (method: PaymentMethod, paymentAmount: number) => {
+    try {
+      // Validate Bold configuration
+      if (!boldConfig || !boldConfig.enabled) {
+        setError('La integración con Bold no está habilitada. Configure Bold en Configuración → Bold');
+        return;
+      }
+
+      if (!method.bold_payment_method) {
+        setError(`El método de pago "${method.name}" no tiene configurado el tipo de pago Bold`);
+        return;
+      }
+
+      // Get default terminal
+      const terminals = await wailsBoldService.getAllTerminals();
+      const defaultTerminal = terminals.find(t => t.is_default) || terminals[0];
+
+      if (!defaultTerminal) {
+        setError('No hay terminales Bold configurados. Configure al menos un terminal en Configuración → Bold → Terminales');
+        return;
+      }
+
+      // Create Bold payment request
+      const boldRequest: models.BoldPaymentRequest = models.BoldPaymentRequest.createFrom({
+        amount: {
+          currency: 'COP',
+          taxes: [
+            {
+              type: 'IVA_19',
+            }
+          ],
+          tip_amount: 0,
+          total_amount: paymentAmount,
+        },
+        payment_method: method.bold_payment_method,
+        terminal_model: defaultTerminal.terminal_model,
+        terminal_serial: defaultTerminal.terminal_serial,
+        reference: `POS-${Date.now()}`,
+        user_email: boldConfig.user_email || 'pos@restaurant.com',
+        description: `Pago ${method.name}`,
+        payer: customer ? {
+          email: customer.email || undefined,
+          phone_number: customer.phone || undefined,
+          document: customer.document_number ? {
+            document_type: 'CEDULA',
+            document_number: customer.document_number,
+          } : undefined,
+        } : undefined,
+      });
+
+      // Send payment to Bold API
+      const response = await wailsBoldService.createPayment(boldRequest);
+
+      if (!response || !response.payload || !response.payload.integration_id) {
+        throw new Error('Respuesta inválida de Bold API');
+      }
+
+      const integrationId = response.payload.integration_id;
+
+      // Create pending payment record in database
+      // This is CRITICAL so the webhook can find and update it when Bold sends the result
+      const pendingPayment = models.BoldPendingPayment.createFrom({
+        integration_id: integrationId,
+        reference: boldRequest.reference,
+        amount: paymentAmount,
+        status: 'pending',
+        payment_method_id: method.id,
+        payment_method_name: method.name,
+        // Store context for completing the payment later
+        order_id: 0, // Will be set when order is created
+        customer_id: customer?.id || 0,
+        employee_id: 0, // TODO: Get from session
+        cash_register_id: 0, // TODO: Get from session
+      });
+
+      await wailsBoldService.createPendingPayment(pendingPayment);
+
+      // Store current Bold payment context
+      setBoldCurrentMethod(method);
+      setBoldCurrentAmount(paymentAmount);
+
+      // Show waiting dialog
+      setBoldIntegrationId(integrationId);
+      setBoldPaymentWaiting(true);
+
+      console.log('Bold payment created and pending payment recorded:', response);
+
+      // Start polling as FALLBACK (WebSocket is the primary mechanism)
+      // Reduced frequency: every 10 seconds instead of 2 seconds
+      const maxPolls = 30; // 5 minutes max (30 * 10 = 300 seconds)
+      let pollCount = 0;
+
+      const pollInterval = setInterval(async () => {
+        try {
+          pollCount++;
+
+          console.log(`🔄 [FALLBACK] Polling Bold payment status (${pollCount}/${maxPolls})...`);
+
+          // Check if we've exceeded max polls (timeout)
+          if (pollCount > maxPolls) {
+            clearInterval(pollInterval);
+            await wailsBoldService.cancelPendingPayment(integrationId);
+            handleBoldPaymentError('Tiempo de espera excedido. Por favor, verifique el estado del pago en Bold.');
+            return;
+          }
+
+          // Poll payment status - get fresh data from database
+          const pendingPayment = await wailsBoldService.getPendingPayment(integrationId);
+
+          console.log(`📊 [FALLBACK] Payment status: ${pendingPayment.status}`);
+
+          if (pendingPayment.status === 'approved') {
+            clearInterval(pollInterval);
+            console.log('✅ [FALLBACK] Payment approved! Processing...');
+            await handleBoldPaymentSuccess(integrationId, pendingPayment);
+          } else if (pendingPayment.status === 'rejected') {
+            clearInterval(pollInterval);
+            console.log('❌ [FALLBACK] Payment rejected');
+            handleBoldPaymentError('Pago rechazado por Bold');
+          } else if (pendingPayment.status === 'cancelled') {
+            clearInterval(pollInterval);
+            console.log('🚫 [FALLBACK] Payment cancelled');
+            handleBoldPaymentError('Pago cancelado');
+          }
+        } catch (error) {
+          console.error('❌ Error polling payment status:', error);
+          // Don't stop polling on error, just log it
+        }
+      }, 10000); // 10 seconds - WebSocket should handle updates in real-time
+
+      // Store interval ID for cleanup (you might want to add state for this)
+      (window as any)._boldPollingInterval = pollInterval;
+
+    } catch (error: any) {
+      console.error('Error processing Bold payment:', error);
+      setError(error?.message || 'Error al procesar el pago con Bold');
+      setBoldPaymentWaiting(false);
+    }
+  };
+
+  const handleBoldPaymentSuccess = async (integrationId: string, pendingPayment?: models.BoldPendingPayment) => {
+    // Clear polling interval
+    if ((window as any)._boldPollingInterval) {
+      clearInterval((window as any)._boldPollingInterval);
+      (window as any)._boldPollingInterval = null;
+    }
+
+    if (!boldCurrentMethod) return;
+
+    // Get full payment details if not provided
+    if (!pendingPayment) {
+      try {
+        pendingPayment = await wailsBoldService.getPendingPayment(integrationId);
+      } catch (error) {
+        console.error('Error getting pending payment details:', error);
+      }
+    }
+
+    // Build reference with Bold transaction info
+    let reference = `Bold-${integrationId}`;
+    if (pendingPayment?.bold_code) {
+      reference += ` | Código: ${pendingPayment.bold_code}`;
+    }
+    if (pendingPayment?.approval_number) {
+      reference += ` | Aprob: ${pendingPayment.approval_number}`;
+    }
+    if (pendingPayment?.card_brand && pendingPayment?.card_masked_pan) {
+      reference += ` | ${pendingPayment.card_brand} ${pendingPayment.card_masked_pan}`;
+    }
+
+    // Add payment line with complete Bold info
+    const newLine: PaymentLine = {
+      payment_method_id: boldCurrentMethod.id!,
+      payment_method_name: boldCurrentMethod.name,
+      amount: boldCurrentAmount,
+      reference: reference,
+    };
+
+    console.log('✅ Bold payment approved - Adding payment line:', newLine);
+
+    setPaymentLines([...paymentLines, newLine]);
+    setAmount('');
+    setReference('');
+    setBoldPaymentWaiting(false);
+    setBoldIntegrationId('');
+    setBoldCurrentMethod(null);
+    setBoldCurrentAmount(0);
+  };
+
+  const handleBoldPaymentError = (error: string) => {
+    // Clear polling interval
+    if ((window as any)._boldPollingInterval) {
+      clearInterval((window as any)._boldPollingInterval);
+      (window as any)._boldPollingInterval = null;
+    }
+
+    setError(error);
+    setBoldPaymentWaiting(false);
+    setBoldIntegrationId('');
+    setBoldCurrentMethod(null);
+    setBoldCurrentAmount(0);
+  };
+
+  const handleBoldPaymentCancel = async () => {
+    // Clear polling interval
+    if ((window as any)._boldPollingInterval) {
+      clearInterval((window as any)._boldPollingInterval);
+      (window as any)._boldPollingInterval = null;
+    }
+
+    // Cancel pending payment in backend
+    if (boldIntegrationId) {
+      try {
+        await wailsBoldService.cancelPendingPayment(boldIntegrationId);
+      } catch (error) {
+        console.error('Error cancelling pending payment:', error);
+      }
+    }
+
+    setBoldPaymentWaiting(false);
+    setBoldIntegrationId('');
+    setBoldCurrentMethod(null);
+    setBoldCurrentAmount(0);
+    setError('Pago con Bold cancelado');
   };
 
   const removePaymentLine = (index: number) => {
@@ -745,6 +1070,17 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Bold Payment Waiting Dialog */}
+      <BoldPaymentWaiting
+        open={boldPaymentWaiting}
+        onClose={() => setBoldPaymentWaiting(false)}
+        onSuccess={handleBoldPaymentSuccess}
+        onError={handleBoldPaymentError}
+        onCancel={handleBoldPaymentCancel}
+        paymentAmount={parseFloat(amount) || 0}
+        integrationId={boldIntegrationId}
+      />
     </Dialog>
   );
 };
