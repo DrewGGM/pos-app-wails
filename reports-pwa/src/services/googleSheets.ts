@@ -38,7 +38,7 @@ export interface ReportData {
   ventas_totales: number
   ventas_dian: number
   ventas_no_dian: number
-  ordenes: number
+  numero_ordenes: number
   productos_vendidos: number
   ticket_promedio: number
   detalle_productos: ProductDetail[]
@@ -158,7 +158,7 @@ class GoogleSheetsService {
         }
         // Convertir a número si parece ser numérico
         else if (header === 'ventas_totales' || header === 'ventas_dian' || header === 'ventas_no_dian' ||
-            header === 'ordenes' || header === 'productos_vendidos' || header === 'ticket_promedio' ||
+            header === 'numero_ordenes' || header === 'productos_vendidos' || header === 'ticket_promedio' ||
             header === 'total' || header === 'cantidad' || header === 'total_depositos' || header === 'total_retiros') {
           report[header] = this.parseNumber(value)
         } else {
@@ -173,7 +173,7 @@ class GoogleSheetsService {
           ventas_totales: report.ventas_totales || 0,
           ventas_dian: report.ventas_dian || 0,
           ventas_no_dian: report.ventas_no_dian || 0,
-          ordenes: report.ordenes || 0,
+          numero_ordenes: report.numero_ordenes || 0,
           productos_vendidos: report.productos_vendidos || 0,
           ticket_promedio: report.ticket_promedio || 0,
           detalle_productos: report.detalle_productos || [],

@@ -361,10 +361,10 @@ function App() {
       ventas_totales: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0),
       ventas_dian: periodReports.reduce((sum, r) => sum + r.ventas_dian, 0),
       ventas_no_dian: periodReports.reduce((sum, r) => sum + r.ventas_no_dian, 0),
-      ordenes: periodReports.reduce((sum, r) => sum + r.ordenes, 0),
+      numero_ordenes: periodReports.reduce((sum, r) => sum + r.numero_ordenes, 0),
       productos_vendidos: periodReports.reduce((sum, r) => sum + r.productos_vendidos, 0),
       ticket_promedio: periodReports.reduce((sum, r) => sum + r.ventas_totales, 0) /
-                       periodReports.reduce((sum, r) => sum + r.ordenes, 0),
+                       periodReports.reduce((sum, r) => sum + r.numero_ordenes, 0),
       detalle_productos: aggregatedProducts,
       detalle_tipos_pago: aggregatedPaymentMethods,
       detalle_tipos_pedido: aggregatedOrderTypes,
@@ -726,7 +726,7 @@ function App() {
                 <div className="card-icon">📋</div>
                 <div className="card-content">
                   <div className="card-label">Órdenes</div>
-                  <div className="card-value">{currentReport.ordenes}</div>
+                  <div className="card-value">{currentReport.numero_ordenes}</div>
                   <div className="card-detail">
                     Promedio: {formatCurrency(currentReport.ticket_promedio)}
                   </div>
