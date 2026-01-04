@@ -114,6 +114,7 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 				Update("status", "occupied").Error; err != nil {
 				return err
 			}
+			// Note: WebSocket notification will be sent after transaction commits
 		}
 
 		// Update inventory for each item
@@ -145,6 +146,14 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 	reloadedOrder, err := s.GetOrder(order.ID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Send table status update via WebSocket (after transaction committed)
+	if order.TableID != nil && *order.TableID > 0 {
+		if s.wsServer != nil {
+			s.wsServer.SendTableUpdate(*order.TableID, "occupied")
+			log.Printf("OrderService: Table %d marked as occupied via WebSocket", *order.TableID)
+		}
 	}
 
 	// Send to kitchen AFTER transaction is complete and order is reloaded
@@ -242,6 +251,7 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 
 		// CRITICAL FIX: Handle table status changes
 		// If table changed, free the old table and occupy the new one
+		// Note: WebSocket notifications will be sent after transaction commits
 		oldTableID := existingOrder.TableID
 		newTableID := order.TableID
 
@@ -326,6 +336,26 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 	updatedOrder, err := s.GetOrder(order.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload order: %w", err)
+	}
+
+	// Send WebSocket notifications for table status changes (after transaction committed)
+	oldTableID := existingOrder.TableID
+	newTableID := order.TableID
+	if s.wsServer != nil {
+		if oldTableID != nil && newTableID != nil && *oldTableID != *newTableID {
+			// Table changed - notify both tables
+			s.wsServer.SendTableUpdate(*oldTableID, "available")
+			s.wsServer.SendTableUpdate(*newTableID, "occupied")
+			log.Printf("OrderService: Table changed %d->%d, notifications sent", *oldTableID, *newTableID)
+		} else if oldTableID != nil && newTableID == nil {
+			// Table removed
+			s.wsServer.SendTableUpdate(*oldTableID, "available")
+			log.Printf("OrderService: Table %d freed, notification sent", *oldTableID)
+		} else if oldTableID == nil && newTableID != nil {
+			// Table added
+			s.wsServer.SendTableUpdate(*newTableID, "occupied")
+			log.Printf("OrderService: Table %d occupied, notification sent", *newTableID)
+		}
 	}
 
 	// Send to kitchen for any active order (pending, preparing, or ready)
@@ -460,11 +490,14 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 	order.Status = status
 
 	// CRITICAL FIX: Free the table when order becomes paid or cancelled
+	var freedTableID *uint
 	if (status == models.OrderStatusPaid || status == models.OrderStatusCancelled) && order.TableID != nil {
 		if err := s.db.Model(&models.Table{}).
 			Where("id = ?", *order.TableID).
 			Update("status", "available").Error; err != nil {
 			log.Printf("Warning: Failed to free table %d: %v", *order.TableID, err)
+		} else {
+			freedTableID = order.TableID
 		}
 	}
 
@@ -474,7 +507,18 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 		s.notifyOrderReady(order)
 	}
 
-	return s.db.Save(order).Error
+	err := s.db.Save(order).Error
+	if err != nil {
+		return err
+	}
+
+	// Send WebSocket notification if table was freed
+	if freedTableID != nil && s.wsServer != nil {
+		s.wsServer.SendTableUpdate(*freedTableID, "available")
+		log.Printf("OrderService: Table %d freed (status=%s), notification sent", *freedTableID, status)
+	}
+
+	return nil
 }
 
 // isValidStatusTransition checks if a status transition is valid
@@ -622,6 +666,8 @@ func (s *OrderService) RemoveItemFromOrder(orderID uint, itemID uint) error {
 
 // CancelOrder cancels an order
 func (s *OrderService) CancelOrder(orderID uint, reason string) error {
+	var freedTableID *uint
+
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Get order with items
 		var order models.Order
@@ -643,11 +689,14 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 		}
 
 		// CRITICAL FIX: Free the table when order is cancelled
+		// Note: WebSocket notification will be sent after transaction commits
 		if order.TableID != nil {
 			if err := tx.Model(&models.Table{}).
 				Where("id = ?", *order.TableID).
 				Update("status", "available").Error; err != nil {
 				log.Printf("Warning: Failed to free table %d: %v", *order.TableID, err)
+			} else {
+				freedTableID = order.TableID
 			}
 		}
 
@@ -660,6 +709,12 @@ func (s *OrderService) CancelOrder(orderID uint, reason string) error {
 
 	if err != nil {
 		return err
+	}
+
+	// Send WebSocket notification if table was freed (after transaction committed)
+	if freedTableID != nil && s.wsServer != nil {
+		s.wsServer.SendTableUpdate(*freedTableID, "available")
+		log.Printf("OrderService: Table %d freed (cancelled), notification sent", *freedTableID)
 	}
 
 	// Notify kitchen about cancellation via WebSocket
@@ -734,9 +789,20 @@ func (s *OrderService) UpdateTable(table *models.Table) error {
 	return s.db.Save(table).Error
 }
 
-// UpdateTableStatus updates table status
+// UpdateTableStatus updates table status and broadcasts via WebSocket
 func (s *OrderService) UpdateTableStatus(tableID uint, status string) error {
-	return s.db.Model(&models.Table{}).Where("id = ?", tableID).Update("status", status).Error
+	err := s.db.Model(&models.Table{}).Where("id = ?", tableID).Update("status", status).Error
+	if err != nil {
+		return err
+	}
+
+	// Broadcast table update via WebSocket
+	if s.wsServer != nil {
+		s.wsServer.SendTableUpdate(tableID, status)
+		log.Printf("OrderService: Table %d status updated to '%s', notification sent", tableID, status)
+	}
+
+	return nil
 }
 
 // AssignOrderToTable assigns an order to a table
@@ -1125,6 +1191,7 @@ func (s *OrderService) DeleteTableArea(id uint) error {
 
 // DeleteOrder permanently deletes an order and updates table status
 func (s *OrderService) DeleteOrder(orderID uint) error {
+	var freedTableID *uint
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Get order with items to restore inventory and ingredients
@@ -1165,6 +1232,7 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 		}
 
 		// If order had a table, check if table should be marked as available
+		// Note: WebSocket notification will be sent after transaction commits
 		if tableID != nil {
 			var count int64
 			tx.Model(&models.Order{}).Where("table_id = ? AND status = ?", *tableID, models.OrderStatusPending).Count(&count)
@@ -1174,6 +1242,7 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 				if err := tx.Model(&models.Table{}).Where("id = ?", *tableID).Update("status", "available").Error; err != nil {
 					log.Printf("Warning: Failed to update table status after deleting order: %v", err)
 				} else {
+					freedTableID = tableID
 					log.Printf("Table %d marked as available after deleting last pending order", *tableID)
 				}
 			}
@@ -1184,6 +1253,12 @@ func (s *OrderService) DeleteOrder(orderID uint) error {
 
 	if err != nil {
 		return err
+	}
+
+	// Send WebSocket notification if table was freed (after transaction committed)
+	if freedTableID != nil && s.wsServer != nil {
+		s.wsServer.SendTableUpdate(*freedTableID, "available")
+		log.Printf("OrderService: Table %d freed (deleted), notification sent", *freedTableID)
 	}
 
 	// Notify kitchen about deletion via WebSocket

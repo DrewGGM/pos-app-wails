@@ -476,6 +476,43 @@ func main() {
 			// Initialize Bold webhook service
 			app.BoldWebhookService = services.NewBoldWebhookService(database.GetDB(), app.BoldService)
 
+			// Initialize WebSocket server BEFORE Bold webhook server
+			wsPort := os.Getenv("WS_PORT")
+			if wsPort == "" {
+				wsPort = "8080" // Default port
+			}
+			loggerService.LogInfo("Initializing WebSocket server for Bold notifications", "Port: "+wsPort)
+			app.WSServer = websocket.NewServer(":" + wsPort)
+			app.WSServer.SetDB(database.GetDB())
+
+			// Set WebSocket server for Bold notifications
+			app.BoldWebhookService.SetWebSocketServer(app.WSServer)
+			loggerService.LogInfo("WebSocket server configured for Bold notifications")
+
+			// Set WebSocket management service
+			app.WSManagementService = services.NewWebSocketManagementService(app.WSServer)
+
+			// Set OrderService on WebSocket server
+			if app.OrderService != nil {
+				app.OrderService.SetWebSocketServer(app.WSServer)
+				app.WSServer.SetOrderService(app.OrderService)
+				loggerService.LogInfo("OrderService configured for WebSocket")
+			}
+
+			// Set PrinterService on WebSocket server
+			if app.PrinterService != nil {
+				app.WSServer.SetPrinterService(app.PrinterService)
+				loggerService.LogInfo("PrinterService configured for WebSocket")
+			}
+
+			// Start WebSocket server
+			go func() {
+				defer loggerService.RecoverPanic()
+				if err := app.WSServer.Start(); err != nil {
+					loggerService.LogError("WebSocket server error", err)
+				}
+			}()
+
 			// Start Bold webhook server
 			loggerService.LogInfo("Starting Bold webhook server")
 			go func() {

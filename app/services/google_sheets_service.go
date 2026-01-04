@@ -149,8 +149,11 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
 	report := &ReportData{
-		Fecha:            date.Format("2006-01-02"),
-		DetalleProductos: []ProductDetail{},
+		Fecha:              date.Format("2006-01-02"),
+		DetalleProductos:   []ProductDetail{},
+		DetalleTiposPago:   []PaymentMethodDetail{},
+		DetalleTiposPedido: []OrderTypeDetail{},
+		DetalleMovimientos: []CashMovementDetail{},
 	}
 
 	// Get ALL order types (active and inactive) to ensure consistent columns

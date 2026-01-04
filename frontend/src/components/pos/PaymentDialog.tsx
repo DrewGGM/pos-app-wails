@@ -143,18 +143,23 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({
   // Subscribe to WebSocket events for Bold payment updates
   useEffect(() => {
     if (!boldIntegrationId) {
+      console.log('⚠️ No boldIntegrationId, skipping WebSocket subscription');
       return; // No active Bold payment, nothing to listen for
     }
 
     console.log(`🔌 Subscribing to WebSocket events for Bold payment: ${boldIntegrationId}`);
+    console.log(`   Waiting for event type: "bold_payment_update"`);
 
     // Subscribe to "bold_payment_update" events from server
     const unsubscribe = subscribe('bold_payment_update', async (data: any) => {
-      console.log('📡 WebSocket event received:', data);
+      console.log('📡 WebSocket event received!');
+      console.log('   Event data:', JSON.stringify(data, null, 2));
+      console.log('   Current integration_id:', boldIntegrationId);
+      console.log('   Event integration_id:', data.integration_id);
 
       // Check if this event is for our current payment
       if (data.integration_id === boldIntegrationId) {
-        console.log(`✅ WebSocket: Payment update matched! Status: ${data.status}`);
+        console.log(`✅ WebSocket: Payment update MATCHED! Status: ${data.status}`);
 
         if (data.status === 'approved') {
           // Payment approved via WebSocket - clear polling and process

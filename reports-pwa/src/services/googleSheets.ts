@@ -42,11 +42,11 @@ export interface ReportData {
   productos_vendidos: number
   ticket_promedio: number
   detalle_productos: ProductDetail[]
-  detalle_tipos_pago?: PaymentMethodDetail[]
-  detalle_tipos_pedido?: OrderTypeDetail[]
-  detalle_movimientos?: CashMovementDetail[]
-  total_depositos?: number
-  total_retiros?: number
+  detalle_tipos_pago: PaymentMethodDetail[]
+  detalle_tipos_pedido: OrderTypeDetail[]
+  detalle_movimientos: CashMovementDetail[]
+  total_depositos: number
+  total_retiros: number
 }
 
 class GoogleSheetsService {

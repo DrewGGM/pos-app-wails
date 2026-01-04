@@ -317,17 +317,20 @@ func (s *BoldWebhookService) processWebhook(notification *models.BoldWebhookNoti
 	// Send WebSocket notification to frontend
 	if s.wsServer != nil {
 		notificationData := map[string]interface{}{
-			"integration_id": pendingPayment.IntegrationID,
-			"status":         pendingPayment.Status,
-			"payment_id":     pendingPayment.PaymentID,
-			"amount":         pendingPayment.Amount,
-			"bold_code":      pendingPayment.BoldCode,
-			"card_brand":     pendingPayment.CardBrand,
-			"card_masked":    pendingPayment.CardMaskedPan,
+			"integration_id":  pendingPayment.IntegrationID,
+			"status":          pendingPayment.Status,
+			"payment_id":      pendingPayment.PaymentID,
+			"amount":          pendingPayment.Amount,
+			"bold_code":       pendingPayment.BoldCode,
+			"card_brand":      pendingPayment.CardBrand,
+			"card_masked":     pendingPayment.CardMaskedPan,
 			"approval_number": pendingPayment.ApprovalNumber,
 		}
+		log.Printf("📡 Sending WebSocket notification: event=bold_payment_update, integration_id=%s, status=%s",
+			pendingPayment.IntegrationID, pendingPayment.Status)
+		log.Printf("   Full notification data: %+v", notificationData)
 		s.wsServer.BroadcastJSON("bold_payment_update", notificationData)
-		log.Printf("📡 WebSocket notification sent for payment %s", pendingPayment.IntegrationID)
+		log.Printf("✅ WebSocket notification broadcasted for payment %s", pendingPayment.IntegrationID)
 	} else {
 		log.Printf("⚠️  No WebSocket server configured for notifications")
 	}

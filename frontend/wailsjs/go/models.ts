@@ -4416,6 +4416,7 @@ export namespace services {
 	    resolution_date_from: string;
 	    resolution_date_to: string;
 	    report_date: string;
+	    report_end_date: string;
 	    generated_at: time.Time;
 	    first_invoice_number: string;
 	    last_invoice_number: string;
@@ -4459,6 +4460,7 @@ export namespace services {
 	        this.resolution_date_from = source["resolution_date_from"];
 	        this.resolution_date_to = source["resolution_date_to"];
 	        this.report_date = source["report_date"];
+	        this.report_end_date = source["report_end_date"];
 	        this.generated_at = this.convertValues(source["generated_at"], time.Time);
 	        this.first_invoice_number = source["first_invoice_number"];
 	        this.last_invoice_number = source["last_invoice_number"];
