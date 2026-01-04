@@ -638,10 +638,12 @@ fun parseColor(hexColor: String): Color {
     }
 }
 
-// Helper function to convert Color to hex string
+// Helper function to convert Color to hex string (RGB only, no alpha)
 fun toHexColor(color: Color): String {
     val argb = color.toArgb()
-    return String.format("#%08X", argb)
+    // Extract RGB components (ignore alpha)
+    val rgb = argb and 0x00FFFFFF
+    return String.format("#%06X", rgb)
 }
 
 @Composable

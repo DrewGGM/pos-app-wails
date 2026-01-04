@@ -247,6 +247,25 @@ func (s *BoldWebhookService) verifySignature(body []byte, signature string, secr
 	return hmac.Equal([]byte(expectedSignature), []byte(signature))
 }
 
+// sanitizeString removes null bytes and other invalid UTF-8 characters from strings
+// PostgreSQL does not allow null bytes (0x00) in text fields
+func sanitizeString(s string) string {
+	// Remove null bytes and other control characters except newlines and tabs
+	result := make([]rune, 0, len(s))
+	for _, r := range s {
+		// Skip null bytes and most control characters (except \n, \r, \t)
+		if r == 0 || (r < 32 && r != '\n' && r != '\r' && r != '\t') {
+			continue
+		}
+		// Skip replacement character (often indicates invalid UTF-8)
+		if r == '\uFFFD' {
+			continue
+		}
+		result = append(result, r)
+	}
+	return string(result)
+}
+
 // processWebhook processes the webhook notification and updates payment status
 func (s *BoldWebhookService) processWebhook(notification *models.BoldWebhookNotification) error {
 	// Find pending payment by reference (integration_id is in metadata.reference)
@@ -272,18 +291,20 @@ func (s *BoldWebhookService) processWebhook(notification *models.BoldWebhookNoti
 	}
 
 	// Update pending payment with webhook data
-	pendingPayment.PaymentID = notification.Data.PaymentID
-	pendingPayment.BoldCode = notification.Data.BoldCode
+	// IMPORTANT: Sanitize all string fields to remove null bytes and invalid UTF-8
+	// PostgreSQL does not allow null bytes in text fields
+	pendingPayment.PaymentID = sanitizeString(notification.Data.PaymentID)
+	pendingPayment.BoldCode = sanitizeString(notification.Data.BoldCode)
 
 	if notification.Data.Card != nil {
-		pendingPayment.CardBrand = notification.Data.Card.Brand
-		pendingPayment.CardMaskedPan = notification.Data.Card.MaskedPan
-		pendingPayment.ApprovalNumber = notification.Data.ApprovalNumber
+		pendingPayment.CardBrand = sanitizeString(notification.Data.Card.Brand)
+		pendingPayment.CardMaskedPan = sanitizeString(notification.Data.Card.MaskedPan)
+		pendingPayment.ApprovalNumber = sanitizeString(notification.Data.ApprovalNumber)
 	}
 
 	// Store full webhook data as JSON
 	webhookJSON, _ := json.Marshal(notification)
-	pendingPayment.WebhookData = string(webhookJSON)
+	pendingPayment.WebhookData = sanitizeString(string(webhookJSON))
 
 	// Update status based on notification type
 	switch notification.Type {

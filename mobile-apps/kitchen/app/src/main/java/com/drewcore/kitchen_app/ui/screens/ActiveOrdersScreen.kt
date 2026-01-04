@@ -239,15 +239,19 @@ fun OrderCardDisplay(
         else -> {
             // Always try to get custom color for this order type (even if updated)
             val orderTypeCode = order.orderType?.code
+            android.util.Log.d("OrderCard", "Order ${order.orderNumber}: orderType=${order.orderType?.name}, code=$orderTypeCode")
             val customColorHex = preferences.getColorForOrderType(orderTypeCode)
+            android.util.Log.d("OrderCard", "Order ${order.orderNumber}: customColorHex=$customColorHex")
             if (customColorHex != null) {
                 try {
                     Color(android.graphics.Color.parseColor(customColorHex))
                 } catch (e: Exception) {
+                    android.util.Log.e("OrderCard", "Failed to parse color: $customColorHex", e)
                     // If color parsing fails, use default
                     MaterialTheme.colorScheme.surface
                 }
             } else {
+                android.util.Log.d("OrderCard", "No custom color found for order type: $orderTypeCode")
                 MaterialTheme.colorScheme.surface
             }
         }

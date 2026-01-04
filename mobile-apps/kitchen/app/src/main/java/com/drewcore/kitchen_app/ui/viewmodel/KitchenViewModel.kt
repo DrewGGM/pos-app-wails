@@ -89,6 +89,40 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     init {
+        // Load persisted orders from database on startup
+        viewModelScope.launch {
+            try {
+                orderRepository.activeOrders.collect { orders ->
+                    if (orders.isNotEmpty()) {
+                        Log.d(TAG, "Loaded ${orders.size} orders from database")
+                        // Track order types from persisted orders
+                        orders.forEach { order ->
+                            order.orderType?.let { updateDiscoveredOrderTypes(it) }
+                        }
+                        // Update active orders with persisted data
+                        val orderStates = orders.map { OrderDisplayState(it, isCancelled = false) }
+                        _activeOrders.value = orderStates
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load orders from database", e)
+            }
+        }
+
+        // Load completed orders from database
+        viewModelScope.launch {
+            try {
+                orderRepository.completedOrders.collect { orders ->
+                    if (orders.isNotEmpty()) {
+                        Log.d(TAG, "Loaded ${orders.size} completed orders from database")
+                        _completedOrders.value = orders
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load completed orders from database", e)
+            }
+        }
+
         // Observe WebSocket connection state
         viewModelScope.launch {
             webSocketManager.connectionState.collect { state ->

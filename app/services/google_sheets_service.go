@@ -276,7 +276,6 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Order("SUM(payments.amount) DESC").
 		Scan(&paymentSummaries)
 
-	report.DetalleTiposPago = []PaymentMethodDetail{}
 	for _, pm := range paymentSummaries {
 		report.DetalleTiposPago = append(report.DetalleTiposPago, PaymentMethodDetail{
 			PaymentMethod: pm.PaymentMethodName,
@@ -312,7 +311,6 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 	}
 
 	// CRITICAL: Iterate over ALL order types to ensure consistent columns (even if no sales)
-	report.DetalleTiposPedido = []OrderTypeDetail{}
 	for _, orderType := range allOrderTypes {
 		ot, hasSales := salesByOrderType[orderType.Name]
 		if !hasSales {
@@ -375,7 +373,6 @@ func (s *GoogleSheetsService) GenerateDailyReport(date time.Time) (*ReportData, 
 		Order("cash_movements.created_at ASC").
 		Find(&movements)
 
-	report.DetalleMovimientos = []CashMovementDetail{}
 	report.TotalDepositos = 0
 	report.TotalRetiros = 0
 
@@ -492,7 +489,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 			report.VentasTotales,
 			report.VentasDIAN,
 			report.VentasNoDIAN,
-			report.NumeroOrdenes,
+			report.NumeroOrdenes,  // Field name in struct, but column name in CSV is "ordenes"
 			report.ProductosVendidos,
 			report.TicketPromedio,
 		}
@@ -533,7 +530,7 @@ func (s *GoogleSheetsService) SendReport(config *models.GoogleSheetsConfig, repo
 			report.VentasTotales,
 			report.VentasDIAN,
 			report.VentasNoDIAN,
-			report.NumeroOrdenes,
+			report.NumeroOrdenes,  // Field name in struct, but column name in CSV is "ordenes"
 			report.ProductosVendidos,
 			report.TicketPromedio,
 			string(productsJSON),
@@ -611,7 +608,7 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"ventas_totales",
 			"ventas_dian",
 			"ventas_no_dian",
-			"ordenes",
+			"numero_ordenes",
 			"productos_vendidos",
 			"ticket_promedio",
 		}
@@ -651,7 +648,7 @@ func (s *GoogleSheetsService) ensureHeaders(srv *sheets.Service, config *models.
 			"ventas_totales",
 			"ventas_dian",
 			"ventas_no_dian",
-			"ordenes",
+			"ordenes",  // Changed from "numero_ordenes" to match CSV format
 			"productos_vendidos",
 			"ticket_promedio",
 			"detalle_productos",

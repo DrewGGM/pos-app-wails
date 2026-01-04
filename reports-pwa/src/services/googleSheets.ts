@@ -147,18 +147,27 @@ class GoogleSheetsService {
             if (!value || value.trim() === '') {
               report[header] = []
             } else {
+              // Log raw value for debugging
+              if (header === 'detalle_productos') {
+                console.log(`Parsing ${header}, raw value length:`, value.length, 'First 100 chars:', value.substring(0, 100))
+              }
               const parsed = JSON.parse(value)
               // Ensure it's always an array
               report[header] = Array.isArray(parsed) ? parsed : []
+              // Log parsed result
+              if (header === 'detalle_productos' && Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`Parsed ${header}:`, parsed.length, 'items. First item:', parsed[0])
+              }
             }
           } catch (e) {
-            console.error(`Error parsing ${header}:`, e, 'Value:', value)
+            console.error(`❌ Error parsing ${header}:`, e)
+            console.error('Raw value:', value.substring(0, 200))
             report[header] = []
           }
         }
         // Convertir a número si parece ser numérico
         else if (header === 'ventas_totales' || header === 'ventas_dian' || header === 'ventas_no_dian' ||
-            header === 'numero_ordenes' || header === 'productos_vendidos' || header === 'ticket_promedio' ||
+            header === 'numero_ordenes' || header === 'ordenes' || header === 'productos_vendidos' || header === 'ticket_promedio' ||
             header === 'total' || header === 'cantidad' || header === 'total_depositos' || header === 'total_retiros') {
           report[header] = this.parseNumber(value)
         } else {
@@ -173,7 +182,8 @@ class GoogleSheetsService {
           ventas_totales: report.ventas_totales || 0,
           ventas_dian: report.ventas_dian || 0,
           ventas_no_dian: report.ventas_no_dian || 0,
-          numero_ordenes: report.numero_ordenes || 0,
+          // Support both "ordenes" and "numero_ordenes" for compatibility
+          numero_ordenes: report.ordenes || report.numero_ordenes || 0,
           productos_vendidos: report.productos_vendidos || 0,
           ticket_promedio: report.ticket_promedio || 0,
           detalle_productos: report.detalle_productos || [],

@@ -118,6 +118,19 @@ function App() {
     }
   }, [selectedDate, reports, viewPeriod])
 
+  // Debug: Log current report when it changes
+  useEffect(() => {
+    if (currentReport) {
+      console.log('📊 Current Report:', {
+        fecha: currentReport.fecha,
+        productos_count: currentReport.detalle_productos?.length || 0,
+        productos_sample: currentReport.detalle_productos?.[0],
+        pagos_count: currentReport.detalle_tipos_pago?.length || 0,
+        pagos_sample: currentReport.detalle_tipos_pago?.[0],
+      })
+    }
+  }, [currentReport])
+
   const loadReports = async (skipConfigCheck = false) => {
     // Check configuration - either skip if already verified, or check against service directly
     const actuallyConfigured = skipConfigCheck || googleSheetsService.isConfigured()
