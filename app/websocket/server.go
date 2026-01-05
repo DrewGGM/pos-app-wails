@@ -13,6 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/grandcat/zeroconf"
 	"gorm.io/gorm"
+
+	"PosApp/app/models"
 )
 
 // MessageType represents the type of WebSocket message
@@ -422,6 +424,9 @@ func (c *Client) handleMessage(message *Message) {
 	case TypeKitchenUpdate:
 		// Handle kitchen status update
 		if c.Type == ClientKitchen {
+			// Update order status in database
+			c.handleKitchenUpdate(message)
+			// Broadcast to POS and waiters
 			c.Server.broadcastToPOS(message)
 			c.Server.broadcastToWaiters(message)
 		}
@@ -510,6 +515,74 @@ func (c *Client) handleKitchenAck(message *Message) {
 	c.Server.broadcastToPOS(&resultMessage)
 	c.Server.broadcastToWaiters(&resultMessage)
 	log.Printf("Kitchen acknowledgment result broadcast to POS and waiters")
+}
+
+// KitchenUpdateData represents the data in a kitchen status update message
+type KitchenUpdateData struct {
+	OrderID string `json:"order_id"`
+	Status  string `json:"status"`
+}
+
+// handleKitchenUpdate handles kitchen status updates (e.g., marking orders as ready)
+func (c *Client) handleKitchenUpdate(message *Message) {
+	log.Printf("Kitchen client %s updating order status", c.ID)
+
+	// Parse the update data
+	var updateData KitchenUpdateData
+	if err := json.Unmarshal(message.Data, &updateData); err != nil {
+		log.Printf("Error parsing kitchen update data: %v", err)
+		return
+	}
+
+	// Convert order ID from string to uint
+	orderID, err := strconv.ParseUint(updateData.OrderID, 10, 32)
+	if err != nil {
+		log.Printf("Error parsing order ID: %v", err)
+		return
+	}
+
+	log.Printf("Kitchen updating order ID: %d to status: %s", orderID, updateData.Status)
+
+	// Update order status using the order service
+	if c.Server.orderService != nil {
+		// Convert status string to OrderStatus type
+		status := models.OrderStatus(updateData.Status)
+
+		// Validate status is one of the allowed values
+		validStatuses := []models.OrderStatus{
+			models.OrderStatusPending,
+			models.OrderStatusPreparing,
+			models.OrderStatusReady,
+			models.OrderStatusDelivered,
+			models.OrderStatusCancelled,
+			models.OrderStatusPaid,
+		}
+
+		isValid := false
+		for _, validStatus := range validStatuses {
+			if status == validStatus {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			log.Printf("Invalid status: %s", updateData.Status)
+			return
+		}
+
+		// Update the order status in the database
+		if err := c.Server.orderService.UpdateOrderStatus(uint(orderID), status); err != nil {
+			log.Printf("Error updating order status: %v", err)
+		} else {
+			log.Printf("Order %d status updated to %s", orderID, status)
+
+			// Broadcast the status update to all connected clients
+			c.Server.SendOrderNotification(uint(orderID), string(status))
+		}
+	} else {
+		log.Printf("Warning: orderService not available, cannot update order status")
+	}
 }
 
 // handlePrintReceipt handles print receipt requests from waiter app

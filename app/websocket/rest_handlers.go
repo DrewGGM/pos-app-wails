@@ -16,6 +16,7 @@ import (
 type OrderCreator interface {
 	CreateOrder(order *models.Order) (*models.Order, error)
 	SendToKitchen(orderID uint) error
+	UpdateOrderStatus(orderID uint, status models.OrderStatus) error
 }
 
 // RESTHandlers provides HTTP REST endpoints for mobile apps

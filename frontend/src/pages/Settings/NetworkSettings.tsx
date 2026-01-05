@@ -115,15 +115,33 @@ const NetworkSettings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [savingMobileConfig, setSavingMobileConfig] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [installingViaPM, setInstallingViaPM] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [canUsePM, setCanUsePM] = useState(false);
+  const [pmCommand, setPmCommand] = useState('');
   const outputRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load data on mount
   useEffect(() => {
     loadData();
+    checkPackageManager();
   }, []);
+
+  const checkPackageManager = async () => {
+    try {
+      const canUse = await wailsConfigService.canUsePackageManager();
+      setCanUsePM(canUse);
+      if (canUse) {
+        const cmd = await wailsConfigService.getPackageManagerCommand();
+        setPmCommand(cmd);
+      }
+    } catch (error) {
+      console.error('Error checking package manager:', error);
+    }
+  };
 
   // Poll for tunnel status when on tunnel tab
   useEffect(() => {
@@ -227,6 +245,32 @@ const NetworkSettings: React.FC = () => {
       toast.error(error?.message || 'Error descargando cloudflared');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleInstallViaPackageManager = async () => {
+    setInstallingViaPM(true);
+    try {
+      await wailsConfigService.installCloudflaredViaPackageManager();
+      toast.success('Cloudflared instalado via gestor de paquetes');
+      await pollTunnelStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error instalando cloudflared');
+    } finally {
+      setInstallingViaPM(false);
+    }
+  };
+
+  const handleLoginToCloudflare = async () => {
+    setLoggingIn(true);
+    try {
+      await wailsConfigService.loginToCloudflare();
+      toast.success('Login completado. Revisa el log para mas detalles.');
+      await pollTunnelStatus();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error en login de Cloudflare');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -625,25 +669,81 @@ const NetworkSettings: React.FC = () => {
           {/* Installation Status */}
           {!tunnelStatus.binary_exists && (
             <Grid item xs={12}>
+              <Card sx={{ borderColor: 'warning.main', borderWidth: 2, borderStyle: 'solid' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <DownloadIcon color="warning" />
+                    Cloudflared no instalado
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    Necesitas instalar <strong>cloudflared</strong> para usar tunnels. Elige un metodo de instalacion:
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {/* Install via Package Manager */}
+                    {canUsePM && (
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleInstallViaPackageManager}
+                        disabled={installingViaPM || downloading}
+                        startIcon={installingViaPM ? <CircularProgress size={20} /> : <DownloadIcon />}
+                      >
+                        {installingViaPM ? 'Instalando...' : `Instalar via ${pmCommand.split(' ')[0]}`}
+                      </Button>
+                    )}
+
+                    {/* Manual Download */}
+                    <Button
+                      variant={canUsePM ? 'outlined' : 'contained'}
+                      color={canUsePM ? 'secondary' : 'primary'}
+                      onClick={handleDownloadCloudflared}
+                      disabled={downloading || installingViaPM}
+                      startIcon={downloading ? <CircularProgress size={20} /> : <DownloadIcon />}
+                    >
+                      {downloading ? 'Descargando...' : 'Descarga Manual'}
+                    </Button>
+                  </Box>
+
+                  {(downloading || installingViaPM) && <LinearProgress sx={{ mt: 2 }} />}
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {canUsePM && (
+                      <>
+                        <strong>Recomendado:</strong> Usar el gestor de paquetes instala cloudflared en el sistema y lo mantiene actualizado.
+                        <br />
+                      </>
+                    )}
+                    <strong>Descarga manual:</strong> Descarga el binario directamente desde GitHub.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Cloudflare Login Button */}
+          {tunnelStatus.binary_exists && !tunnelStatus.is_running && (
+            <Grid item xs={12}>
               <Alert
-                severity="warning"
+                severity="info"
                 action={
                   <Button
                     color="inherit"
                     size="small"
-                    onClick={handleDownloadCloudflared}
-                    disabled={downloading}
-                    startIcon={downloading ? <CircularProgress size={16} /> : <DownloadIcon />}
+                    onClick={handleLoginToCloudflare}
+                    disabled={loggingIn}
+                    startIcon={loggingIn ? <CircularProgress size={16} /> : <OpenIcon />}
                   >
-                    {downloading ? 'Descargando...' : 'Descargar'}
+                    {loggingIn ? 'Iniciando login...' : 'Login Cloudflare'}
                   </Button>
                 }
               >
                 <Typography variant="body2">
-                  <strong>cloudflared</strong> no esta instalado. Descargalo para usar tunnels.
+                  <strong>Opcional:</strong> Inicia sesion en Cloudflare para obtener un tunnel con nombre permanente y dominio personalizado.
                 </Typography>
               </Alert>
-              {downloading && <LinearProgress sx={{ mt: 1 }} />}
             </Grid>
           )}
 

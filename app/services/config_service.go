@@ -744,3 +744,23 @@ func (s *ConfigService) GetTunnelDownloadURL() string {
 func (s *ConfigService) ClearTunnelOutput() {
 	getTunnelService().ClearOutput()
 }
+
+// InstallCloudflaredViaPackageManager installs cloudflared using system package manager
+func (s *ConfigService) InstallCloudflaredViaPackageManager() error {
+	return getTunnelService().InstallViaPackageManager()
+}
+
+// LoginToCloudflare opens browser for Cloudflare authentication
+func (s *ConfigService) LoginToCloudflare() error {
+	return getTunnelService().LoginToCloudflare()
+}
+
+// GetPackageManagerCommand returns the command to install cloudflared
+func (s *ConfigService) GetPackageManagerCommand() string {
+	return getTunnelService().GetPackageManagerCommand()
+}
+
+// CanUsePackageManager checks if a package manager is available
+func (s *ConfigService) CanUsePackageManager() bool {
+	return getTunnelService().CanUsePackageManager()
+}

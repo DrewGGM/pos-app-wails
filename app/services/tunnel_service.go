@@ -517,3 +517,113 @@ func (s *TunnelService) ClearOutput() {
 	defer s.mu.Unlock()
 	s.outputBuffer = make([]string, 0)
 }
+
+// InstallViaPackageManager installs cloudflared using the system package manager
+func (s *TunnelService) InstallViaPackageManager() error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		// Try winget first
+		if _, err := exec.LookPath("winget"); err == nil {
+			s.addOutput("Instalando cloudflared via winget...")
+			cmd = exec.Command("winget", "install", "--id", "Cloudflare.cloudflared", "--silent", "--accept-package-agreements", "--accept-source-agreements")
+		} else {
+			return fmt.Errorf("winget no está disponible. Por favor instala Windows Package Manager o descarga manualmente")
+		}
+
+	case "darwin":
+		// macOS - use brew
+		if _, err := exec.LookPath("brew"); err == nil {
+			s.addOutput("Instalando cloudflared via Homebrew...")
+			cmd = exec.Command("brew", "install", "cloudflared")
+		} else {
+			return fmt.Errorf("Homebrew no está instalado. Instala brew desde https://brew.sh")
+		}
+
+	case "linux":
+		// Linux - try apt, then yum, then dnf
+		if _, err := exec.LookPath("apt-get"); err == nil {
+			s.addOutput("Instalando cloudflared via apt...")
+			// Add Cloudflare GPG key and repository
+			return fmt.Errorf("en Linux, usa: curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-archive-keyring.gpg >/dev/null && echo \"deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main\" | sudo tee /etc/apt/sources.list.d/cloudflared.list && sudo apt-get update && sudo apt-get install cloudflared")
+		}
+		return fmt.Errorf("gestor de paquetes no soportado. Descarga manualmente desde GitHub")
+
+	default:
+		return fmt.Errorf("sistema operativo no soportado: %s", runtime.GOOS)
+	}
+
+	// Execute installation
+	output, err := cmd.CombinedOutput()
+	s.addOutput(string(output))
+
+	if err != nil {
+		s.addOutput(fmt.Sprintf("Error instalando: %s", err.Error()))
+		return fmt.Errorf("error instalando cloudflared: %w", err)
+	}
+
+	s.addOutput("✓ Cloudflared instalado correctamente via package manager")
+	return nil
+}
+
+// LoginToCloudflare opens browser for Cloudflare login and saves credentials
+func (s *TunnelService) LoginToCloudflare() error {
+	binaryPath := s.getCloudflaredPath()
+	if !s.checkBinaryExists(binaryPath) {
+		return fmt.Errorf("cloudflared no está instalado")
+	}
+
+	s.addOutput("Abriendo navegador para login en Cloudflare...")
+	s.addOutput("Sigue las instrucciones en el navegador para autorizar el acceso")
+
+	// Run cloudflared tunnel login
+	cmd := exec.Command(binaryPath, "tunnel", "login")
+
+	// Get output
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	s.addOutput(outputStr)
+
+	if err != nil {
+		s.addOutput(fmt.Sprintf("Error en login: %s", err.Error()))
+		return fmt.Errorf("error en login: %w", err)
+	}
+
+	s.addOutput("✓ Login completado. Credenciales guardadas")
+	s.addOutput("Ahora puedes crear un tunnel con nombre permanente")
+
+	return nil
+}
+
+// GetPackageManagerCommand returns the command to install cloudflared
+func (s *TunnelService) GetPackageManagerCommand() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "winget install --id Cloudflare.cloudflared"
+	case "darwin":
+		return "brew install cloudflared"
+	case "linux":
+		return "apt-get install cloudflared"
+	default:
+		return ""
+	}
+}
+
+// CanUsePackageManager checks if a package manager is available
+func (s *TunnelService) CanUsePackageManager() bool {
+	switch runtime.GOOS {
+	case "windows":
+		_, err := exec.LookPath("winget")
+		return err == nil
+	case "darwin":
+		_, err := exec.LookPath("brew")
+		return err == nil
+	case "linux":
+		_, err := exec.LookPath("apt-get")
+		return err == nil
+	default:
+		return false
+	}
+}

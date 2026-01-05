@@ -201,6 +201,30 @@ export const wailsConfigService = {
     const svc = getConfigService();
     if (!svc) return;
     await svc.ClearTunnelOutput();
+  },
+
+  async installCloudflaredViaPackageManager(): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.InstallCloudflaredViaPackageManager();
+  },
+
+  async loginToCloudflare(): Promise<void> {
+    const svc = getConfigService();
+    if (!svc) throw new Error('Service not ready');
+    await svc.LoginToCloudflare();
+  },
+
+  async getPackageManagerCommand(): Promise<string> {
+    const svc = getConfigService();
+    if (!svc) return '';
+    return await svc.GetPackageManagerCommand();
+  },
+
+  async canUsePackageManager(): Promise<boolean> {
+    const svc = getConfigService();
+    if (!svc) return false;
+    return await svc.CanUsePackageManager();
   }
 };
 
