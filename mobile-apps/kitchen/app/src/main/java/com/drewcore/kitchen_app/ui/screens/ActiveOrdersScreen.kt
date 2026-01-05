@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -232,6 +233,9 @@ fun OrderCardDisplay(
     val order = cardData.order
     val isContinuation = cardData.cardIndex > 0
     val isCancelled = cardData.isCancelled
+
+    // Track visually struck-through items (for kitchen workflow aid)
+    val struckThroughItems = remember { mutableStateOf(setOf<String>()) }
 
     // Determine card background color based on state and custom colors
     val cardBackgroundColor = when {
@@ -463,6 +467,9 @@ fun OrderCardDisplay(
                     val isAdded = !isCancelled && item.changeStatus == ItemChangeStatus.ADDED
                     val isModified = !isCancelled && item.changeStatus == ItemChangeStatus.MODIFIED
 
+                    // Check if item is visually struck through (kitchen aid)
+                    val isStruckThrough = struckThroughItems.value.contains(item.id)
+
                     val badgeColor = when {
                         isRemoved -> Color(0xFFE53935) // Red for removed/cancelled
                         isAdded -> Color(0xFF4CAF50)   // Green for added
@@ -472,16 +479,32 @@ fun OrderCardDisplay(
 
                     val textColor = when {
                         isRemoved -> Color(0xFFE53935).copy(alpha = 0.7f)
+                        isStruckThrough -> Color.Gray.copy(alpha = 0.6f) // Gray for struck through
                         else -> Color.Unspecified
                     }
 
-                    val textDecoration = if (isRemoved) TextDecoration.LineThrough else TextDecoration.None
+                    // Apply strikethrough if removed OR manually struck through
+                    val textDecoration = if (isRemoved || isStruckThrough) TextDecoration.LineThrough else TextDecoration.None
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
                                 if (isRemoved) Modifier.padding(vertical = 2.dp) else Modifier
+                            )
+                            // Add click handler to toggle strikethrough (only for non-removed items)
+                            .then(
+                                if (!isRemoved && !isCancelled) {
+                                    Modifier.clickable {
+                                        val currentSet = struckThroughItems.value.toMutableSet()
+                                        if (isStruckThrough) {
+                                            currentSet.remove(item.id)
+                                        } else {
+                                            currentSet.add(item.id)
+                                        }
+                                        struckThroughItems.value = currentSet
+                                    }
+                                } else Modifier
                             ),
                         verticalAlignment = Alignment.Top
                     ) {
