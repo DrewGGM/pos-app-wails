@@ -81,7 +81,6 @@ func (s *TunnelService) GetStatus() (*TunnelStatus, error) {
 		BinaryExists: binaryExists,
 	}
 
-	// Get config from database
 	var config models.TunnelConfig
 	if err := s.db.First(&config).Error; err == nil {
 		if config.LastConnected != nil {
@@ -94,38 +93,32 @@ func (s *TunnelService) GetStatus() (*TunnelStatus, error) {
 
 // getCloudflaredPath returns the path to cloudflared binary
 func (s *TunnelService) getCloudflaredPath() string {
-	// Get executable directory
 	exePath, err := os.Executable()
 	if err != nil {
 		return ""
 	}
 	exeDir := filepath.Dir(exePath)
 
-	// Binary name depends on OS
 	binaryName := "cloudflared"
 	if runtime.GOOS == "windows" {
 		binaryName = "cloudflared.exe"
 	}
 
-	// Check in app directory first
 	appPath := filepath.Join(exeDir, binaryName)
 	if s.checkBinaryExists(appPath) {
 		return appPath
 	}
 
-	// Check in data directory
 	dataDir := filepath.Join(exeDir, "data")
 	dataPath := filepath.Join(dataDir, binaryName)
 	if s.checkBinaryExists(dataPath) {
 		return dataPath
 	}
 
-	// Check in PATH
 	if path, err := exec.LookPath(binaryName); err == nil {
 		return path
 	}
 
-	// Return default path (data directory)
 	return dataPath
 }
 
@@ -179,7 +172,6 @@ func (s *TunnelService) DownloadCloudflared() error {
 		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	// Get target path
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -187,7 +179,6 @@ func (s *TunnelService) DownloadCloudflared() error {
 	exeDir := filepath.Dir(exePath)
 	dataDir := filepath.Join(exeDir, "data")
 
-	// Ensure data directory exists
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
@@ -200,7 +191,6 @@ func (s *TunnelService) DownloadCloudflared() error {
 
 	s.addOutput(fmt.Sprintf("Downloading cloudflared from %s...", downloadURL))
 
-	// Download file
 	resp, err := http.Get(downloadURL)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
@@ -211,14 +201,12 @@ func (s *TunnelService) DownloadCloudflared() error {
 		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
 	}
 
-	// Create temp file
 	tmpFile, err := os.CreateTemp(dataDir, "cloudflared-download-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 
-	// Download to temp file
 	_, err = io.Copy(tmpFile, resp.Body)
 	tmpFile.Close()
 	if err != nil {
@@ -226,14 +214,12 @@ func (s *TunnelService) DownloadCloudflared() error {
 		return fmt.Errorf("failed to save download: %w", err)
 	}
 
-	// Move to final location
-	os.Remove(targetPath) // Remove existing if any
+	os.Remove(targetPath)
 	if err := os.Rename(tmpPath, targetPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("failed to move binary: %w", err)
 	}
 
-	// Make executable on Unix
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(targetPath, 0755); err != nil {
 			return fmt.Errorf("failed to make binary executable: %w", err)
@@ -258,25 +244,20 @@ func (s *TunnelService) StartTunnel(port int) error {
 		return fmt.Errorf("cloudflared not installed. Please download it first")
 	}
 
-	// Get network config to determine which port to expose
 	var netConfig models.NetworkConfig
 	if err := s.db.First(&netConfig).Error; err != nil {
-		// Use default port if not configured
 		if port == 0 {
-			port = 8082 // Default Config API port
+			port = 8082
 		}
 	} else if port == 0 {
 		port = netConfig.ConfigAPIPort
 	}
 
-	// Create cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 
-	// Build command - Quick tunnel (no account required)
 	s.cmd = exec.CommandContext(ctx, binaryPath, "tunnel", "--url", fmt.Sprintf("http://localhost:%d", port))
 
-	// Get stdout and stderr pipes
 	stdout, err := s.cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to get stdout pipe: %w", err)
@@ -300,11 +281,9 @@ func (s *TunnelService) StartTunnel(port int) error {
 	s.isRunning = true
 	s.addOutput(fmt.Sprintf("Starting tunnel on port %d...", port))
 
-	// Monitor output in goroutines
 	go s.monitorOutput(stdout)
 	go s.monitorOutput(stderr)
 
-	// Wait for process in background
 	go func() {
 		err := s.cmd.Wait()
 		s.mu.Lock()
@@ -342,14 +321,11 @@ func (s *TunnelService) StartTunnelWithToken(token string) error {
 		return fmt.Errorf("cloudflared not installed. Please download it first")
 	}
 
-	// Create cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 
-	// Build command with token
 	s.cmd = exec.CommandContext(ctx, binaryPath, "tunnel", "run", "--token", token)
 
-	// Get stdout and stderr pipes
 	stdout, err := s.cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to get stdout pipe: %w", err)
@@ -373,11 +349,9 @@ func (s *TunnelService) StartTunnelWithToken(token string) error {
 	s.isRunning = true
 	s.addOutput("Starting tunnel with token...")
 
-	// Monitor output in goroutines
 	go s.monitorOutput(stdout)
 	go s.monitorOutput(stderr)
 
-	// Wait for process in background
 	go func() {
 		err := s.cmd.Wait()
 		s.mu.Lock()
@@ -410,10 +384,8 @@ func (s *TunnelService) StopTunnel() error {
 		s.cancel()
 	}
 
-	// Give it a moment to stop gracefully
 	time.Sleep(500 * time.Millisecond)
 
-	// Force kill if still running
 	if s.cmd != nil && s.cmd.Process != nil {
 		s.cmd.Process.Kill()
 	}
@@ -421,7 +393,6 @@ func (s *TunnelService) StopTunnel() error {
 	s.isRunning = false
 	s.addOutputLocked("Tunnel stopped by user")
 
-	// Update database
 	go s.updateTunnelStatus(false, "")
 
 	return nil
@@ -437,12 +408,10 @@ func (s *TunnelService) monitorOutput(reader io.Reader) {
 		s.mu.Lock()
 		s.addOutputLocked(line)
 
-		// Try to extract tunnel URL
 		if matches := urlRegex.FindString(line); matches != "" {
 			s.tunnelURL = matches
 			s.addOutputLocked(fmt.Sprintf("Tunnel URL: %s", matches))
 
-			// Update database with URL
 			go s.updateTunnelStatus(true, matches)
 		}
 
@@ -462,7 +431,6 @@ func (s *TunnelService) addOutputLocked(line string) {
 	timestamp := time.Now().Format("15:04:05")
 	s.outputBuffer = append(s.outputBuffer, fmt.Sprintf("[%s] %s", timestamp, line))
 
-	// Trim if too long
 	if len(s.outputBuffer) > s.maxOutputLines {
 		s.outputBuffer = s.outputBuffer[len(s.outputBuffer)-s.maxOutputLines:]
 	}
@@ -524,7 +492,6 @@ func (s *TunnelService) InstallViaPackageManager() error {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Try winget first
 		if _, err := exec.LookPath("winget"); err == nil {
 			s.addOutput("Instalando cloudflared via winget...")
 			cmd = exec.Command("winget", "install", "--id", "Cloudflare.cloudflared", "--silent", "--accept-package-agreements", "--accept-source-agreements")
@@ -533,7 +500,6 @@ func (s *TunnelService) InstallViaPackageManager() error {
 		}
 
 	case "darwin":
-		// macOS - use brew
 		if _, err := exec.LookPath("brew"); err == nil {
 			s.addOutput("Instalando cloudflared via Homebrew...")
 			cmd = exec.Command("brew", "install", "cloudflared")
@@ -542,10 +508,8 @@ func (s *TunnelService) InstallViaPackageManager() error {
 		}
 
 	case "linux":
-		// Linux - try apt, then yum, then dnf
 		if _, err := exec.LookPath("apt-get"); err == nil {
 			s.addOutput("Instalando cloudflared via apt...")
-			// Add Cloudflare GPG key and repository
 			return fmt.Errorf("en Linux, usa: curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-archive-keyring.gpg >/dev/null && echo \"deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main\" | sudo tee /etc/apt/sources.list.d/cloudflared.list && sudo apt-get update && sudo apt-get install cloudflared")
 		}
 		return fmt.Errorf("gestor de paquetes no soportado. Descarga manualmente desde GitHub")
@@ -554,7 +518,6 @@ func (s *TunnelService) InstallViaPackageManager() error {
 		return fmt.Errorf("sistema operativo no soportado: %s", runtime.GOOS)
 	}
 
-	// Execute installation
 	output, err := cmd.CombinedOutput()
 	s.addOutput(string(output))
 
@@ -577,10 +540,8 @@ func (s *TunnelService) LoginToCloudflare() error {
 	s.addOutput("Abriendo navegador para login en Cloudflare...")
 	s.addOutput("Sigue las instrucciones en el navegador para autorizar el acceso")
 
-	// Run cloudflared tunnel login
 	cmd := exec.Command(binaryPath, "tunnel", "login")
 
-	// Get output
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
 

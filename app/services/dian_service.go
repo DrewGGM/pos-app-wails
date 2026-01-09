@@ -40,7 +40,6 @@ func NewDIANService() *DIANService {
 	return service
 }
 
-// loadConfig loads DIAN configuration from database
 func (s *DIANService) loadConfig() error {
 	return s.db.First(&s.config).Error
 }
@@ -67,19 +66,16 @@ type DIANCompanyConfig struct {
 // ConfigureCompany configures the company in DIAN API
 // Automatically loads data from DIANConfig and RestaurantConfig tables
 func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
-	// Load DIAN config
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return nil, fmt.Errorf("DIAN configuration not found. Please configure DIAN settings first")
 	}
 
-	// Load restaurant config for address, phone, email
 	var restaurantConfig models.RestaurantConfig
 	if err := s.db.First(&restaurantConfig).Error; err != nil {
 		return nil, fmt.Errorf("restaurant configuration not found. Please configure restaurant settings first")
 	}
 
-	// Validate required fields
 	if dianConfig.IdentificationNumber == "" || dianConfig.DV == "" {
 		return nil, fmt.Errorf("NIT and DV are required in DIAN configuration")
 	}
@@ -94,7 +90,6 @@ func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
 		merchantRegistration = "0000000-00"
 	}
 
-	// Prepare configuration request
 	config := DIANCompanyConfig{
 		TypeDocumentIdentificationID: dianConfig.TypeDocumentID,
 		TypeOrganizationID:           dianConfig.TypeOrganizationID,
@@ -125,7 +120,7 @@ func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to marshal configuration: %w", err)
 	}
 
-	// Create HTTP request (no authorization required for initial config)
+	// No authorization required for initial config
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -134,44 +129,38 @@ func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	// Send request
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DIAN API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check status code
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Save API token if received (API returns "token" not "api_token")
+	// API returns "token" not "api_token"
 	token, tokenOk := result["token"].(string)
 	if !tokenOk || token == "" {
-		// Try alternative field name
 		token, tokenOk = result["api_token"].(string)
 	}
 
 	if tokenOk && token != "" {
 		dianConfig.APIToken = token
-		dianConfig.Step1Completed = true // Mark step 1 as completed
+		dianConfig.Step1Completed = true
 		if err := s.db.Save(&dianConfig).Error; err != nil {
 			return nil, fmt.Errorf("failed to save API token: %w", err)
 		}
-		// Update service config
 		s.config = &dianConfig
 	} else {
 		return nil, fmt.Errorf("API token not received in response. Response: %s", string(body))
@@ -182,7 +171,6 @@ func (s *DIANService) ConfigureCompany() (map[string]interface{}, error) {
 
 // ConfigureSoftware configures the software in DIAN API
 func (s *DIANService) ConfigureSoftware() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -198,13 +186,12 @@ func (s *DIANService) ConfigureSoftware() error {
 
 	url := fmt.Sprintf("%s/api/ubl2.1/config/software", dianConfig.APIURL)
 
-	// Convert PIN to integer if it's numeric
+	// Convert PIN to integer if numeric
 	var pinValue interface{} = dianConfig.SoftwarePIN
 	if pin, err := strconv.Atoi(dianConfig.SoftwarePIN); err == nil {
 		pinValue = pin
 	}
 
-	// Only send software ID and PIN
 	data := map[string]interface{}{
 		"id":  dianConfig.SoftwareID,
 		"pin": pinValue,
@@ -235,21 +222,17 @@ func (s *DIANService) ConfigureSoftware() error {
 		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Mark step 2 as completed
 	dianConfig.Step2Completed = true
 	if err := s.db.Save(&dianConfig).Error; err != nil {
 		return fmt.Errorf("failed to save step completion: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
-
 	return nil
 }
 
 // ConfigureCertificate configures the certificate in DIAN API
 func (s *DIANService) ConfigureCertificate() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -295,13 +278,11 @@ func (s *DIANService) ConfigureCertificate() error {
 		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Mark step 3 as completed
 	dianConfig.Step3Completed = true
 	if err := s.db.Save(&dianConfig).Error; err != nil {
 		return fmt.Errorf("failed to save step completion: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
 
 	return nil
@@ -310,7 +291,6 @@ func (s *DIANService) ConfigureCertificate() error {
 // ConfigureLogo uploads the company logo to DIAN API
 // The logo must be in JPG format. If PNG, it will be converted with white background.
 func (s *DIANService) ConfigureLogo() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -459,7 +439,6 @@ func (s *DIANService) applyWhiteBackground(img image.Image) image.Image {
 
 // ConfigureResolution configures the resolution in DIAN API
 func (s *DIANService) ConfigureResolution() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -531,13 +510,11 @@ func (s *DIANService) ConfigureResolution() error {
 		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Mark step 4 as completed
 	dianConfig.Step4Completed = true
 	if err := s.db.Save(&dianConfig).Error; err != nil {
 		return fmt.Errorf("failed to save step completion: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
 
 	return nil
@@ -545,7 +522,6 @@ func (s *DIANService) ConfigureResolution() error {
 
 // ConfigureCreditNoteResolution configures the Credit Note (NC) resolution in DIAN API
 func (s *DIANService) ConfigureCreditNoteResolution() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -605,13 +581,11 @@ func (s *DIANService) ConfigureCreditNoteResolution() error {
 		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Mark step 5 as completed
 	dianConfig.Step5Completed = true
 	if err := s.db.Save(&dianConfig).Error; err != nil {
 		return fmt.Errorf("failed to save step completion: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
 
 	return nil
@@ -619,7 +593,6 @@ func (s *DIANService) ConfigureCreditNoteResolution() error {
 
 // ConfigureDebitNoteResolution configures the Debit Note (ND) resolution in DIAN API
 func (s *DIANService) ConfigureDebitNoteResolution() error {
-	// Reload config to get latest values
 	var dianConfig models.DIANConfig
 	if err := s.db.First(&dianConfig).Error; err != nil {
 		return fmt.Errorf("DIAN configuration not found")
@@ -679,13 +652,11 @@ func (s *DIANService) ConfigureDebitNoteResolution() error {
 		return fmt.Errorf("DIAN API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Mark step 6 as completed
 	dianConfig.Step6Completed = true
 	if err := s.db.Save(&dianConfig).Error; err != nil {
 		return fmt.Errorf("failed to save step completion: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
 
 	return nil
@@ -736,7 +707,6 @@ func (s *DIANService) ChangeEnvironment(environment string) error {
 		return fmt.Errorf("DIAN API error: %s", string(body))
 	}
 
-	// Update local config
 	s.config.Environment = environment
 
 	// Mark step 7 as completed when migrating to production
@@ -973,7 +943,6 @@ func (s *DIANService) MigrateToProduction() error {
 		return fmt.Errorf("failed to save production configuration: %w", err)
 	}
 
-	// Update service config cache
 	s.config = &dianConfig
 
 	// Step 5: Register the production resolution with DIAN API

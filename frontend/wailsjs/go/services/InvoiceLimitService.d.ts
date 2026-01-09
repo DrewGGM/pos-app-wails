@@ -6,6 +6,8 @@ export function GetConfig():Promise<services.InvoiceLimitConfig>;
 
 export function GetStatus():Promise<services.InvoiceLimitStatus>;
 
+export function IncrementAlternatingCounter():Promise<void>;
+
 export function SaveConfig(arg1:services.InvoiceLimitConfig):Promise<void>;
 
 export function StartPeriodicSync():Promise<void>;

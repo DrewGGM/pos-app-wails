@@ -21,6 +21,7 @@ type SalesService struct {
 	productSvc      *ProductService
 	ingredientSvc   *IngredientService
 	googleSheetsSvc *GoogleSheetsService
+	invoiceLimitSvc *InvoiceLimitService
 }
 
 // NewSalesService creates a new sales service
@@ -34,18 +35,17 @@ func NewSalesService() *SalesService {
 		productSvc:      NewProductService(),
 		ingredientSvc:   NewIngredientService(),
 		googleSheetsSvc: NewGoogleSheetsService(db),
+		invoiceLimitSvc: NewInvoiceLimitService(db),
 	}
 }
 
 // ProcessSale processes a sale from an order
 func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, customerData *models.Customer, needsElectronicInvoice bool, sendEmailToCustomer bool, employeeID uint, cashRegisterID uint, printReceipt bool) (*models.Sale, error) {
-	// Get order with all related data
 	order, err := s.orderSvc.GetOrder(orderID)
 	if err != nil {
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
-	// Validate order can be processed
 	if order.Status == models.OrderStatusPaid {
 		return nil, fmt.Errorf("order already paid")
 	}
@@ -53,10 +53,8 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		return nil, fmt.Errorf("order is cancelled")
 	}
 
-	// Generate sale number
 	saleNumber := s.generateSaleNumber()
 
-	// Create sale
 	sale := &models.Sale{
 		SaleNumber:     saleNumber,
 		OrderID:        orderID,
@@ -64,7 +62,7 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		Subtotal:       order.Subtotal,
 		Tax:            order.Tax,
 		Discount:       order.Discount,
-		ServiceCharge:  order.ServiceCharge, // Cargo por servicio
+		ServiceCharge:  order.ServiceCharge,
 		Total:          order.Total,
 		Status:         "completed",
 		InvoiceType:    "none",
@@ -78,9 +76,7 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.CashRegisterID = &cashRegisterID
 	}
 
-	// Set customer if provided, or use default CONSUMIDOR FINAL
 	if customerData != nil {
-		// Create or update customer
 		customer, err := s.createOrUpdateCustomer(customerData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process customer: %w", err)
@@ -88,7 +84,6 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		sale.CustomerID = &customer.ID
 		sale.Customer = customer
 	} else {
-		// No customer provided - use default CONSUMIDOR FINAL
 		var defaultCustomer models.Customer
 		err := s.db.Where("identification_number = ?", "222222222222").First(&defaultCustomer).Error
 		if err == nil {
@@ -99,19 +94,15 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		}
 	}
 
-	// Set invoice type and flag
 	sale.NeedsElectronicInvoice = needsElectronicInvoice
 	if needsElectronicInvoice {
 		sale.InvoiceType = "electronic"
 	}
 
-	// Validate customer for electronic invoice (DIAN Resolución 0165 de 2023)
-	// CONSUMIDOR FINAL (222222222222) is allowed - email is sourced from DefaultConsumerEmail or company email
 	if needsElectronicInvoice {
 		if sale.Customer == nil {
 			return nil, fmt.Errorf("electronic invoice requires a valid customer")
 		}
-		// Validate customer has required fields for DIAN
 		if sale.Customer.IdentificationNumber == "" {
 			return nil, fmt.Errorf("customer identification number is required for electronic invoice")
 		}
@@ -120,15 +111,12 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		}
 	}
 
-	// CRITICAL: Validate payment data BEFORE creating sale
 	totalPaymentAmount := 0.0
 	for _, payment := range paymentData {
-		// Validate positive amount
 		if payment.Amount <= 0 {
 			return nil, fmt.Errorf("payment amount must be greater than 0")
 		}
 
-		// CRITICAL FIX: Validate payment method exists and is active
 		var paymentMethod models.PaymentMethod
 		if err := s.db.First(&paymentMethod, payment.PaymentMethodID).Error; err != nil {
 			return nil, fmt.Errorf("payment method ID %d not found", payment.PaymentMethodID)
@@ -140,14 +128,10 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		totalPaymentAmount += payment.Amount
 	}
 
-	// Ensure payments match sale total
-	// CRITICAL FIX: Allow 1 peso difference to handle rounding issues
-	// Round both amounts to handle floating-point precision and Colombian Peso (no decimals)
 	roundedPaymentTotal := math.Round(totalPaymentAmount)
 	roundedSaleTotal := math.Round(sale.Total)
 	difference := math.Abs(roundedPaymentTotal - roundedSaleTotal)
 
-	// Allow up to 1 peso difference due to rounding
 	if difference > 1 {
 		return nil, fmt.Errorf(
 			"payment total ($%.0f) does not match sale total ($%.0f) - difference: $%.2f (allowed: $1)",
@@ -155,16 +139,12 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		)
 	}
 
-	// Process sale in transaction
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// CRITICAL FIX: Lock order row and re-check status to prevent race condition
-		// This prevents double payment if two requests arrive simultaneously
 		var lockedOrder models.Order
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&lockedOrder, orderID).Error; err != nil {
 			return fmt.Errorf("failed to lock order: %w", err)
 		}
 
-		// Re-validate order status within transaction with lock
 		if lockedOrder.Status == models.OrderStatusPaid {
 			return fmt.Errorf("order already paid (locked check)")
 		}
@@ -172,12 +152,10 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 			return fmt.Errorf("order is cancelled (locked check)")
 		}
 
-		// Create sale
 		if err := tx.Create(sale).Error; err != nil {
 			return fmt.Errorf("failed to create sale: %w", err)
 		}
 
-		// Process payments
 		for _, payment := range paymentData {
 			p := models.Payment{
 				SaleID:          sale.ID,
@@ -191,14 +169,12 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 			}
 		}
 
-		// Update order status
 		order.Status = models.OrderStatusPaid
 		order.SaleID = &sale.ID
 		if err := tx.Save(order).Error; err != nil {
 			return fmt.Errorf("failed to update order: %w", err)
 		}
 
-		// CRITICAL FIX: Free the table when order is paid
 		if order.TableID != nil {
 			if err := tx.Model(&models.Table{}).
 				Where("id = ?", *order.TableID).
@@ -207,10 +183,6 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 			}
 		}
 
-		// NOTE: Sales are NOT recorded as cash movements
-		// Cash movements are only for manual deposits and withdrawals
-		// Sales are automatically counted in the cash register report
-
 		return nil
 	})
 
@@ -218,7 +190,12 @@ func (s *SalesService) ProcessSale(orderID uint, paymentData []PaymentData, cust
 		return nil, err
 	}
 
-	// Process electronic invoice and print if needed
+	if s.invoiceLimitSvc != nil {
+		if err := s.invoiceLimitSvc.IncrementAlternatingCounter(); err != nil {
+			log.Printf("Warning: Failed to increment alternating counter: %v", err)
+		}
+	}
+
 	if needsElectronicInvoice {
 		go func() {
 			// Recover from any panics to prevent crashing the application

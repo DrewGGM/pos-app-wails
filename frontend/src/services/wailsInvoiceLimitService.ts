@@ -10,20 +10,53 @@ function getInvoiceLimitService(): AnyObject | null {
   return w.go.services.InvoiceLimitService;
 }
 
+export interface TimeInterval {
+  start_time: string; // HH:MM format
+  end_time: string;   // HH:MM format
+}
+
 export interface InvoiceLimitConfig {
   enabled: boolean;
   sync_interval: number;
   day_limits: Record<string, number>;
+
+  // Time intervals - block electronic invoicing during specific hours
+  time_intervals_enabled: boolean;
+  time_intervals: Record<string, TimeInterval[]>; // key: day name (lunes, martes, etc.)
+
+  // Alternating invoices - only invoice every X sales
+  alternating_enabled: boolean;
+  alternating_ratio: number;
+  alternating_counter: number;
+  alternating_reset_daily: boolean;
+  last_alternating_reset: string;
+
   last_sync: string;
 }
 
 export interface InvoiceLimitStatus {
   available: boolean;
   enabled: boolean;
+
+  // Daily amount limits
   today_limit: number;
   today_sales: number;
   remaining_amount: number;
   day_name: string;
+
+  // Time intervals
+  time_intervals_enabled: boolean;
+  in_blocked_time_interval: boolean;
+  next_available_time: string;
+  blocked_until: string;
+
+  // Alternating invoices
+  alternating_enabled: boolean;
+  alternating_ratio: number;
+  alternating_counter: number;
+  next_electronic_in: number;
+  is_alternating_turn: boolean;
+
   message: string;
 }
 

@@ -605,23 +605,42 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val active = _activeOrders.value.toMutableList()
         val index = active.indexOfFirst { it.order.id == orderId }
         if (index != -1) {
-            // Order status updated from POS
-            if (status == "cancelled") {
-                // Mark as cancelled and schedule removal
-                val currentTime = System.currentTimeMillis()
-                active[index] = active[index].copy(
-                    isCancelled = true,
-                    cancelledAtMs = currentTime
-                )
-                _activeOrders.value = active
+            // Order status updated from POS/Waiter
+            when (status) {
+                "cancelled" -> {
+                    // Mark as cancelled and schedule removal
+                    val currentTime = System.currentTimeMillis()
+                    active[index] = active[index].copy(
+                        isCancelled = true,
+                        cancelledAtMs = currentTime
+                    )
+                    _activeOrders.value = active
 
-                // Schedule automatic removal after 10 seconds
-                viewModelScope.launch {
-                    delay(10000)
-                    removeCancelledOrder(orderId, currentTime)
+                    // Schedule automatic removal after 10 seconds
+                    viewModelScope.launch {
+                        delay(10000)
+                        removeCancelledOrder(orderId, currentTime)
+                    }
+
+                    Log.d(TAG, "Order ${orderId} marked as cancelled")
                 }
+                "ready" -> {
+                    // Mark as ready from waiter and schedule removal
+                    val currentTime = System.currentTimeMillis()
+                    active[index] = active[index].copy(
+                        isReadyFromWaiter = true,
+                        readyFromWaiterAtMs = currentTime
+                    )
+                    _activeOrders.value = active
 
-                Log.d(TAG, "Order ${orderId} marked as cancelled")
+                    // Schedule automatic removal after 5 seconds
+                    viewModelScope.launch {
+                        delay(5000)
+                        removeReadyFromWaiterOrder(orderId, currentTime)
+                    }
+
+                    Log.d(TAG, "Order ${orderId} marked as ready from waiter")
+                }
             }
         }
     }
@@ -646,6 +665,31 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     Log.d(TAG, "Deleted cancelled order from database: $orderId")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to delete cancelled order from database", e)
+                }
+            }
+        }
+    }
+
+    private fun removeReadyFromWaiterOrder(orderId: String, readyFromWaiterAtMs: Long) {
+        val active = _activeOrders.value.toMutableList()
+        val index = active.indexOfFirst {
+            it.order.id == orderId &&
+            it.isReadyFromWaiter &&
+            it.readyFromWaiterAtMs == readyFromWaiterAtMs
+        }
+
+        if (index != -1) {
+            active.removeAt(index)
+            _activeOrders.value = active
+            Log.d(TAG, "Auto-removed ready-from-waiter order: $orderId")
+
+            // Mark as completed in database
+            viewModelScope.launch {
+                try {
+                    orderRepository.markOrderAsCompleted(orderId)
+                    Log.d(TAG, "Marked ready-from-waiter order as completed in database: $orderId")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to mark ready-from-waiter order as completed", e)
                 }
             }
         }

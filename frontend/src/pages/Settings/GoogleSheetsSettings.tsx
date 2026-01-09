@@ -23,6 +23,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  IconButton,
 } from '@mui/material';
 import {
   CloudSync as CloudSyncIcon,
@@ -33,6 +37,11 @@ import {
   Send as SendIcon,
   Schedule as ScheduleIcon,
   Settings as SettingsIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  AccessTime as AccessTimeIcon,
+  Repeat as RepeatIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import {
@@ -290,6 +299,35 @@ const GoogleSheetsSettings: React.FC = () => {
     const newLimits = { ...invoiceLimitConfig.day_limits };
     newLimits[`limite_${day}`] = value;
     setInvoiceLimitConfig({ ...invoiceLimitConfig, day_limits: newLimits });
+  };
+
+  // Time intervals management
+  const addTimeInterval = (day: string) => {
+    if (!invoiceLimitConfig) return;
+    const newIntervals = { ...invoiceLimitConfig.time_intervals };
+    if (!newIntervals[day]) {
+      newIntervals[day] = [];
+    }
+    newIntervals[day].push({ start_time: '09:00', end_time: '17:00' });
+    setInvoiceLimitConfig({ ...invoiceLimitConfig, time_intervals: newIntervals });
+  };
+
+  const removeTimeInterval = (day: string, index: number) => {
+    if (!invoiceLimitConfig) return;
+    const newIntervals = { ...invoiceLimitConfig.time_intervals };
+    if (newIntervals[day]) {
+      newIntervals[day].splice(index, 1);
+    }
+    setInvoiceLimitConfig({ ...invoiceLimitConfig, time_intervals: newIntervals });
+  };
+
+  const updateTimeInterval = (day: string, index: number, field: 'start_time' | 'end_time', value: string) => {
+    if (!invoiceLimitConfig) return;
+    const newIntervals = { ...invoiceLimitConfig.time_intervals };
+    if (newIntervals[day] && newIntervals[day][index]) {
+      newIntervals[day][index][field] = value;
+    }
+    setInvoiceLimitConfig({ ...invoiceLimitConfig, time_intervals: newIntervals });
   };
 
   const formatCountdown = (seconds: number): string => {
@@ -816,6 +854,178 @@ const GoogleSheetsSettings: React.FC = () => {
                     </Grid>
                   ))}
                 </Grid>
+
+                {/* Time Intervals Section */}
+                <Box sx={{ mt: 4 }}>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AccessTimeIcon /> Intervalos de Tiempo (Bloquear facturación electrónica)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Define horarios específicos en los que NO se permitirá facturación electrónica. Por ejemplo, bloquearlo durante la madrugada o en horas pico.
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={invoiceLimitConfig.time_intervals_enabled}
+                        onChange={(e) => updateInvoiceLimitConfig({ time_intervals_enabled: e.target.checked })}
+                        color="primary"
+                      />
+                    }
+                    label="Activar intervalos de tiempo"
+                  />
+
+                  {invoiceLimitConfig.time_intervals_enabled && (
+                    <Box sx={{ mt: 2 }}>
+                      {['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map((day) => {
+                        const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
+                        const intervals = invoiceLimitConfig.time_intervals[day] || [];
+
+                        return (
+                          <Accordion key={day} sx={{ mb: 1 }}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                <Typography sx={{ fontWeight: 'bold' }}>{dayLabel}</Typography>
+                                {intervals.length > 0 && (
+                                  <Chip
+                                    label={`${intervals.length} intervalo${intervals.length !== 1 ? 's' : ''}`}
+                                    size="small"
+                                    color="primary"
+                                  />
+                                )}
+                              </Box>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                              <Box>
+                                {intervals.map((interval, index) => (
+                                  <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                    <TextField
+                                      type="time"
+                                      label="Inicio"
+                                      value={interval.start_time}
+                                      onChange={(e) => updateTimeInterval(day, index, 'start_time', e.target.value)}
+                                      InputLabelProps={{ shrink: true }}
+                                      size="small"
+                                    />
+                                    <Typography>hasta</Typography>
+                                    <TextField
+                                      type="time"
+                                      label="Fin"
+                                      value={interval.end_time}
+                                      onChange={(e) => updateTimeInterval(day, index, 'end_time', e.target.value)}
+                                      InputLabelProps={{ shrink: true }}
+                                      size="small"
+                                    />
+                                    <IconButton
+                                      color="error"
+                                      size="small"
+                                      onClick={() => removeTimeInterval(day, index)}
+                                    >
+                                      <DeleteIcon />
+                                    </IconButton>
+                                  </Box>
+                                ))}
+                                <Button
+                                  startIcon={<AddIcon />}
+                                  onClick={() => addTimeInterval(day)}
+                                  size="small"
+                                  variant="outlined"
+                                >
+                                  Agregar intervalo
+                                </Button>
+                                {intervals.length === 0 && (
+                                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                    No hay intervalos configurados. La facturación electrónica estará disponible todo el día.
+                                  </Typography>
+                                )}
+                              </Box>
+                            </AccordionDetails>
+                          </Accordion>
+                        );
+                      })}
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Nota:</strong> Los intervalos pueden cruzar la medianoche (ej: 22:00 - 02:00). Durante estos horarios,
+                          el checkbox de factura electrónica estará deshabilitado.
+                        </Typography>
+                      </Alert>
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Alternating Invoices Section */}
+                <Box sx={{ mt: 4 }}>
+                  <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <RepeatIcon /> Facturación Intercalada
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Permite facturar electrónicamente solo cada cierto número de ventas. Por ejemplo, 1 de cada 5 ventas será electrónica.
+                  </Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={invoiceLimitConfig.alternating_enabled}
+                        onChange={(e) => updateInvoiceLimitConfig({ alternating_enabled: e.target.checked })}
+                        color="primary"
+                      />
+                    }
+                    label="Activar facturación intercalada"
+                  />
+
+                  {invoiceLimitConfig.alternating_enabled && (
+                    <Box sx={{ mt: 2 }}>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            type="number"
+                            label="Ratio de facturación"
+                            value={invoiceLimitConfig.alternating_ratio}
+                            onChange={(e) => updateInvoiceLimitConfig({ alternating_ratio: parseInt(e.target.value) || 1 })}
+                            helperText="1 de cada X ventas será electrónica (ej: 5 = 1 de cada 5)"
+                            InputProps={{ inputProps: { min: 1, max: 100 } }}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Contador actual:
+                            </Typography>
+                            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                              {invoiceLimitConfig.alternating_counter} / {invoiceLimitConfig.alternating_ratio}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Próxima factura electrónica en {invoiceLimitConfig.alternating_ratio - (invoiceLimitConfig.alternating_counter % invoiceLimitConfig.alternating_ratio)} venta(s)
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={invoiceLimitConfig.alternating_reset_daily}
+                                onChange={(e) => updateInvoiceLimitConfig({ alternating_reset_daily: e.target.checked })}
+                                color="primary"
+                              />
+                            }
+                            label="Reiniciar contador diariamente a medianoche"
+                          />
+                          <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
+                            Si está activado, el contador se reiniciará a 0 cada día. Si no, continuará acumulando indefinidamente.
+                          </Typography>
+                        </Grid>
+                      </Grid>
+
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Ejemplo:</strong> Con ratio 5, la secuencia será: Normal → Normal → Normal → Normal → Electrónica (y se repite).
+                          El contador se guarda en Google Sheets para mantener el estado entre reinicios.
+                        </Typography>
+                      </Alert>
+                    </Box>
+                  )}
+                </Box>
 
                 {/* Botón guardar límites */}
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>

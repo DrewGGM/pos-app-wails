@@ -499,32 +499,27 @@ func (s *PrinterService) PrintReceipt(sale *models.Sale, isElectronicInvoice boo
 
 // PrintReceiptWithPrinter prints a receipt to a specific printer (0 = default)
 func (s *PrinterService) PrintReceiptWithPrinter(sale *models.Sale, isElectronicInvoice bool, printerID uint) error {
-	// Get printer config
 	var config *models.PrinterConfig
 	var err error
 
 	if printerID > 0 {
-		// Get specific printer
 		var printerConfig models.PrinterConfig
 		if err := s.db.First(&printerConfig, printerID).Error; err != nil {
 			return fmt.Errorf("printer not found: %w", err)
 		}
 		config = &printerConfig
 	} else {
-		// Get default printer
 		config, err = s.getDefaultPrinterConfig()
 		if err != nil {
 			return fmt.Errorf("no default printer configured: %w", err)
 		}
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
 	defer s.closePrinter()
 
-	// Print receipt based on type
 	if isElectronicInvoice && sale.ElectronicInvoice != nil {
 		return s.printElectronicInvoice(sale, config)
 	}
@@ -533,7 +528,6 @@ func (s *PrinterService) PrintReceiptWithPrinter(sale *models.Sale, isElectronic
 
 // printElectronicInvoice prints an electronic invoice with DIAN requirements
 func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *models.PrinterConfig) error {
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
@@ -541,11 +535,9 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 	s.db.Preload("Customer").Preload("Order").Preload("Order.Items.Product").Preload("Order.Items.Modifiers.Modifier").First(sale, sale.ID)
 	log.Printf("🚚 Electronic Invoice: Loaded sale with order. Order nil? %v, Customer nil? %v", sale.Order == nil, sale.Customer == nil)
 
-	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
-	// Get DIAN config
 	var dianConfig models.DIANConfig
 	s.db.First(&dianConfig)
 
@@ -889,7 +881,6 @@ func (s *PrinterService) printElectronicInvoice(sale *models.Sale, config *model
 
 // printSimpleReceipt prints a simple receipt (non-electronic invoice)
 func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.PrinterConfig) error {
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
@@ -897,7 +888,6 @@ func (s *PrinterService) printSimpleReceipt(sale *models.Sale, config *models.Pr
 	s.db.Preload("Customer").Preload("Order").Preload("Order.Items.Product").Preload("Order.Items.Modifiers.Modifier").First(sale, sale.ID)
 	log.Printf("🚚 Simple Receipt: Loaded sale with order. Order nil? %v, Customer nil? %v", sale.Order == nil, sale.Customer == nil)
 
-	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
@@ -1045,13 +1035,11 @@ func (s *PrinterService) PrintKitchenOrder(order *models.Order) error {
 		return fmt.Errorf("no kitchen printer configured: %w", err)
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
 	defer s.closePrinter()
 
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
@@ -1158,17 +1146,14 @@ func (s *PrinterService) PrintOrder(order *models.Order) error {
 		return fmt.Errorf("no default printer configured: %w", err)
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
 	defer s.closePrinter()
 
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
-	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
@@ -1320,7 +1305,6 @@ func (s *PrinterService) PrintOrder(order *models.Order) error {
 
 // PrintWaiterReceipt prints a receipt from order data (used by WebSocket print requests from Waiter App)
 func (s *PrinterService) PrintWaiterReceipt(orderData map[string]interface{}, printerID *uint) error {
-	// Get printer config
 	var config *models.PrinterConfig
 	var err error
 
@@ -1338,24 +1322,20 @@ func (s *PrinterService) PrintWaiterReceipt(orderData map[string]interface{}, pr
 			config = &printerConfig
 		}
 	} else {
-		// Get default printer
 		config, err = s.getDefaultPrinterConfig()
 		if err != nil {
 			return fmt.Errorf("no default printer configured: %w", err)
 		}
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
 	defer s.closePrinter()
 
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
-	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
@@ -1802,15 +1782,12 @@ func (s *PrinterService) TestPrinter(printerID uint) error {
 	}
 	defer s.closePrinter()
 
-	// Get restaurant config
 	var restaurant models.RestaurantConfig
 	s.db.First(&restaurant)
 
-	// Get DIAN config
 	var dianConfig models.DIANConfig
 	s.db.First(&dianConfig)
 
-	// Initialize printer
 	s.init()
 	s.setAlign("center")
 
@@ -2092,7 +2069,6 @@ func (s *PrinterService) PrintDIANClosingReport(report *DIANClosingReport, perio
 		return fmt.Errorf("no default printer configured: %w", err)
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}
@@ -2311,7 +2287,6 @@ func (s *PrinterService) PrintCustomerDataForm() error {
 		return fmt.Errorf("no default printer configured: %w", err)
 	}
 
-	// Connect to printer
 	if err := s.connectPrinter(config); err != nil {
 		return fmt.Errorf("failed to connect to printer: %w", err)
 	}

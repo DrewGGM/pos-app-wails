@@ -10,6 +10,10 @@ export function GetStatus() {
   return window['go']['services']['InvoiceLimitService']['GetStatus']();
 }
 
+export function IncrementAlternatingCounter() {
+  return window['go']['services']['InvoiceLimitService']['IncrementAlternatingCounter']();
+}
+
 export function SaveConfig(arg1) {
   return window['go']['services']['InvoiceLimitService']['SaveConfig'](arg1);
 }

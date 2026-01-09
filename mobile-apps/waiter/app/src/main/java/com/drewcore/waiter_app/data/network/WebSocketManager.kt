@@ -256,6 +256,25 @@ class WebSocketManager {
     }
 
     /**
+     * Send order status update to server (e.g., marking order as ready)
+     */
+    fun sendOrderStatusUpdate(orderId: Int, status: String) {
+        val timestamp = java.time.Instant.now().toString()
+        val message = mapOf(
+            "type" to "order_update",
+            "timestamp" to timestamp,
+            "data" to mapOf(
+                "order_id" to orderId,
+                "status" to status
+            )
+        )
+
+        val json = gson.toJson(message)
+        webSocket?.send(json)
+        Log.d(TAG, "Sent order status update: orderId=$orderId, status=$status")
+    }
+
+    /**
      * Start auth timeout - if no auth_response received within AUTH_TIMEOUT_MS, fail connection
      */
     private fun startAuthTimeout() {

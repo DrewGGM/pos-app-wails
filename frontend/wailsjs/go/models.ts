@@ -5101,6 +5101,13 @@ export namespace services {
 	    enabled: boolean;
 	    sync_interval: number;
 	    day_limits: Record<string, number>;
+	    time_intervals_enabled: boolean;
+	    time_intervals: Record<string, Array<TimeInterval>>;
+	    alternating_enabled: boolean;
+	    alternating_ratio: number;
+	    alternating_counter: number;
+	    alternating_reset_daily: boolean;
+	    last_alternating_reset: time.Time;
 	    last_sync: time.Time;
 	
 	    static createFrom(source: any = {}) {
@@ -5112,6 +5119,13 @@ export namespace services {
 	        this.enabled = source["enabled"];
 	        this.sync_interval = source["sync_interval"];
 	        this.day_limits = source["day_limits"];
+	        this.time_intervals_enabled = source["time_intervals_enabled"];
+	        this.time_intervals = this.convertValues(source["time_intervals"], Array<TimeInterval>, true);
+	        this.alternating_enabled = source["alternating_enabled"];
+	        this.alternating_ratio = source["alternating_ratio"];
+	        this.alternating_counter = source["alternating_counter"];
+	        this.alternating_reset_daily = source["alternating_reset_daily"];
+	        this.last_alternating_reset = this.convertValues(source["last_alternating_reset"], time.Time);
 	        this.last_sync = this.convertValues(source["last_sync"], time.Time);
 	    }
 	
@@ -5140,6 +5154,15 @@ export namespace services {
 	    today_sales: number;
 	    remaining_amount: number;
 	    day_name: string;
+	    time_intervals_enabled: boolean;
+	    in_blocked_time_interval: boolean;
+	    next_available_time: string;
+	    blocked_until: string;
+	    alternating_enabled: boolean;
+	    alternating_ratio: number;
+	    alternating_counter: number;
+	    next_electronic_in: number;
+	    is_alternating_turn: boolean;
 	    message: string;
 	
 	    static createFrom(source: any = {}) {
@@ -5154,6 +5177,15 @@ export namespace services {
 	        this.today_sales = source["today_sales"];
 	        this.remaining_amount = source["remaining_amount"];
 	        this.day_name = source["day_name"];
+	        this.time_intervals_enabled = source["time_intervals_enabled"];
+	        this.in_blocked_time_interval = source["in_blocked_time_interval"];
+	        this.next_available_time = source["next_available_time"];
+	        this.blocked_until = source["blocked_until"];
+	        this.alternating_enabled = source["alternating_enabled"];
+	        this.alternating_ratio = source["alternating_ratio"];
+	        this.alternating_counter = source["alternating_counter"];
+	        this.next_electronic_in = source["next_electronic_in"];
+	        this.is_alternating_turn = source["is_alternating_turn"];
 	        this.message = source["message"];
 	    }
 	}
@@ -5549,6 +5581,20 @@ export namespace services {
 		    }
 		    return a;
 		}
+	}
+	export class TimeInterval {
+	    start_time: string;
+	    end_time: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeInterval(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start_time = source["start_time"];
+	        this.end_time = source["end_time"];
+	    }
 	}
 	
 	

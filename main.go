@@ -65,41 +65,32 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Maximise window on startup (cross-version compatible)
 	runtime.WindowMaximise(a.ctx)
 
-	// Only start background services if not first run
 	if !a.isFirstRun {
-		// Initialize WebSocket server for mobile apps
 		wsPort := os.Getenv("WS_PORT")
 		if wsPort == "" {
-			wsPort = "8080" // Default port
+			wsPort = "8080"
 		}
 		a.LoggerService.LogInfo("Initializing WebSocket server", "Port: "+wsPort)
 		a.WSServer = websocket.NewServer(":" + wsPort)
-		// Set database connection for REST API endpoints
 		a.WSServer.SetDB(database.GetDB())
-		// Update the WebSocket management service with the server instance
 		if a.WSManagementService != nil {
 			a.WSManagementService.SetServer(a.WSServer)
 		}
-		// Set OrderService on WebSocket server for REST API endpoints
 		if a.OrderService != nil {
 			a.OrderService.SetWebSocketServer(a.WSServer)
 			a.WSServer.SetOrderService(a.OrderService)
 			a.LoggerService.LogInfo("OrderService configured for WebSocket REST API")
 		}
-		// Set PrinterService on WebSocket server for handling print requests from Waiter App
 		if a.PrinterService != nil {
 			a.WSServer.SetPrinterService(a.PrinterService)
 			a.LoggerService.LogInfo("PrinterService configured for WebSocket print requests")
 		}
-		// Set WebSocket server for Bold webhook notifications
 		if a.BoldWebhookService != nil {
 			a.BoldWebhookService.SetWebSocketServer(a.WSServer)
 			a.LoggerService.LogInfo("WebSocket server configured for Bold webhook notifications")
 		}
-		// Now start the WebSocket server with all handlers properly configured
 		go func() {
 			defer a.LoggerService.RecoverPanic()
 			if err := a.WSServer.Start(); err != nil {
@@ -107,14 +98,12 @@ func (a *App) startup(ctx context.Context) {
 			}
 		}()
 
-		// Start DIAN validation worker
 		a.LoggerService.LogInfo("Starting DIAN validation worker")
 		go func() {
 			defer a.LoggerService.RecoverPanic()
 			services.StartValidationWorker()
 		}()
 
-		// Start Google Sheets report scheduler
 		if a.ReportSchedulerService != nil {
 			a.LoggerService.LogInfo("Starting Google Sheets report scheduler")
 			go func() {
@@ -127,9 +116,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
-// domReady is called after front-end resources have been loaded
 func (a *App) domReady(ctx context.Context) {
-	// Add your action here
 }
 
 // beforeClose is called when the application is about to quit,
@@ -137,7 +124,6 @@ func (a *App) domReady(ctx context.Context) {
 func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	a.LoggerService.LogInfo("Application closing")
 
-	// Send final report to Google Sheets if enabled
 	if a.GoogleSheetsService != nil && !a.isFirstRun {
 		a.LoggerService.LogInfo("Sending final report to Google Sheets")
 		if err := a.GoogleSheetsService.SyncNow(); err != nil {
@@ -147,43 +133,36 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		}
 	}
 
-	// Stop report scheduler
 	if a.ReportSchedulerService != nil {
 		a.LoggerService.LogInfo("Stopping report scheduler")
 		a.ReportSchedulerService.Stop()
 	}
 
-	// Stop invoice limit sync
 	if a.InvoiceLimitService != nil {
 		a.LoggerService.LogInfo("Stopping invoice limit sync")
 		a.InvoiceLimitService.StopPeriodicSync()
 	}
 
-	// Stop Rappi webhook server
 	if a.RappiWebhookServer != nil {
 		a.LoggerService.LogInfo("Stopping Rappi webhook server")
 		a.RappiWebhookServer.Stop()
 	}
 
-	// Stop Config API server
 	if a.ConfigAPIServer != nil {
 		a.LoggerService.LogInfo("Stopping Config API server")
 		a.ConfigAPIServer.Stop()
 	}
 
-	// Stop MCP server
 	if a.MCPService != nil {
 		a.LoggerService.LogInfo("Stopping MCP server")
 		a.MCPService.Stop()
 	}
 
-	// Stop WebSocket server
 	if a.WSServer != nil {
 		a.LoggerService.LogInfo("Stopping WebSocket server")
 		a.WSServer.Stop()
 	}
 
-	// Close database connection
 	if err := database.Close(); err != nil {
 		a.LoggerService.LogError("Error closing database", err)
 	} else {
@@ -194,14 +173,10 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	return false
 }
 
-// shutdown is called at application termination
 func (a *App) shutdown(ctx context.Context) {
-	// Perform your teardown here
 }
 
-// InitializeServicesAfterSetup initializes all services after setup is complete
 func (a *App) InitializeServicesAfterSetup() error {
-	// Initialize services after database is ready
 	a.ProductService = services.NewProductService()
 	a.IngredientService = services.NewIngredientService()
 	a.CustomPageService = services.NewCustomPageService()
@@ -218,16 +193,13 @@ func (a *App) InitializeServicesAfterSetup() error {
 	a.DashboardService = services.NewDashboardService()
 	a.BoldService = services.NewBoldService(database.GetDB())
 
-	// Initialize Bold webhook service
 	a.BoldWebhookService = services.NewBoldWebhookService(database.GetDB(), a.BoldService)
 
-	// Set WebSocket server for real-time notifications
 	if a.WSServer != nil {
 		a.BoldWebhookService.SetWebSocketServer(a.WSServer)
 		a.LoggerService.LogInfo("WebSocket server configured for Bold notifications")
 	}
 
-	// Start Bold webhook server
 	a.LoggerService.LogInfo("Starting Bold webhook server")
 	go func() {
 		defer a.LoggerService.RecoverPanic()
@@ -241,19 +213,13 @@ func (a *App) InitializeServicesAfterSetup() error {
 		}
 	}()
 
-	// Note: WebSocket server will be initialized and started in ConnectDatabaseWithConfig or startup()
-	// We just configure the BoldWebhookService to use it when it's available
-
-	// Initialize Google Sheets services
 	a.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 	a.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), a.GoogleSheetsService)
 	a.InvoiceLimitService = services.NewInvoiceLimitService(database.GetDB())
 
-	// Initialize Rappi service
 	a.RappiConfigService = services.NewRappiConfigService()
 	a.RappiWebhookServer = services.NewRappiWebhookServer(a.RappiConfigService, a.OrderService, a.ProductService)
 
-	// Start Rappi webhook server
 	a.LoggerService.LogInfo("Starting Rappi webhook server")
 	go func() {
 		defer a.LoggerService.RecoverPanic()
@@ -262,10 +228,9 @@ func (a *App) InitializeServicesAfterSetup() error {
 		}
 	}()
 
-	// Start Config API server for external configuration management
 	configAPIPort := os.Getenv("CONFIG_API_PORT")
 	if configAPIPort == "" {
-		configAPIPort = "8082" // Default port
+		configAPIPort = "8082"
 	}
 	a.ConfigAPIServer = services.NewConfigAPIServer(
 		":"+configAPIPort,
@@ -286,7 +251,6 @@ func (a *App) InitializeServicesAfterSetup() error {
 		}
 	}()
 
-	// Initialize MCP service
 	a.MCPService = services.NewMCPService(
 		a.ProductService,
 		a.SalesService,
@@ -296,18 +260,15 @@ func (a *App) InitializeServicesAfterSetup() error {
 		a.ReportsService,
 	)
 	a.LoggerService.LogInfo("MCP Service initialized")
-	// Auto-start MCP server if enabled
 	go func() {
 		defer a.LoggerService.RecoverPanic()
 		a.MCPService.AutoStart()
 	}()
 
-	// Initialize default system configurations
 	if err := a.ConfigService.InitializeDefaultSystemConfigs(); err != nil {
 		return fmt.Errorf("failed to initialize system configs: %w", err)
 	}
 
-	// Complete setup (run seeds)
 	if err := a.ConfigManagerService.CompleteSetup(); err != nil {
 		return fmt.Errorf("failed to complete setup: %w", err)
 	}
@@ -316,45 +277,37 @@ func (a *App) InitializeServicesAfterSetup() error {
 	return nil
 }
 
-// ConnectDatabaseWithConfig connects to database using config.json settings
 func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
-	// Initialize database with config
 	if err := database.InitializeWithConfig(cfg); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Initialize all services
 	if err := a.InitializeServicesAfterSetup(); err != nil {
 		return err
 	}
 
-	// Initialize WebSocket server
 	wsPort := os.Getenv("WS_PORT")
 	if wsPort == "" {
-		wsPort = "8080" // Default port
+		wsPort = "8080"
 	}
 	a.LoggerService.LogInfo("Starting WebSocket server", "Port: "+wsPort)
 	a.WSServer = websocket.NewServer(":" + wsPort)
 	a.WSServer.SetDB(database.GetDB())
 
-	// Update the WebSocket management service with the server instance
 	if a.WSManagementService != nil {
 		a.WSManagementService.SetServer(a.WSServer)
 	}
 
-	// Update the OrderService with the server instance
 	if a.OrderService != nil {
 		a.OrderService.SetWebSocketServer(a.WSServer)
 		a.WSServer.SetOrderService(a.OrderService)
 	}
 
-	// Set PrinterService on WebSocket server for handling print requests from Waiter App
 	if a.PrinterService != nil {
 		a.WSServer.SetPrinterService(a.PrinterService)
 		a.LoggerService.LogInfo("PrinterService configured for WebSocket print requests")
 	}
 
-	// Set WebSocket server for Bold webhook notifications
 	if a.BoldWebhookService != nil {
 		a.BoldWebhookService.SetWebSocketServer(a.WSServer)
 		a.LoggerService.LogInfo("WebSocket server configured for Bold webhook notifications")
@@ -365,14 +318,12 @@ func (a *App) ConnectDatabaseWithConfig(cfg *config.AppConfig) error {
 		a.WSServer.Start()
 	}()
 
-	// Start background workers
 	go services.StartValidationWorker()
 
 	return nil
 }
 
 func main() {
-	// Initialize logger FIRST to catch all errors
 	loggerService := services.NewLoggerService()
 	if loggerService == nil {
 		fmt.Println("CRITICAL: Logger service failed to initialize")
@@ -380,7 +331,6 @@ func main() {
 	}
 	defer loggerService.Close()
 
-	// Recover from any panic and log it
 	defer func() {
 		if r := recover(); r != nil {
 			loggerService.LogPanic(r)
@@ -390,20 +340,16 @@ func main() {
 
 	loggerService.LogInfo("Application starting", "Restaurant POS System")
 
-	// Load environment variables from .env file in project root (for development)
 	if err := godotenv.Load(".env"); err != nil {
 		loggerService.LogWarning(".env file not found, will use config.json if available")
 	}
 
-	// Create an instance of the app structure
 	app := NewApp()
 	app.LoggerService = loggerService
 
-	// Initialize ConfigManagerService first (always available)
 	app.ConfigManagerService = services.NewConfigManagerService()
 	app.UpdateService = services.NewUpdateService()
 
-	// Check if this is the first run
 	isFirstRun, err := app.ConfigManagerService.IsFirstRun()
 	if err != nil {
 		loggerService.LogWarning("Could not check first run status", err.Error())
@@ -412,7 +358,6 @@ func main() {
 
 	app.isFirstRun = isFirstRun
 
-	// Always initialize services (needed for Wails bindings generation)
 	loggerService.LogInfo("Initializing services")
 	app.ProductService = services.NewProductService()
 	app.IngredientService = services.NewIngredientService()
@@ -434,7 +379,6 @@ func main() {
 	app.ReportSchedulerService = services.NewReportSchedulerService(nil, app.GoogleSheetsService)
 	app.RappiConfigService = services.NewRappiConfigService()
 	app.InvoiceLimitService = services.NewInvoiceLimitService(nil)
-	// Initialize MCP Service with nil services (will be reinitialized when database is available)
 	app.MCPService = services.NewMCPService(nil, nil, nil, nil, nil, nil)
 
 	if !isFirstRun {
@@ -471,11 +415,8 @@ func main() {
 			app.DashboardService = services.NewDashboardService()
 			app.BoldService = services.NewBoldService(database.GetDB())
 
-			// Initialize Bold webhook service
 			app.BoldWebhookService = services.NewBoldWebhookService(database.GetDB(), app.BoldService)
-			// Note: WebSocket server will be configured in startup() method
 
-			// Start Bold webhook server
 			loggerService.LogInfo("Starting Bold webhook server")
 			go func() {
 				defer loggerService.RecoverPanic()
@@ -489,16 +430,13 @@ func main() {
 				}
 			}()
 
-			// Initialize Google Sheets services
 			app.GoogleSheetsService = services.NewGoogleSheetsService(database.GetDB())
 			app.ReportSchedulerService = services.NewReportSchedulerService(database.GetDB(), app.GoogleSheetsService)
 			app.InvoiceLimitService = services.NewInvoiceLimitService(database.GetDB())
 
-			// Initialize Rappi service
 			app.RappiConfigService = services.NewRappiConfigService()
 			app.RappiWebhookServer = services.NewRappiWebhookServer(app.RappiConfigService, app.OrderService, app.ProductService)
 
-			// Start Rappi webhook server
 			loggerService.LogInfo("Starting Rappi webhook server")
 			go func() {
 				defer loggerService.RecoverPanic()
@@ -507,10 +445,9 @@ func main() {
 				}
 			}()
 
-			// Start Config API server for external configuration management
 			configAPIPort := os.Getenv("CONFIG_API_PORT")
 			if configAPIPort == "" {
-				configAPIPort = "8082" // Default port
+				configAPIPort = "8082"
 			}
 			app.ConfigAPIServer = services.NewConfigAPIServer(
 				":"+configAPIPort,
@@ -531,7 +468,6 @@ func main() {
 				}
 			}()
 
-			// Initialize MCP service
 			app.MCPService = services.NewMCPService(
 				app.ProductService,
 				app.SalesService,
@@ -541,7 +477,6 @@ func main() {
 				app.ReportsService,
 			)
 			loggerService.LogInfo("MCP Service initialized")
-			// Auto-start MCP server if enabled
 			go func() {
 				defer loggerService.RecoverPanic()
 				app.MCPService.AutoStart()
@@ -550,7 +485,6 @@ func main() {
 			loggerService.LogInfo("Initializing default system configurations")
 			app.ConfigService.InitializeDefaultSystemConfigs()
 
-			// Start invoice limit periodic sync
 			app.InvoiceLimitService.StartPeriodicSync()
 		}
 	}

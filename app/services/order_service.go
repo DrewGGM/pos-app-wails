@@ -43,27 +43,22 @@ func (s *OrderService) SetWebSocketServer(server *websocket.Server) {
 
 // CreateOrder creates a new order
 func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
-	// Generate order number
 	order.OrderNumber = s.generateOrderNumber()
 	order.Status = models.OrderStatusPending
 	order.IsSynced = false
 
-	// Validate order type requirements
 	if order.OrderTypeID != nil && *order.OrderTypeID > 0 {
 		orderType, err := s.orderTypeSvc.GetOrderType(*order.OrderTypeID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid order type: %w", err)
 		}
 
-		// Check if this order type requires a table (e.g., dine-in)
-		// Dine-in orders (code "dine_in" or similar) should have a table assigned
 		if orderType.Code == "dine_in" || orderType.Code == "mesa" {
 			if order.TableID == nil || *order.TableID == 0 {
 				return nil, fmt.Errorf("order type '%s' requires a table assignment", orderType.Name)
 			}
 		}
 
-		// Check if table is available
 		if order.TableID != nil && *order.TableID > 0 {
 			var table models.Table
 			if err := s.db.First(&table, *order.TableID).Error; err != nil {
@@ -75,19 +70,14 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		}
 	}
 
-	// Expand combos into individual products
-	// This allows combos to be displayed as single items in POS but expanded for kitchen
 	order.Items = s.expandCombosInOrder(order.Items)
 
-	// Calculate totals
 	if err := s.calculateOrderTotals(order); err != nil {
 		return nil, err
 	}
 
-	// Save to main database
 	var ingredientWarnings []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// Assign sequence number if the order type requires it (inside transaction with lock)
 		if order.OrderTypeID != nil && *order.OrderTypeID > 0 {
 			orderType, err := s.orderTypeSvc.GetOrderType(*order.OrderTypeID)
 			if err == nil && orderType.RequiresSequentialNumber {
@@ -100,24 +90,18 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			}
 		}
 
-		// Create order
 		if err := tx.Create(order).Error; err != nil {
 			return err
 		}
 
-		// LOG: Verify order was saved with order_type_id
-
-		// Update table status to occupied if this is a dine-in order
 		if order.TableID != nil && *order.TableID > 0 {
 			if err := tx.Model(&models.Table{}).
 				Where("id = ?", *order.TableID).
 				Update("status", "occupied").Error; err != nil {
 				return err
 			}
-			// Note: WebSocket notification will be sent after transaction commits
 		}
 
-		// Update inventory for each item
 		for _, item := range order.Items {
 			if err := s.updateInventory(tx, item.ProductID, -item.Quantity,
 				fmt.Sprintf("Sale - Order %s", order.OrderNumber), 0); err != nil {
@@ -125,7 +109,6 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 			}
 		}
 
-		// Deduct ingredients (now inside transaction for atomicity)
 		ingredientWarnings = s.ingredientSvc.DeductIngredientsInTransaction(tx, order.Items)
 
 		return nil
@@ -135,20 +118,17 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		return nil, err
 	}
 
-	// Log ingredient warnings after successful transaction
 	if len(ingredientWarnings) > 0 {
 		for _, warning := range ingredientWarnings {
 			log.Println(warning)
 		}
 	}
 
-	// Reload order with all relationships
 	reloadedOrder, err := s.GetOrder(order.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Send table status update via WebSocket (after transaction committed)
 	if order.TableID != nil && *order.TableID > 0 {
 		if s.wsServer != nil {
 			s.wsServer.SendTableUpdate(*order.TableID, "occupied")
@@ -156,9 +136,6 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		}
 	}
 
-	// Send to kitchen AFTER transaction is complete and order is reloaded
-	// NOTE: "split" source is used for split bills - these should NOT be sent to kitchen
-	// because the original order was already sent when it was first created
 	if order.Source == "pos" || order.Source == "waiter_app" || order.Source == "pwa" {
 		go s.sendToKitchen(reloadedOrder)
 	}

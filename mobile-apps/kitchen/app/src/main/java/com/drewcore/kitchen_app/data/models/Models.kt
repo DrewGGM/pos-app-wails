@@ -176,9 +176,11 @@ data class AuthResponse(
     @SerializedName("client_id") val clientId: String
 )
 
-// Order Display State (for cancelled orders with countdown)
+// Order Display State (for cancelled and waiter-ready orders with countdown)
 data class OrderDisplayState(
     val order: Order,
     val isCancelled: Boolean = false,
-    val cancelledAtMs: Long? = null
+    val cancelledAtMs: Long? = null,
+    val isReadyFromWaiter: Boolean = false,
+    val readyFromWaiterAtMs: Long? = null
 )

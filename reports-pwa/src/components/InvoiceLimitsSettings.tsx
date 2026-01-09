@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { configApiService, type InvoiceLimitConfig, type InvoiceLimitStatus } from '../services/configApi'
+import { configApiService, type InvoiceLimitConfig, type InvoiceLimitStatus, type TimeInterval } from '../services/configApi'
 
 const DAY_NAMES: { [key: string]: string } = {
   'limite_lunes': 'Lunes',
@@ -21,6 +21,18 @@ const DAY_ORDER = [
   'limite_domingo',
 ]
 
+const SIMPLE_DAY_NAMES: { [key: string]: string } = {
+  'lunes': 'Lunes',
+  'martes': 'Martes',
+  'miercoles': 'Miércoles',
+  'jueves': 'Jueves',
+  'viernes': 'Viernes',
+  'sabado': 'Sábado',
+  'domingo': 'Domingo',
+}
+
+const SIMPLE_DAY_ORDER = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+
 export function InvoiceLimitsSettings() {
   const [config, setConfig] = useState<InvoiceLimitConfig | null>(null)
   const [status, setStatus] = useState<InvoiceLimitStatus | null>(null)
@@ -35,6 +47,16 @@ export function InvoiceLimitsSettings() {
   // Editable state
   const [editEnabled, setEditEnabled] = useState(false)
   const [editLimits, setEditLimits] = useState<{ [key: string]: string }>({})
+
+  // Time intervals state
+  const [timeIntervalsEnabled, setTimeIntervalsEnabled] = useState(false)
+  const [timeIntervals, setTimeIntervals] = useState<{ [key: string]: TimeInterval[] }>({})
+  const [expandedDays, setExpandedDays] = useState<{ [key: string]: boolean }>({})
+
+  // Alternating invoices state
+  const [alternatingEnabled, setAlternatingEnabled] = useState(false)
+  const [alternatingRatio, setAlternatingRatio] = useState(1)
+  const [alternatingResetDaily, setAlternatingResetDaily] = useState(false)
 
   useEffect(() => {
     checkConfiguration()
@@ -79,6 +101,15 @@ export function InvoiceLimitsSettings() {
         limits[day] = formatNumber(configData.day_limits[day] || 0)
       })
       setEditLimits(limits)
+
+      // Initialize time intervals
+      setTimeIntervalsEnabled(configData.time_intervals_enabled || false)
+      setTimeIntervals(configData.time_intervals || {})
+
+      // Initialize alternating invoices
+      setAlternatingEnabled(configData.alternating_enabled || false)
+      setAlternatingRatio(configData.alternating_ratio || 1)
+      setAlternatingResetDaily(configData.alternating_reset_daily || false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar configuración')
     } finally {
@@ -101,6 +132,11 @@ export function InvoiceLimitsSettings() {
       const updatedConfig = await configApiService.updateInvoiceLimits({
         enabled: editEnabled,
         day_limits: dayLimits,
+        time_intervals_enabled: timeIntervalsEnabled,
+        time_intervals: timeIntervals,
+        alternating_enabled: alternatingEnabled,
+        alternating_ratio: alternatingRatio,
+        alternating_reset_daily: alternatingResetDaily,
       })
 
       setConfig(updatedConfig)
@@ -136,6 +172,15 @@ export function InvoiceLimitsSettings() {
       })
       setEditLimits(limits)
 
+      // Update time intervals
+      setTimeIntervalsEnabled(syncedConfig.time_intervals_enabled || false)
+      setTimeIntervals(syncedConfig.time_intervals || {})
+
+      // Update alternating invoices
+      setAlternatingEnabled(syncedConfig.alternating_enabled || false)
+      setAlternatingRatio(syncedConfig.alternating_ratio || 1)
+      setAlternatingResetDaily(syncedConfig.alternating_reset_daily || false)
+
       // Reload status
       const newStatus = await configApiService.getInvoiceLimitStatus()
       setStatus(newStatus)
@@ -147,6 +192,36 @@ export function InvoiceLimitsSettings() {
     } finally {
       setSyncing(false)
     }
+  }
+
+  // Time interval functions
+  const addTimeInterval = (day: string) => {
+    const newIntervals = { ...timeIntervals }
+    if (!newIntervals[day]) {
+      newIntervals[day] = []
+    }
+    newIntervals[day].push({ start_time: '09:00', end_time: '17:00' })
+    setTimeIntervals(newIntervals)
+  }
+
+  const removeTimeInterval = (day: string, index: number) => {
+    const newIntervals = { ...timeIntervals }
+    if (newIntervals[day]) {
+      newIntervals[day].splice(index, 1)
+    }
+    setTimeIntervals(newIntervals)
+  }
+
+  const updateTimeInterval = (day: string, index: number, field: 'start_time' | 'end_time', value: string) => {
+    const newIntervals = { ...timeIntervals }
+    if (newIntervals[day] && newIntervals[day][index]) {
+      newIntervals[day][index][field] = value
+    }
+    setTimeIntervals(newIntervals)
+  }
+
+  const toggleDayExpanded = (day: string) => {
+    setExpandedDays(prev => ({ ...prev, [day]: !prev[day] }))
   }
 
   const formatNumber = (num: number): string => {
@@ -247,6 +322,21 @@ export function InvoiceLimitsSettings() {
                 )}
               </div>
             )}
+            {status.time_intervals_enabled && status.in_blocked_time_interval && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--error-color)' }}>
+                ⏰ Bloqueado hasta las {status.blocked_until}
+              </div>
+            )}
+            {status.alternating_enabled && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
+                🔄 Contador: {status.alternating_counter} / {status.alternating_ratio}
+                {!status.is_alternating_turn && (
+                  <span style={{ marginLeft: '0.5rem' }}>
+                    (Próxima electrónica en {status.next_electronic_in} venta{status.next_electronic_in !== 1 ? 's' : ''})
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -289,7 +379,7 @@ export function InvoiceLimitsSettings() {
           </label>
           <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             {editEnabled
-              ? 'Los límites diarios están activos'
+              ? 'Los límites están activos'
               : 'No hay límites, facturación siempre disponible'}
           </span>
         </div>
@@ -297,7 +387,7 @@ export function InvoiceLimitsSettings() {
 
       {/* Day Limits */}
       <div className="products-section">
-        <h3>📅 Límites por Día</h3>
+        <h3>📅 Límites por Día (Monto en COP)</h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
           Configura el monto máximo de facturación electrónica para cada día de la semana.
         </p>
@@ -340,6 +430,255 @@ export function InvoiceLimitsSettings() {
         </div>
       </div>
 
+      {/* Time Intervals Section */}
+      <div className="products-section">
+        <h3>⏰ Intervalos de Tiempo</h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+          Define horarios en los que NO se permitirá facturación electrónica.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={timeIntervalsEnabled}
+              onChange={(e) => setTimeIntervalsEnabled(e.target.checked)}
+              disabled={!editEnabled}
+              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+            />
+            <span style={{ fontWeight: 500 }}>
+              Activar intervalos de tiempo
+            </span>
+          </label>
+        </div>
+
+        {timeIntervalsEnabled && editEnabled && (
+          <div style={{ marginTop: '1rem' }}>
+            {SIMPLE_DAY_ORDER.map(day => {
+              const intervals = timeIntervals[day] || []
+              const isExpanded = expandedDays[day]
+
+              return (
+                <div key={day} style={{
+                  background: 'var(--bg-color)',
+                  borderRadius: '8px',
+                  marginBottom: '0.5rem',
+                  border: '1px solid var(--border-color)',
+                }}>
+                  {/* Day Header */}
+                  <div
+                    onClick={() => toggleDayExpanded(day)}
+                    style={{
+                      padding: '1rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <span style={{ fontWeight: 'bold' }}>{SIMPLE_DAY_NAMES[day]}</span>
+                      {intervals.length > 0 && (
+                        <span style={{
+                          background: 'var(--primary-color)',
+                          color: 'white',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                        }}>
+                          {intervals.length} intervalo{intervals.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <span>{isExpanded ? '▼' : '▶'}</span>
+                  </div>
+
+                  {/* Day Content */}
+                  {isExpanded && (
+                    <div style={{ padding: '0 1rem 1rem 1rem' }}>
+                      {intervals.map((interval, index) => (
+                        <div key={index} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          marginBottom: '0.5rem',
+                        }}>
+                          <input
+                            type="time"
+                            value={interval.start_time}
+                            onChange={(e) => updateTimeInterval(day, index, 'start_time', e.target.value)}
+                            style={{
+                              padding: '0.5rem',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              fontSize: '0.875rem',
+                            }}
+                          />
+                          <span>hasta</span>
+                          <input
+                            type="time"
+                            value={interval.end_time}
+                            onChange={(e) => updateTimeInterval(day, index, 'end_time', e.target.value)}
+                            style={{
+                              padding: '0.5rem',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              fontSize: '0.875rem',
+                            }}
+                          />
+                          <button
+                            onClick={() => removeTimeInterval(day, index)}
+                            style={{
+                              background: 'var(--error-color)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => addTimeInterval(day)}
+                        className="btn-secondary"
+                        style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}
+                      >
+                        ➕ Agregar intervalo
+                      </button>
+                      {intervals.length === 0 && (
+                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                          No hay intervalos. La facturación estará disponible todo el día.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <div style={{
+              background: '#e3f2fd',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginTop: '1rem',
+              fontSize: '0.875rem',
+            }}>
+              <strong>💡 Nota:</strong> Los intervalos pueden cruzar la medianoche (ej: 22:00 - 02:00).
+              Durante estos horarios, el checkbox de factura electrónica estará deshabilitado.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Alternating Invoices Section */}
+      <div className="products-section">
+        <h3>🔄 Facturación Intercalada</h3>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+          Factura electrónicamente solo cada cierto número de ventas (ej: 1 de cada 5).
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={alternatingEnabled}
+              onChange={(e) => setAlternatingEnabled(e.target.checked)}
+              disabled={!editEnabled}
+              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+            />
+            <span style={{ fontWeight: 500 }}>
+              Activar facturación intercalada
+            </span>
+          </label>
+        </div>
+
+        {alternatingEnabled && editEnabled && (
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '1rem',
+            }}>
+              <div style={{
+                background: 'var(--bg-color)',
+                padding: '1rem',
+                borderRadius: '8px',
+              }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Ratio de facturación
+                </label>
+                <input
+                  type="number"
+                  value={alternatingRatio}
+                  onChange={(e) => setAlternatingRatio(parseInt(e.target.value) || 1)}
+                  min="1"
+                  max="100"
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    fontSize: '1rem',
+                  }}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  1 de cada X ventas será electrónica
+                </p>
+              </div>
+
+              {config && (
+                <div style={{
+                  background: 'var(--bg-color)',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                    Contador actual
+                  </label>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>
+                    {config.alternating_counter} / {alternatingRatio}
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                    Próxima electrónica en {alternatingRatio - (config.alternating_counter % alternatingRatio)} venta(s)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={alternatingResetDaily}
+                  onChange={(e) => setAlternatingResetDaily(e.target.checked)}
+                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                />
+                <span style={{ fontWeight: 500 }}>
+                  Reiniciar contador diariamente a medianoche
+                </span>
+              </label>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginLeft: '1.75rem', marginTop: '0.25rem' }}>
+                Si está activado, el contador se reinicia a 0 cada día. Si no, continúa indefinidamente.
+              </p>
+            </div>
+
+            <div style={{
+              background: '#e3f2fd',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginTop: '1rem',
+              fontSize: '0.875rem',
+            }}>
+              <strong>💡 Ejemplo:</strong> Con ratio 5, la secuencia será: Normal → Normal → Normal → Normal → Electrónica (y se repite).
+              El contador se guarda en Google Sheets para mantener el estado entre reinicios.
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Actions */}
       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <button
@@ -365,8 +704,7 @@ export function InvoiceLimitsSettings() {
           padding: '1rem',
           borderRadius: '8px',
           fontSize: '0.875rem',
-          color: 'var(--text-secondary)',
-        }}>
+          color: 'var(--text-secondary)' }}>
           <strong>ℹ️ Información:</strong>
           <ul style={{ marginTop: '0.5rem', marginLeft: '1.5rem' }}>
             <li>Los cambios se guardan automáticamente en Google Sheets</li>

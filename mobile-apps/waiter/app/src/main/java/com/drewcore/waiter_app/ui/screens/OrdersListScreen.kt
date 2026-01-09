@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -70,7 +71,8 @@ fun OrdersListScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onViewInCart: (OrderResponse) -> Unit = {},
-    onDeleteOrder: (OrderResponse) -> Unit = {}
+    onDeleteOrder: (OrderResponse) -> Unit = {},
+    onMarkAsReady: (OrderResponse) -> Unit = {}
 ) {
     var selectedFilter by remember { mutableStateOf("all") }
 
@@ -150,7 +152,8 @@ fun OrdersListScreen(
                         OrderCard(
                             order = order,
                             onViewInCart = { onViewInCart(order) },
-                            onDelete = { onDeleteOrder(order) }
+                            onDelete = { onDeleteOrder(order) },
+                            onMarkAsReady = { onMarkAsReady(order) }
                         )
                     }
                 }
@@ -163,7 +166,8 @@ fun OrdersListScreen(
 fun OrderCard(
     order: OrderResponse,
     onViewInCart: () -> Unit = {},
-    onDelete: () -> Unit = {}
+    onDelete: () -> Unit = {},
+    onMarkAsReady: () -> Unit = {}
 ) {
     val currencyFormat = remember { NumberFormat.getCurrencyInstance(Locale("es", "CO")) }
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
@@ -322,6 +326,23 @@ fun OrderCard(
 
             // Action Buttons
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Mark as Ready button (only for preparing orders)
+            if (order.status == "preparing") {
+                Button(
+                    onClick = onMarkAsReady,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Marcar como lista", modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("MARCAR COMO LISTA", fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

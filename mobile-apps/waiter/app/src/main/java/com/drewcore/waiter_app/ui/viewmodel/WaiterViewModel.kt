@@ -1249,6 +1249,29 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Mark order as ready (sends WebSocket message to update status)
+     */
+    fun markOrderAsReady(orderId: Int, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            android.util.Log.d("WaiterViewModel", "Marking order as ready: $orderId")
+
+            try {
+                // Send WebSocket message to update order status to "ready"
+                webSocketManager.sendOrderStatusUpdate(orderId, "ready")
+
+                // Refresh orders list to reflect changes
+                loadOrders()
+
+                android.util.Log.d("WaiterViewModel", "Order marked as ready successfully: $orderId")
+                onSuccess()
+            } catch (e: Exception) {
+                android.util.Log.e("WaiterViewModel", "Error marking order as ready: ${e.message}")
+                onError(e.message ?: "Error marcando pedido como listo")
+            }
+        }
+    }
+
+    /**
      * Check if WebSocket is currently connected
      */
     fun isConnected(): Boolean {

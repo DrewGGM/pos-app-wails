@@ -4,6 +4,8 @@ import {models} from '../models';
 import {gorm} from '../models';
 import {services} from '../models';
 
+export function CanUsePackageManager():Promise<boolean>;
+
 export function ClearTunnelOutput():Promise<void>;
 
 export function Create(arg1:any):Promise<void>;
@@ -34,6 +36,8 @@ export function GetDefaultPrinter():Promise<models.PrinterConfig>;
 
 export function GetNetworkConfig():Promise<models.NetworkConfig>;
 
+export function GetPackageManagerCommand():Promise<string>;
+
 export function GetPrinterConfigs():Promise<Array<models.PrinterConfig>>;
 
 export function GetRestaurantConfig():Promise<models.RestaurantConfig>;
@@ -62,7 +66,11 @@ export function InitializeDefaultConfig():Promise<void>;
 
 export function InitializeDefaultSystemConfigs():Promise<void>;
 
+export function InstallCloudflaredViaPackageManager():Promise<void>;
+
 export function IsTunnelInstalled():Promise<boolean>;
+
+export function LoginToCloudflare():Promise<void>;
 
 export function Model(arg1:any):Promise<gorm.DB>;
 

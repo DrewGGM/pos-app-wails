@@ -41,7 +41,8 @@ data class OrderCardData(
     val cardIndex: Int, // 0 for first card, 1+ for continuations
     val totalCards: Int,
     val uniqueKey: String,
-    val isCancelled: Boolean = false
+    val isCancelled: Boolean = false,
+    val isReadyFromWaiter: Boolean = false
 )
 
 // Helper function to get order title based on order type
@@ -134,7 +135,7 @@ fun OrderTimer(createdAt: String) {
 }
 
 // Split an order into multiple cards if needed
-fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int, isCancelled: Boolean = false): List<OrderCardData> {
+fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int, isCancelled: Boolean = false, isReadyFromWaiter: Boolean = false): List<OrderCardData> {
     if (order.items.size <= maxItemsPerCard) {
         // Order fits in one card
         return listOf(
@@ -144,7 +145,8 @@ fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int, isCancelled: Boolean
                 cardIndex = 0,
                 totalCards = 1,
                 uniqueKey = order.id,
-                isCancelled = isCancelled
+                isCancelled = isCancelled,
+                isReadyFromWaiter = isReadyFromWaiter
             )
         )
     }
@@ -161,7 +163,8 @@ fun splitOrderIntoCards(order: Order, maxItemsPerCard: Int, isCancelled: Boolean
                 cardIndex = index,
                 totalCards = itemChunks.size,
                 uniqueKey = "${order.id}_$index",
-                isCancelled = isCancelled
+                isCancelled = isCancelled,
+                isReadyFromWaiter = isReadyFromWaiter
             )
         )
     }
@@ -177,9 +180,9 @@ fun ActiveOrdersScreen(
     onMarkAsReady: (Order) -> Unit,
     onRemoveCancelled: (String) -> Unit = {}
 ) {
-    // Split orders into cards based on max items preference, passing cancelled state
+    // Split orders into cards based on max items preference, passing cancelled and ready-from-waiter state
     val orderCards = orderStates.flatMap { orderState ->
-        splitOrderIntoCards(orderState.order, preferences.maxItemsPerCard, orderState.isCancelled)
+        splitOrderIntoCards(orderState.order, preferences.maxItemsPerCard, orderState.isCancelled, orderState.isReadyFromWaiter)
     }
 
     if (orderCards.isEmpty()) {
@@ -233,6 +236,7 @@ fun OrderCardDisplay(
     val order = cardData.order
     val isContinuation = cardData.cardIndex > 0
     val isCancelled = cardData.isCancelled
+    val isReadyFromWaiter = cardData.isReadyFromWaiter
 
     // Track visually struck-through items (for kitchen workflow aid)
     val struckThroughItems = remember { mutableStateOf(setOf<String>()) }
@@ -240,6 +244,7 @@ fun OrderCardDisplay(
     // Determine card background color based on state and custom colors
     val cardBackgroundColor = when {
         isCancelled -> Color(0xFFFFEBEE) // Light red for cancelled
+        isReadyFromWaiter -> Color(0xFFE8F5E9) // Light green for ready from waiter
         else -> {
             // Always try to get custom color for this order type (even if updated)
             val orderTypeCode = order.orderType?.code
@@ -261,9 +266,10 @@ fun OrderCardDisplay(
         }
     }
 
-    // Border for cancelled or updated orders
+    // Border for cancelled, ready from waiter, or updated orders
     val cardBorder = when {
         isCancelled -> androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFE53935)) // Red border for cancelled
+        isReadyFromWaiter -> androidx.compose.foundation.BorderStroke(3.dp, Color(0xFF4CAF50)) // Green border for ready from waiter
         isUpdated -> androidx.compose.foundation.BorderStroke(3.dp, Color(0xFFFF6F00)) // Orange border for updated
         else -> null
     }
@@ -479,12 +485,13 @@ fun OrderCardDisplay(
 
                     val textColor = when {
                         isRemoved -> Color(0xFFE53935).copy(alpha = 0.7f)
+                        isReadyFromWaiter -> Color.Gray.copy(alpha = 0.6f) // Gray for ready from waiter
                         isStruckThrough -> Color.Gray.copy(alpha = 0.6f) // Gray for struck through
                         else -> Color.Unspecified
                     }
 
-                    // Apply strikethrough if removed OR manually struck through
-                    val textDecoration = if (isRemoved || isStruckThrough) TextDecoration.LineThrough else TextDecoration.None
+                    // Apply strikethrough if removed, ready from waiter, OR manually struck through
+                    val textDecoration = if (isRemoved || isReadyFromWaiter || isStruckThrough) TextDecoration.LineThrough else TextDecoration.None
 
                     Row(
                         modifier = Modifier
@@ -492,9 +499,9 @@ fun OrderCardDisplay(
                             .then(
                                 if (isRemoved) Modifier.padding(vertical = 2.dp) else Modifier
                             )
-                            // Add click handler to toggle strikethrough (only for non-removed items)
+                            // Add click handler to toggle strikethrough (only for non-removed, non-cancelled, non-ready-from-waiter items)
                             .then(
-                                if (!isRemoved && !isCancelled) {
+                                if (!isRemoved && !isCancelled && !isReadyFromWaiter) {
                                     Modifier.clickable {
                                         val currentSet = struckThroughItems.value.toMutableSet()
                                         if (isStruckThrough) {
@@ -653,6 +660,22 @@ fun OrderCardDisplay(
                     ) {
                         Text(
                             text = "✕ QUITAR",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else if (isReadyFromWaiter) {
+                    // Remove button for waiter-ready orders (shown automatically after countdown)
+                    Button(
+                        onClick = { onRemoveCancelled(order.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF4CAF50)
+                        ),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = "✓ LISTO (Mesero)",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )

@@ -495,6 +495,17 @@ fun WaiterApp(
                                             // Optionally show error message
                                         }
                                     )
+                                },
+                                onMarkAsReady = { order ->
+                                    viewModel.markOrderAsReady(
+                                        orderId = order.id,
+                                        onSuccess = {
+                                            // Optionally show a toast or snackbar
+                                        },
+                                        onError = { error ->
+                                            // Optionally show error message
+                                        }
+                                    )
                                 }
                             )
                         }
