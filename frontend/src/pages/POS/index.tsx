@@ -1486,21 +1486,10 @@ const POS: React.FC = () => {
                     checked={needsElectronicInvoice}
                     onChange={(e) => setNeedsElectronicInvoice(e.target.checked)}
                     color="primary"
-                    disabled={invoiceLimitStatus?.enabled && !invoiceLimitStatus?.available}
                   />
                 }
                 label="Factura Electrónica"
               />
-              {/* Invoice Limit Status Information */}
-              {invoiceLimitStatus && invoiceLimitStatus.enabled && (
-                <Alert
-                  severity={invoiceLimitStatus.available ? 'info' : 'warning'}
-                  sx={{ mt: 1, fontSize: '0.8rem' }}
-                  icon={false}
-                >
-                  {invoiceLimitStatus.message}
-                </Alert>
-              )}
             </Box>
           )}
 

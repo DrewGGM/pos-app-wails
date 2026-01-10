@@ -327,8 +327,8 @@ fun OrderCard(
             // Action Buttons
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Mark as Ready button (only for preparing orders)
-            if (order.status == "preparing") {
+            // Mark as Ready button (for pending and preparing orders)
+            if (order.status == "pending" || order.status == "preparing") {
                 Button(
                     onClick = onMarkAsReady,
                     modifier = Modifier.fillMaxWidth(),

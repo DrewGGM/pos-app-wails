@@ -463,10 +463,24 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun loadOrders(status: String? = "pending", tableId: Int? = null) {
+    fun loadOrders(status: String? = null, tableId: Int? = null) {
         viewModelScope.launch {
             apiService?.getOrders(status, tableId)?.onSuccess { orderList ->
-                _orders.value = orderList
+                // Filter to only show today's orders
+                val today = java.time.LocalDate.now()
+                val filteredOrders = orderList.filter { order ->
+                    try {
+                        val orderDate = java.time.LocalDateTime.parse(
+                            order.createdAt,
+                            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+                        ).toLocalDate()
+                        orderDate.isEqual(today)
+                    } catch (e: Exception) {
+                        android.util.Log.e("WaiterViewModel", "Error parsing order date: ${order.createdAt}", e)
+                        false // Exclude orders with invalid dates
+                    }
+                }
+                _orders.value = filteredOrders
             }?.onFailure { error ->
                 _uiState.value = UiState.Error(error.message ?: "Error cargando órdenes")
             }
@@ -520,11 +534,11 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
 
             android.util.Log.d("WaiterViewModel", "selectTable: Table ${table.number}, status=${table.status}")
 
-            // If table is occupied, try to load existing pending order
+            // If table is occupied, try to load existing order (any status)
             if (table.status == "occupied") {
                 android.util.Log.d("WaiterViewModel", "Table is occupied, loading existing orders for table ${table.id}")
-                apiService?.getOrders(status = "pending", tableId = table.id)?.onSuccess { orders ->
-                    android.util.Log.d("WaiterViewModel", "Received ${orders.size} pending orders for table ${table.id}")
+                apiService?.getOrders(status = null, tableId = table.id)?.onSuccess { orders ->
+                    android.util.Log.d("WaiterViewModel", "Received ${orders.size} orders for table ${table.id}")
                     if (orders.isNotEmpty()) {
                         // Load the first pending order into cart for editing
                         val existingOrder = orders.first()
@@ -826,10 +840,15 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _uiState.value = UiState.SendingOrder
 
-            val orderNumber = _currentOrderId.value?.let { orderId ->
-                // If we have a current order ID, we're updating, keep the same number
-                _orders.value.find { it.id == orderId }?.orderNumber ?: generateOrderNumber()
-            } ?: generateOrderNumber()
+            // Get current order if we're updating
+            val currentOrder = _currentOrderId.value?.let { orderId ->
+                _orders.value.find { it.id == orderId }
+            }
+
+            val orderNumber = currentOrder?.orderNumber ?: generateOrderNumber()
+
+            // Preserve current status when updating, default to "pending" for new orders
+            val orderStatus = currentOrder?.status ?: "pending"
 
             val items = _cart.value.map { cartItem ->
                 OrderItemRequest(
@@ -855,6 +874,7 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 orderNumber = orderNumber,
                 orderTypeId = selectedType?.id, // Use order_type_id (new field)
                 type = orderType, // Keep deprecated field for backward compatibility
+                status = orderStatus, // Preserve current status when updating
                 tableId = table?.id,
                 items = items,
                 subtotal = cartTotal,

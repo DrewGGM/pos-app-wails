@@ -356,7 +356,10 @@ const Orders: React.FC = () => {
           >
             <VisibilityIcon fontSize="small" />
           </IconButton>
-          {params.row.status === 'pending' && (
+          {(params.row.status === 'pending' ||
+            params.row.status === 'preparing' ||
+            params.row.status === 'ready' ||
+            params.row.status === 'delivered') && (
             <IconButton
               size="small"
               color="primary"
