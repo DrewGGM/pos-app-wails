@@ -95,6 +95,8 @@ export function UpdateCustomer(arg1:models.Customer):Promise<void>;
 
 export function UpdatePaymentMethod(arg1:models.PaymentMethod):Promise<void>;
 
+export function UpdateSaleCustomer(arg1:number,arg2:number):Promise<void>;
+
 export function Where(arg1:any,arg2:Array<any>):Promise<gorm.DB>;
 
 export function WithTransaction(arg1:any):Promise<void>;

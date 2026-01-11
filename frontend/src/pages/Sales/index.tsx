@@ -48,6 +48,8 @@ import {
   Email as EmailIcon,
   Image as ImageIcon,
   Close as CloseIcon,
+  Edit as EditIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -96,6 +98,10 @@ const Sales: React.FC = () => {
   const [dianTab, setDianTab] = useState(0);
   const [voucherImageDialog, setVoucherImageDialog] = useState(false);
   const [selectedVoucherImage, setSelectedVoucherImage] = useState<string>('');
+  const [editCustomerDialog, setEditCustomerDialog] = useState(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [availableCustomers, setAvailableCustomers] = useState<any[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   useEffect(() => {
     dispatch(fetchTodaySales());
@@ -308,6 +314,49 @@ const Sales: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     toast.success('Comprobante descargado');
+  };
+
+  const handleOpenEditCustomerDialog = async (sale: Sale) => {
+    // Check if electronic invoice is processed
+    if (sale.electronic_invoice) {
+      const status = sale.electronic_invoice.status;
+      if (status === 'sent' || status === 'validating' || status === 'accepted') {
+        toast.error('No se puede editar el cliente: la factura electrónica ya ha sido procesada');
+        handleMenuClose();
+        return;
+      }
+    }
+
+    setSelectedSale(sale);
+    setSelectedCustomerId(sale.customer_id || null);
+    setCustomerSearchQuery('');
+
+    // Load all customers
+    try {
+      const customers = await wailsSalesService.getCustomers();
+      setAvailableCustomers(customers);
+    } catch (error) {
+      toast.error('Error al cargar clientes');
+    }
+
+    setEditCustomerDialog(true);
+    handleMenuClose();
+  };
+
+  const handleUpdateCustomer = async () => {
+    if (!selectedSale || !selectedCustomerId) {
+      toast.error('Seleccione un cliente');
+      return;
+    }
+
+    try {
+      await wailsSalesService.updateSaleCustomer(selectedSale.id!, selectedCustomerId);
+      toast.success('Cliente actualizado correctamente');
+      setEditCustomerDialog(false);
+      loadSalesHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Error al actualizar cliente');
+    }
   };
 
   const filteredSales = sales.filter(sale => {
@@ -731,6 +780,15 @@ const Sales: React.FC = () => {
         {selectedSale?.electronic_invoice?.invoice_number && (
           <MenuItem onClick={() => selectedSale && handleResendEmail(selectedSale)}>
             <EmailIcon sx={{ mr: 1 }} /> Reenviar Email al Cliente
+          </MenuItem>
+        )}
+        {/* Edit Customer - only for unprocessed invoices */}
+        {selectedSale && (!selectedSale.electronic_invoice ||
+          (selectedSale.electronic_invoice.status !== 'sent' &&
+           selectedSale.electronic_invoice.status !== 'validating' &&
+           selectedSale.electronic_invoice.status !== 'accepted')) && (
+          <MenuItem onClick={() => selectedSale && handleOpenEditCustomerDialog(selectedSale)}>
+            <EditIcon sx={{ mr: 1 }} /> Cambiar Cliente
           </MenuItem>
         )}
         {selectedSale?.electronic_invoice?.dian_response && (
@@ -1222,6 +1280,127 @@ const Sales: React.FC = () => {
           </Button>
           <Button onClick={() => setVoucherImageDialog(false)}>
             Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Customer Dialog */}
+      <Dialog
+        open={editCustomerDialog}
+        onClose={() => setEditCustomerDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PersonIcon color="primary" />
+            <Typography variant="h6">Cambiar Cliente</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Venta: {selectedSale?.sale_number}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Cliente actual: {selectedSale?.customer?.name || 'Consumidor Final'}
+            </Typography>
+          </Box>
+
+          {/* Search customers */}
+          <TextField
+            fullWidth
+            label="Buscar cliente"
+            placeholder="Buscar por nombre, documento o email..."
+            value={customerSearchQuery}
+            onChange={(e) => setCustomerSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mb: 2 }}
+          />
+
+          {/* Customer list */}
+          <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+            {availableCustomers
+              .filter(customer => {
+                if (!customerSearchQuery) return true;
+                const query = customerSearchQuery.toLowerCase();
+                return (
+                  customer.name?.toLowerCase().includes(query) ||
+                  customer.identification_number?.includes(query) ||
+                  customer.email?.toLowerCase().includes(query)
+                );
+              })
+              .map(customer => (
+                <Card
+                  key={customer.id}
+                  sx={{
+                    mb: 1,
+                    cursor: 'pointer',
+                    border: selectedCustomerId === customer.id ? 2 : 1,
+                    borderColor: selectedCustomerId === customer.id ? 'primary.main' : 'divider',
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
+                  }}
+                  onClick={() => setSelectedCustomerId(customer.id)}
+                >
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box>
+                        <Typography variant="body1" fontWeight="bold">
+                          {customer.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {customer.identification_type}: {customer.identification_number}
+                        </Typography>
+                        {customer.email && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {customer.email}
+                          </Typography>
+                        )}
+                      </Box>
+                      {selectedCustomerId === customer.id && (
+                        <CheckCircleIcon color="primary" />
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+          </Box>
+
+          {availableCustomers.filter(customer => {
+            if (!customerSearchQuery) return true;
+            const query = customerSearchQuery.toLowerCase();
+            return (
+              customer.name?.toLowerCase().includes(query) ||
+              customer.identification_number?.includes(query) ||
+              customer.email?.toLowerCase().includes(query)
+            );
+          }).length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="body2" color="text.secondary">
+                No se encontraron clientes
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditCustomerDialog(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleUpdateCustomer}
+            variant="contained"
+            disabled={!selectedCustomerId}
+            startIcon={<EditIcon />}
+          >
+            Actualizar Cliente
           </Button>
         </DialogActions>
       </Dialog>

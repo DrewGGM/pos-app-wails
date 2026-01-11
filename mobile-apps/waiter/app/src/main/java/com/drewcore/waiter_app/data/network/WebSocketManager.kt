@@ -271,7 +271,7 @@ class WebSocketManager {
 
         val json = gson.toJson(message)
         webSocket?.send(json)
-        Log.d(TAG, "Sent order status update: orderId=$orderId, status=$status")
+        Log.d(TAG, "Sent order status update: $orderId -> $status")
     }
 
     /**

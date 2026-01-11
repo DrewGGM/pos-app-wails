@@ -470,14 +470,30 @@ class WaiterViewModel(application: Application) : AndroidViewModel(application) 
                 val today = java.time.LocalDate.now()
                 val filteredOrders = orderList.filter { order ->
                     try {
-                        val orderDate = java.time.LocalDateTime.parse(
-                            order.createdAt,
-                            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
-                        ).toLocalDate()
+                        // Try different date formats
+                        val orderDate = try {
+                            // Format 1: "2024-01-10T14:30:00"
+                            java.time.LocalDateTime.parse(
+                                order.createdAt,
+                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+                            ).toLocalDate()
+                        } catch (e1: Exception) {
+                            try {
+                                // Format 2: ISO 8601 with timezone "2024-01-10T14:30:00Z"
+                                java.time.ZonedDateTime.parse(order.createdAt).toLocalDate()
+                            } catch (e2: Exception) {
+                                try {
+                                    // Format 3: Just date "2024-01-10"
+                                    java.time.LocalDate.parse(order.createdAt)
+                                } catch (e3: Exception) {
+                                    throw e3
+                                }
+                            }
+                        }
+
                         orderDate.isEqual(today)
                     } catch (e: Exception) {
-                        android.util.Log.e("WaiterViewModel", "Error parsing order date: ${order.createdAt}", e)
-                        false // Exclude orders with invalid dates
+                        true // INCLUDE orders with unparseable dates for now (don't hide them)
                     }
                 }
                 _orders.value = filteredOrders

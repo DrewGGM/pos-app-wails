@@ -170,7 +170,7 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout, cashRegisterId } = useAuth();
   const { isConnected } = useWebSocket();
-  const { isDIANMode, toggleDIANMode, isElectronicInvoicingEnabled, dianApiUrl } = useDIANMode();
+  const { isDIANMode, toggleDIANMode, isElectronicInvoicingEnabled, dianApiUrl, dianConfig } = useDIANMode();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -284,7 +284,12 @@ const MainLayout: React.FC = () => {
   };
 
   const handleOpenDIANPanel = () => {
-    if (dianApiUrl) {
+    if (dianApiUrl && dianConfig?.identification_number) {
+      // Build URL with company NIT: baseUrl/company/NIT
+      const url = `${dianApiUrl}/company/${dianConfig.identification_number}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (dianApiUrl) {
+      // Fallback to base URL if NIT is not configured
       window.open(dianApiUrl, '_blank', 'noopener,noreferrer');
     }
   };

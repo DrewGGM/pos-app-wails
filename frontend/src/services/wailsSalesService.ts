@@ -596,6 +596,18 @@ class WailsSalesService {
     }
   }
 
+  async updateSaleCustomer(saleId: number, customerId: number): Promise<void> {
+    try {
+      const windowGo = (window as any).go;
+      if (!windowGo?.services?.SalesService?.UpdateSaleCustomer) {
+        throw new Error('UpdateSaleCustomer method not available');
+      }
+      await windowGo.services.SalesService.UpdateSaleCustomer(saleId, customerId);
+    } catch (error: any) {
+      throw new Error(error?.message || 'Error al actualizar cliente de la venta');
+    }
+  }
+
   // DIAN Closing Report Methods
   async getDIANClosingReport(date: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom' = 'daily', endDate?: string): Promise<DIANClosingReport> {
     try {

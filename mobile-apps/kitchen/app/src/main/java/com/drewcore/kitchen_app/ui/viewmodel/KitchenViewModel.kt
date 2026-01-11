@@ -93,8 +93,10 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 orderRepository.activeOrders.collect { orders ->
-                    if (orders.isNotEmpty()) {
-                        Log.d(TAG, "Loaded ${orders.size} orders from database")
+                    // Only load from database if we have no active orders (initial load)
+                    // After that, WebSocket updates will manage the state to avoid conflicts
+                    if (orders.isNotEmpty() && _activeOrders.value.isEmpty()) {
+                        Log.d(TAG, "Initial load: ${orders.size} orders from database")
                         // Track order types from persisted orders
                         orders.forEach { order ->
                             order.orderType?.let { updateDiscoveredOrderTypes(it) }
@@ -102,6 +104,8 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                         // Update active orders with persisted data
                         val orderStates = orders.map { OrderDisplayState(it, isCancelled = false) }
                         _activeOrders.value = orderStates
+                    } else if (orders.isNotEmpty()) {
+                        Log.d(TAG, "Skipping database update - WebSocket manages state (${_activeOrders.value.size} in memory, ${orders.size} in DB)")
                     }
                 }
             } catch (e: Exception) {
@@ -163,6 +167,7 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             webSocketManager.orderUpdate.collect { update ->
                 update?.let {
+                    Log.d(TAG, "=== ORDER UPDATE RECEIVED === orderId=${it.orderId}, status=${it.status}")
                     updateOrderStatus(it.orderId, it.status)
                 }
             }
@@ -310,6 +315,20 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
 
     private fun addNewOrder(order: Order) {
         val current = _activeOrders.value.toMutableList()
+        val existsInActive = current.any { it.order.id == order.id }
+
+        // Only ignore "ready" orders if:
+        // 1. Status is "ready" AND
+        // 2. We already have readyItems for this order AND
+        // 3. Order is NOT currently in active list (not being updated)
+        if (order.status == "ready" && !existsInActive) {
+            val readyItems = readyOrderItems[order.id]
+            if (readyItems != null && readyItems.isNotEmpty()) {
+                // We already marked this order as ready, ignore the broadcast
+                Log.d(TAG, "Ignoring ready order ${order.orderNumber} - already processed by kitchen")
+                return
+            }
+        }
 
         // Save full order quantities for accurate tracking
         fullOrderQuantities[order.id] = order.items.associate {
@@ -333,25 +352,35 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
         val existingIndex = current.indexOfFirst { it.order.id == order.id }
         if (existingIndex != -1) {
             val existingOrder = current[existingIndex].order
+            val existingState = current[existingIndex]
+
+            // Preserve orderType from existing order if new order doesn't have it
+            val updatedOrder = if (order.orderType == null && existingOrder.orderType != null) {
+                order.copy(orderType = existingOrder.orderType)
+            } else {
+                order
+            }
 
             // Only mark as updated if items actually changed
-            if (order.hasChangedItemsFrom(existingOrder)) {
+            if (updatedOrder.hasChangedItemsFrom(existingOrder)) {
                 // Calculate item changes
-                val orderWithChanges = calculateItemChanges(existingOrder, order)
-                current[existingIndex] = OrderDisplayState(order = orderWithChanges, isCancelled = false)
+                val orderWithChanges = calculateItemChanges(existingOrder, updatedOrder)
+                // CRITICAL: Preserve existing display state flags (isReadyFromWaiter, isCancelled, timestamps)
+                current[existingIndex] = existingState.copy(order = orderWithChanges)
                 _activeOrders.value = current
 
                 // Mark as updated for visual indication
                 val updated = _updatedOrderIds.value.toMutableSet()
-                updated.add(order.id)
+                updated.add(updatedOrder.id)
                 _updatedOrderIds.value = updated
 
-                Log.d(TAG, "Updated existing order with changes: ${order.orderNumber}")
+                Log.d(TAG, "Updated existing order with changes: ${updatedOrder.orderNumber}")
             } else {
                 // No changes, just replace quietly without marking as updated
-                current[existingIndex] = OrderDisplayState(order = order, isCancelled = false)
+                // CRITICAL: Preserve existing display state flags
+                current[existingIndex] = existingState.copy(order = updatedOrder)
                 _activeOrders.value = current
-                Log.d(TAG, "Received duplicate order without changes: ${order.orderNumber}")
+                Log.d(TAG, "Received duplicate order without changes: ${updatedOrder.orderNumber}")
             }
         } else {
             // Check if this order was previously marked as ready
@@ -601,11 +630,21 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun updateOrderStatus(orderId: String, status: String) {
+        Log.d(TAG, "=== updateOrderStatus === orderId=$orderId, status=$status")
+
         // Update order in active list if found
         val active = _activeOrders.value.toMutableList()
+        Log.d(TAG, "Active orders count: ${active.size}")
+        active.forEachIndexed { idx, orderState ->
+            Log.d(TAG, "  [$idx] id=${orderState.order.id}, number=${orderState.order.orderNumber}")
+        }
+
         val index = active.indexOfFirst { it.order.id == orderId }
+        Log.d(TAG, "Order index in active list: $index")
+
         if (index != -1) {
-            // Order status updated from POS/Waiter
+            // Order found in active list - process status update
+            Log.d(TAG, "Processing status update for order ${active[index].order.orderNumber}")
             when (status) {
                 "cancelled" -> {
                     // Mark as cancelled and schedule removal
@@ -625,23 +664,49 @@ class KitchenViewModel(application: Application) : AndroidViewModel(application)
                     Log.d(TAG, "Order ${orderId} marked as cancelled")
                 }
                 "ready" -> {
+                    Log.d(TAG, "=== READY STATUS - Starting process ===")
                     // Mark as ready from waiter and schedule removal
                     val currentTime = System.currentTimeMillis()
-                    active[index] = active[index].copy(
+
+                    // CRITICAL: Save current items as ready (so future updates know what was already ready)
+                    // This is the same logic as markOrderAsReady() but for waiter-initiated ready status
+                    val currentReadyItems = readyOrderItems.getOrPut(orderId) { ConcurrentHashMap() }
+                    val fullQuantities = fullOrderQuantities[orderId] ?: emptyMap()
+
+                    Log.d(TAG, "Full quantities for order $orderId: $fullQuantities")
+
+                    // Save all current item quantities as ready
+                    for ((key, fullQty) in fullQuantities) {
+                        val currentReady = currentReadyItems[key] ?: 0
+                        currentReadyItems[key] = fullQty
+                        Log.d(TAG, "Item $key: was ready=$currentReady, now marking full quantity=$fullQty as ready (from waiter)")
+                    }
+
+                    Log.d(TAG, "Saved ready items for order ${orderId}: $currentReadyItems")
+
+                    val updatedState = active[index].copy(
                         isReadyFromWaiter = true,
                         readyFromWaiterAtMs = currentTime
                     )
+                    active[index] = updatedState
                     _activeOrders.value = active
+
+                    Log.d(TAG, "Updated order state: isReadyFromWaiter=${updatedState.isReadyFromWaiter}, time=$currentTime")
+                    Log.d(TAG, "Active orders after update: ${_activeOrders.value.size}")
 
                     // Schedule automatic removal after 5 seconds
                     viewModelScope.launch {
+                        Log.d(TAG, "Starting 5-second countdown for order $orderId removal")
                         delay(5000)
+                        Log.d(TAG, "5 seconds passed, removing order $orderId")
                         removeReadyFromWaiterOrder(orderId, currentTime)
                     }
 
-                    Log.d(TAG, "Order ${orderId} marked as ready from waiter")
+                    Log.d(TAG, "=== Order ${orderId} marked as ready from waiter - COMPLETE ===")
                 }
             }
+        } else {
+            Log.d(TAG, "Order $orderId not in active list - ignoring status update to $status (likely already processed)")
         }
     }
 

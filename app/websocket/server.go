@@ -412,8 +412,9 @@ func (c *Client) handleMessage(message *Message) {
 		c.Server.broadcastToPOS(message)
 
 	case TypeOrderUpdate:
-		// Handle order update
-		c.Server.broadcastToAll(message)
+		// Handle order update from waiter app or other sources
+		// The handleOrderUpdate will update DB and OrderService will do the broadcast
+		c.handleOrderUpdate(message)
 
 	case TypeOrderCancelled:
 		// Handle order cancellation from waiter app or REST API
@@ -579,6 +580,68 @@ func (c *Client) handleKitchenUpdate(message *Message) {
 
 			// Broadcast the status update to all connected clients
 			c.Server.SendOrderNotification(uint(orderID), string(status))
+		}
+	} else {
+		log.Printf("Warning: orderService not available, cannot update order status")
+	}
+}
+
+// handleOrderUpdate handles order status updates from waiter app
+func (c *Client) handleOrderUpdate(message *Message) {
+	log.Printf("Client %s updating order status", c.ID)
+
+	// Parse the update data
+	var updateData map[string]interface{}
+	if err := json.Unmarshal(message.Data, &updateData); err != nil {
+		log.Printf("Error parsing order update data: %v", err)
+		return
+	}
+
+	// Extract order_id and status
+	orderIDFloat, okID := updateData["order_id"].(float64)
+	status, okStatus := updateData["status"].(string)
+
+	if !okID || !okStatus {
+		log.Printf("Error: order_update missing order_id or status fields")
+		return
+	}
+
+	orderID := uint(orderIDFloat)
+	log.Printf("Updating order ID: %d to status: %s", orderID, status)
+
+	// Update order status using the order service
+	if c.Server.orderService != nil {
+		// Convert status string to OrderStatus type
+		orderStatus := models.OrderStatus(status)
+
+		// Validate status is one of the allowed values
+		validStatuses := []models.OrderStatus{
+			models.OrderStatusPending,
+			models.OrderStatusPreparing,
+			models.OrderStatusReady,
+			models.OrderStatusDelivered,
+			models.OrderStatusCancelled,
+			models.OrderStatusPaid,
+		}
+
+		isValid := false
+		for _, validStatus := range validStatuses {
+			if orderStatus == validStatus {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			log.Printf("Invalid status: %s", status)
+			return
+		}
+
+		// Update the order status in the database
+		if err := c.Server.orderService.UpdateOrderStatus(orderID, orderStatus); err != nil {
+			log.Printf("Error updating order status: %v", err)
+		} else {
+			log.Printf("Order %d status updated to %s", orderID, status)
 		}
 	} else {
 		log.Printf("Warning: orderService not available, cannot update order status")

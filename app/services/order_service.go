@@ -136,6 +136,8 @@ func (s *OrderService) CreateOrder(order *models.Order) (*models.Order, error) {
 		}
 	}
 
+	// Send to kitchen if from POS/Waiter/PWA
+	// sendToKitchen() will send kitchen_order message to kitchen apps
 	if order.Source == "pos" || order.Source == "waiter_app" || order.Source == "pwa" {
 		go s.sendToKitchen(reloadedOrder)
 	}
@@ -337,6 +339,7 @@ func (s *OrderService) UpdateOrder(order *models.Order) (*models.Order, error) {
 
 	// Send to kitchen for any active order (pending, preparing, or ready)
 	// This ensures modifiers and other changes are reflected in kitchen display
+	// sendToKitchen() will send kitchen_order message to kitchen apps
 	if updatedOrder.Status == models.OrderStatusPending ||
 	   updatedOrder.Status == models.OrderStatusPreparing ||
 	   updatedOrder.Status == models.OrderStatusReady {
@@ -493,6 +496,24 @@ func (s *OrderService) UpdateOrderStatus(orderID uint, status models.OrderStatus
 	if freedTableID != nil && s.wsServer != nil {
 		s.wsServer.SendTableUpdate(*freedTableID, "available")
 		log.Printf("OrderService: Table %d freed (status=%s), notification sent", *freedTableID, status)
+	}
+
+	// Broadcast order status update to all clients (Waiter Apps, Kitchen, etc.)
+	// Send status-only update (not full order data)
+	if s.wsServer != nil {
+		statusData := map[string]interface{}{
+			"order_id": orderID,
+			"status":   string(status),
+		}
+		dataJSON, _ := json.Marshal(statusData)
+
+		message := websocket.Message{
+			Type:      websocket.TypeOrderUpdate,
+			Timestamp: time.Now(),
+			Data:      dataJSON,
+		}
+		s.wsServer.BroadcastMessage(message)
+		log.Printf("OrderService: Order status update ID=%d -> %s broadcasted to all clients", orderID, status)
 	}
 
 	return nil

@@ -182,6 +182,10 @@ export function UpdatePaymentMethod(arg1) {
   return window['go']['services']['SalesService']['UpdatePaymentMethod'](arg1);
 }
 
+export function UpdateSaleCustomer(arg1, arg2) {
+  return window['go']['services']['SalesService']['UpdateSaleCustomer'](arg1, arg2);
+}
+
 export function Where(arg1, arg2) {
   return window['go']['services']['SalesService']['Where'](arg1, arg2);
 }

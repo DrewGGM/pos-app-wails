@@ -252,36 +252,47 @@ class WebSocketManager {
                     }
                 }
 
-                "kitchen_order", "order_new" -> {
+                "kitchen_order" -> {
                     // Parse order from data
                     val orderJson = gson.toJson(message.data)
                     val order = gson.fromJson(orderJson, Order::class.java)
                     // Clean up IDs to remove .0 from Double conversion
                     val cleanedOrder = cleanOrderIds(order)
                     _newOrder.value = cleanedOrder
-                    Log.d(TAG, "New order received: ${cleanedOrder.orderNumber}")
+                    Log.d(TAG, "Kitchen order received: ${cleanedOrder.orderNumber}")
 
                     // Send acknowledgment back to server
                     sendKitchenAck(cleanedOrder.id, cleanedOrder.orderNumber)
                 }
 
-                "order_update" -> {
-                    // Try to parse as full order first (from REST API broadcasts)
-                    try {
-                        val orderJson = gson.toJson(message.data)
-                        val order = gson.fromJson(orderJson, Order::class.java)
-                        val cleanedOrder = cleanOrderIds(order)
-                        _newOrder.value = cleanedOrder
-                        Log.d(TAG, "Order update received (full order): ${cleanedOrder.orderNumber}")
-                    } catch (e: Exception) {
-                        // Fallback to status update only
-                        val orderId = message.data["order_id"]?.toString()
-                        val status = message.data["status"] as? String
+                "order_new" -> {
+                    // Ignore order_new messages - kitchen only processes kitchen_order
+                    Log.d(TAG, "Ignoring order_new message (kitchen only processes kitchen_order)")
+                }
 
-                        if (orderId != null && status != null) {
-                            _orderUpdate.value = OrderUpdate(orderId, status)
-                            Log.d(TAG, "Order update (status only): $orderId -> $status")
+                "order_update" -> {
+                    Log.d(TAG, "=== ORDER_UPDATE MESSAGE RECEIVED ===")
+                    Log.d(TAG, "Message data keys: ${message.data.keys}")
+
+                    // Check if this is a status-only update or full order update
+                    val orderId = message.data["order_id"]?.toString()
+                    val status = message.data["status"] as? String
+
+                    // Status-only update: {order_id, status, timestamp}
+                    if (orderId != null && status != null && message.data.size <= 3) {
+                        Log.d(TAG, "Status-only update - orderId: $orderId, status: $status")
+                        // Clean the orderId (remove .0 suffix if present from Double conversion)
+                        val cleanedOrderId = if (orderId.endsWith(".0")) {
+                            orderId.substring(0, orderId.length - 2)
+                        } else {
+                            orderId
                         }
+
+                        _orderUpdate.value = OrderUpdate(cleanedOrderId, status)
+                        Log.d(TAG, "=== OrderUpdate emitted: $cleanedOrderId -> $status ===")
+                    } else {
+                        // Full order update - ignore, kitchen only processes kitchen_order for full order data
+                        Log.d(TAG, "Ignoring full order_update - kitchen only processes kitchen_order for order data")
                     }
                 }
 

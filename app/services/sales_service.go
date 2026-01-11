@@ -816,6 +816,52 @@ func (s *SalesService) ConvertToElectronicInvoice(saleID uint) error {
 	return nil
 }
 
+// UpdateSaleCustomer updates the customer for a sale (only for unprocessed electronic invoices)
+func (s *SalesService) UpdateSaleCustomer(saleID uint, customerID uint) error {
+	// Get the sale with electronic invoice to check status
+	var sale models.Sale
+	if err := s.db.Preload("ElectronicInvoice").First(&sale, saleID).Error; err != nil {
+		return fmt.Errorf("sale not found: %w", err)
+	}
+
+	// Validate that electronic invoice is not processed
+	if sale.ElectronicInvoice != nil {
+		status := sale.ElectronicInvoice.Status
+		if status == "sent" || status == "validating" || status == "accepted" {
+			return fmt.Errorf("cannot update customer: electronic invoice has already been processed")
+		}
+	}
+
+	// Get the customer to validate it exists
+	var customer models.Customer
+	if err := s.db.First(&customer, customerID).Error; err != nil {
+		return fmt.Errorf("customer not found: %w", err)
+	}
+
+	// Update the customer_id in both Sale and Order tables
+	// Use a transaction to ensure both updates succeed or both fail
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Update the Sale's customer_id
+		if err := tx.Model(&sale).Update("customer_id", customerID).Error; err != nil {
+			return fmt.Errorf("failed to update sale customer: %w", err)
+		}
+
+		// Update the Order's customer_id
+		if err := tx.Model(&models.Order{}).Where("id = ?", sale.OrderID).Update("customer_id", customerID).Error; err != nil {
+			return fmt.Errorf("failed to update order customer: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Successfully updated customer to %d for sale %d and order %d", customerID, saleID, sale.OrderID)
+	return nil
+}
+
 // Customer management
 
 func (s *SalesService) createOrUpdateCustomer(customerData *models.Customer) (*models.Customer, error) {
@@ -1079,6 +1125,24 @@ func (s *SalesService) GetCustomerStats(onlyElectronic bool) (*CustomerStats, er
 }
 
 // Helper methods
+
+// getPaymentMethodDisplayName returns the DIAN payment method name if configured, otherwise the payment method name
+func getPaymentMethodDisplayName(paymentMethod *models.PaymentMethod) string {
+	if paymentMethod == nil {
+		return ""
+	}
+
+	// Use DIAN payment method name if configured
+	if paymentMethod.DIANPaymentMethodID != nil {
+		dianParams := models.GetDIANParametricData()
+		if dianMethod, ok := dianParams.PaymentMethods[*paymentMethod.DIANPaymentMethodID]; ok {
+			return dianMethod.Name
+		}
+	}
+
+	// Fall back to payment method name
+	return paymentMethod.Name
+}
 
 func (s *SalesService) generateSaleNumber() string {
 	timestamp := time.Now().Format("20060102150405")
@@ -1613,7 +1677,7 @@ func (s *SalesService) GetDIANClosingReportWithPeriod(dateStr string, period str
 			if _, exists := paymentMap[methodID]; !exists {
 				paymentMap[methodID] = &PaymentMethodSummary{
 					MethodID:   methodID,
-					MethodName: payment.PaymentMethod.Name,
+					MethodName: getPaymentMethodDisplayName(payment.PaymentMethod),
 					MethodType: payment.PaymentMethod.Type,
 				}
 			}
@@ -1896,7 +1960,7 @@ func (s *SalesService) GetDIANClosingReportCustomRange(startDateStr string, endD
 			if _, exists := paymentMap[methodID]; !exists {
 				paymentMap[methodID] = &PaymentMethodSummary{
 					MethodID:   methodID,
-					MethodName: payment.PaymentMethod.Name,
+					MethodName: getPaymentMethodDisplayName(payment.PaymentMethod),
 					MethodType: payment.PaymentMethod.Type,
 				}
 			}
